@@ -62,6 +62,7 @@ struct ExportView: View {
                 Toggle("Estimated ceiling (room scans)", isOn: $options.includeCeiling)
                 Toggle("Camera positions & shots as cameras (GLB)", isOn: $options.includeCameras)
                 Toggle("Reference photos", isOn: $options.includePhotos)
+                Toggle("Scout report (PDF)", isOn: $options.includeReport)
             }
 
             Section {
@@ -96,7 +97,7 @@ struct ExportView: View {
                   Photos/
                   Measurements/  measurements.json · .csv
                   Camera_Positions/  camera_positions.json · shots.json
-                  Notes/  notes.txt
+                  Notes/  notes.txt · Scout_Report.pdf
                   Metadata/  metadata.json · location.json · floor_plan.json
                 """)
                 .font(.system(.caption, design: .monospaced))
@@ -129,14 +130,25 @@ struct ExportView: View {
         let options = self.options
         let locationRef = selectedLocation
         let location = locationRef.flatMap { store.location($0) }
+        // PDF reports render with SwiftUI, so they are made here on the main actor first.
+        var reports: [UUID: URL] = [:]
+        if options.includeReport {
+            let refs = locationRef.map { [$0] } ?? project.locations.map { LocationRef(projectID: pid, locationID: $0.id) }
+            for ref in refs {
+                if let data = ScoutReportData.load(ref, store: store), let url = try? ScoutReport.renderToTemporaryFile(data) {
+                    reports[ref.locationID] = url
+                }
+            }
+        }
         Task {
             do {
                 let url = try await Task.detached(priority: .userInitiated) { () throws -> URL in
                     if let location, let locationRef {
                         return try ExportService.buildLocationPackage(project: project, location: location,
-                                                                      ref: locationRef, options: options)
+                                                                      ref: locationRef, options: options,
+                                                                      report: reports[location.id])
                     }
-                    return try ExportService.buildProjectPackage(project: project, options: options)
+                    return try ExportService.buildProjectPackage(project: project, options: options, reports: reports)
                 }.value
                 share = SharedFile(url: url)
             } catch {

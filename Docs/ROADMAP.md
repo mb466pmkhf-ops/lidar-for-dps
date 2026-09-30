@@ -19,5 +19,5 @@ Each item lists where it plugs into the current architecture.
 | Generate a simple Unreal scene | Emit a Python script for Unreal's Editor Scripting that imports the GLB, spawns CineCameraActors from the CSV and sets up the Sun Position Calculator |
 | Texture baking | Accumulate `ARFrame` images with poses during scanning; project onto the mesh (or hand off to PhotogrammetrySession on Mac) |
 | Sync between devices / iCloud backup | `ProjectStore` is file-based per project → move `projectsRoot` into an iCloud ubiquity container with `NSFileCoordinator`; conflict resolution on `modifiedAt` |
-| PDF location reports / shareable scout reports | Render `LocationDetailView` sections + `FloorPlanCanvas` with `ImageRenderer` into a PDF context |
+| PDF location reports / shareable scout reports | ✅ Done — `ScoutReport`. Next: branded cover page, sun diagram page |
 | Multi-user production projects | Requires an account/backend; keep optional — local-first remains the default |

@@ -59,6 +59,9 @@ struct PlanEditorView: View {
     @State private var measurementKind: MeasurementKind = .wallToWall
     @State private var measurementLabel = ""
     @State private var showDimensions = true
+    /// Bounds the view is fitted to. Frozen once shown so dragging a camera past the plan edge
+    /// doesn't refit (and shift) the whole plan under the user's finger.
+    @State private var fittedBounds: PlanRect?
 
     private enum DragTarget: Equatable {
         case camera(UUID), shot(UUID), subject(UUID), canvas
@@ -112,17 +115,25 @@ struct PlanEditorView: View {
         } message: {
             Text(measureDistance.map { UnitsFormatter.distance($0, precise: true) } ?? "")
         }
-        .onAppear { if scanID == nil { scanID = location?.primaryScan?.id } }
+        .onAppear {
+            if scanID == nil { scanID = location?.primaryScan?.id }
+            if fittedBounds == nil { fittedBounds = contentBounds() }
+        }
+        .onChange(of: scanID) { _, _ in fittedBounds = contentBounds() }
     }
 
     // MARK: Viewport & gestures
 
-    private func currentViewport(size: CGSize) -> PlanViewport {
+    private func contentBounds() -> PlanRect {
         var bounds = plan.isEmpty ? PlanRect(minX: -4, minZ: -4, maxX: 4, maxZ: 4) : plan.bounds
         if let location, let extra = PlanRect.enclosing(location.cameraPositions.map(\.rig.position) + location.shots.map(\.rig.position)) {
             bounds = bounds.union(extra)
         }
-        let base = PlanViewport.fit(bounds, in: size, padding: 40)
+        return bounds
+    }
+
+    private func currentViewport(size: CGSize) -> PlanViewport {
+        let base = PlanViewport.fit(fittedBounds ?? contentBounds(), in: size, padding: 40)
         let centre = CGPoint(x: size.width / 2, y: size.height / 2)
         let scale = base.scale * zoom
         let offset = CGPoint(x: centre.x + (base.offset.x - centre.x) * zoom + pan.width,
@@ -349,7 +360,7 @@ struct PlanEditorView: View {
                     }
                 }
                 Toggle("Wall dimensions", isOn: $showDimensions)
-                Button { zoom = 1; pinchBase = 1; pan = .zero } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
+                Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
                 if location?.primaryScan != nil {
                     Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
                 }

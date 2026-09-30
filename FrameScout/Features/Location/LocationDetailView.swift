@@ -13,6 +13,8 @@ struct LocationDetailView: View {
     @State private var confirmDelete = false
     @State private var showCamera = false
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var sharedReport: SharedFile?
+    @State private var reportError: String?
 
     var body: some View {
         if let location = store.location(ref) {
@@ -49,6 +51,9 @@ struct LocationDetailView: View {
                     Button { router.open(.export(projectID: ref.projectID, location: ref)) } label: {
                         Label("Export Location…", systemImage: "square.and.arrow.up")
                     }
+                    Button(action: shareReport) {
+                        Label("Scout Report (PDF)", systemImage: "doc.richtext")
+                    }
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Location", systemImage: "trash") }
                 } label: { Image(systemName: "ellipsis.circle") }
@@ -77,6 +82,10 @@ struct LocationDetailView: View {
             .ignoresSafeArea()
         }
         .onChange(of: pickerItems) { _, items in importPhotos(items) }
+        .sheet(item: $sharedReport) { file in ShareSheet(items: [file.url]) }
+        .alert("Report failed", isPresented: Binding(get: { reportError != nil }, set: { if !$0 { reportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(reportError ?? "") }
     }
 
     // MARK: Sections
@@ -342,6 +351,15 @@ struct LocationDetailView: View {
             }
         }
         .card()
+    }
+
+    private func shareReport() {
+        guard let data = ScoutReportData.load(ref, store: store) else { return }
+        do {
+            sharedReport = SharedFile(url: try ScoutReport.renderToTemporaryFile(data))
+        } catch {
+            reportError = error.localizedDescription
+        }
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) {

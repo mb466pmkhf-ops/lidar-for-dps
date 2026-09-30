@@ -13,6 +13,26 @@ struct ExportOptions: Codable, Hashable {
     var includeFurniture = true
     var includeCameras = true
     var includePhotos = true
+    var includeReport = true
+
+    init() {}
+
+    // Tolerant decoding so options saved by an older build (missing keys) still load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = ExportOptions()
+        usdz = try c.decodeIfPresent(Bool.self, forKey: .usdz) ?? d.usdz
+        usda = try c.decodeIfPresent(Bool.self, forKey: .usda) ?? d.usda
+        obj = try c.decodeIfPresent(Bool.self, forKey: .obj) ?? d.obj
+        glb = try c.decodeIfPresent(Bool.self, forKey: .glb) ?? d.glb
+        unrealPreset = try c.decodeIfPresent(Bool.self, forKey: .unrealPreset) ?? d.unrealPreset
+        includeRoomPlanNative = try c.decodeIfPresent(Bool.self, forKey: .includeRoomPlanNative) ?? d.includeRoomPlanNative
+        includeCeiling = try c.decodeIfPresent(Bool.self, forKey: .includeCeiling) ?? d.includeCeiling
+        includeFurniture = try c.decodeIfPresent(Bool.self, forKey: .includeFurniture) ?? d.includeFurniture
+        includeCameras = try c.decodeIfPresent(Bool.self, forKey: .includeCameras) ?? d.includeCameras
+        includePhotos = try c.decodeIfPresent(Bool.self, forKey: .includePhotos) ?? d.includePhotos
+        includeReport = try c.decodeIfPresent(Bool.self, forKey: .includeReport) ?? d.includeReport
+    }
 }
 
 /// Builds exports on a background thread from value copies of the project data.
@@ -105,13 +125,13 @@ enum ExportService {
 
     /// LOCATION_NAME/{Scan, Photos, Measurements, Camera_Positions, Notes, Metadata} zipped.
     static func buildLocationPackage(project: Project, location: Location, ref: LocationRef,
-                                     options: ExportOptions) throws -> URL {
+                                     options: ExportOptions, report: URL? = nil) throws -> URL {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("FrameScoutExport-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: staging) }
         let folderName = StoragePaths.safeName(location.name, fallback: "LOCATION").uppercased()
         let root = staging.appendingPathComponent(folderName, isDirectory: true)
-        try writeLocationFolder(project: project, location: location, ref: ref, options: options, into: root)
+        try writeLocationFolder(project: project, location: location, ref: ref, options: options, into: root, report: report)
 
         StoragePaths.ensureDirectory(StoragePaths.exportsRoot)
         let stamp = exportStamp()
@@ -123,7 +143,7 @@ enum ExportService {
     }
 
     /// Every location in the project, each in its own package folder, plus a project summary.
-    static func buildProjectPackage(project: Project, options: ExportOptions) throws -> URL {
+    static func buildProjectPackage(project: Project, options: ExportOptions, reports: [UUID: URL] = [:]) throws -> URL {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("FrameScoutExport-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -137,7 +157,7 @@ enum ExportService {
             used.insert(name)
             let ref = LocationRef(projectID: project.id, locationID: location.id)
             try writeLocationFolder(project: project, location: location, ref: ref, options: options,
-                                    into: root.appendingPathComponent(name, isDirectory: true))
+                                    into: root.appendingPathComponent(name, isDirectory: true), report: reports[location.id])
         }
         try projectSummary(project).write(to: root.appendingPathComponent("PROJECT_SUMMARY.txt"),
                                           atomically: true, encoding: .utf8)
@@ -162,7 +182,7 @@ enum ExportService {
     }
 
     private static func writeLocationFolder(project: Project, location: Location, ref: LocationRef,
-                                            options: ExportOptions, into root: URL) throws {
+                                            options: ExportOptions, into root: URL, report: URL? = nil) throws {
         let fm = FileManager.default
         let dirs = ["Scan", "Photos", "Measurements", "Camera_Positions", "Notes", "Metadata"]
         for d in dirs { StoragePaths.ensureDirectory(root.appendingPathComponent(d, isDirectory: true)) }
@@ -224,6 +244,9 @@ enum ExportService {
         // Notes
         try notesText(project: project, location: location)
             .write(to: root.appendingPathComponent("Notes/notes.txt"), atomically: true, encoding: .utf8)
+        if let report, fm.fileExists(atPath: report.path) {
+            try fm.copyItem(at: report, to: root.appendingPathComponent("Notes/Scout_Report.pdf"))
+        }
 
         // Metadata
         try write(json: location, to: root.appendingPathComponent("Metadata/location.json"))

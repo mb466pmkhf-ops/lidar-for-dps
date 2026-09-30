@@ -49,6 +49,7 @@ The simulator builds, but RoomPlan/ARKit scanning only works on a real LiDAR dev
 | 12 | Unreal export workflow | ✅ | Unreal preset, cameras in GLB, CineCamera CSV, `Docs/UNREAL_WORKFLOW.md` |
 | — | Location comparison (A vs B vs C) | ✅ | `CompareView` |
 | — | Location package ZIP | ✅ | `ExportService` + dependency-free `ZipWriter` |
+| — | PDF scout report (plan with cameras/shots, key figures, photos, measurements, notes) | ✅ | `ScoutReport` (SwiftUI `ImageRenderer` → PDF), in packages and Location › ⋯ menu |
 
 ### Devices without LiDAR
 
@@ -64,7 +65,7 @@ LOCATION_NAME/
   Photos/               001_caption.jpg …
   Measurements/         measurements.json  measurements.csv
   Camera_Positions/     camera_positions.json  shots.json
-  Notes/                notes.txt
+  Notes/                notes.txt  Scout_Report.pdf
   Metadata/             metadata.json  location.json  floor_plan.json  roomplan_captured_rooms.json
 ```
 

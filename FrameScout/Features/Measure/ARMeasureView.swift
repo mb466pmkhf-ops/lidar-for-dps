@@ -70,7 +70,9 @@ final class ARMeasureARView: ARView, ARSessionDelegate {
     weak var model: ARMeasureModel?
     private var updateSubscription: Cancellable?
     private let markerAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
-    private var liveLine: ModelEntity?
+    /// Reused every frame (scaled/oriented), rather than generating a new mesh 60 times a second.
+    private let liveLine = ModelEntity(mesh: .generateBox(width: 0.003, height: 0.003, depth: 1),
+                                       materials: [UnlitMaterial(color: .white)])
     private let reticle = ModelEntity(mesh: .generateSphere(radius: 0.006),
                                       materials: [UnlitMaterial(color: .white)])
 
@@ -91,6 +93,10 @@ final class ARMeasureARView: ARView, ARSessionDelegate {
         session.delegate = self
         session.run(config)
         scene.addAnchor(markerAnchor)
+        let liveAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+        liveLine.isEnabled = false
+        liveAnchor.addChild(liveLine)
+        scene.addAnchor(liveAnchor)
         let reticleAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
         reticleAnchor.addChild(reticle)
         scene.addAnchor(reticleAnchor)
@@ -134,10 +140,10 @@ final class ARMeasureARView: ARView, ARSessionDelegate {
                 let mid = (start + end) / 2
                 model.labelPosition = self.project(mid)
             } else if model.points.count >= 2 {
-                self.liveLine?.isEnabled = false
+                self.liveLine.isEnabled = false
                 model.labelPosition = self.project((model.points[0] + model.points[1]) / 2)
             } else {
-                self.liveLine?.isEnabled = false
+                self.liveLine.isEnabled = false
                 model.labelPosition = nil
             }
             model.objectWillChange.send()
@@ -157,10 +163,12 @@ final class ARMeasureARView: ARView, ARSessionDelegate {
     }
 
     private func drawLiveLine(from a: SIMD3<Float>, to b: SIMD3<Float>) {
-        liveLine?.removeFromParent()
-        let l = line(from: a, to: b, color: .white)
-        markerAnchor.addChild(l)
-        liveLine = l
+        let length = simd_distance(a, b)
+        guard length > 0.001 else { liveLine.isEnabled = false; return }
+        liveLine.isEnabled = true
+        liveLine.position = (a + b) / 2
+        liveLine.orientation = simd_quatf(from: SIMD3<Float>(0, 0, 1), to: simd_normalize(b - a))
+        liveLine.scale = SIMD3<Float>(1, 1, length)
     }
 
     private func line(from a: SIMD3<Float>, to b: SIMD3<Float>, color: UIColor) -> ModelEntity {
