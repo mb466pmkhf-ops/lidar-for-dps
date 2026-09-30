@@ -1,0 +1,65 @@
+name: Build & test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ios-build:
+    name: iOS app (Xcode, unsigned device build)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Build for generic iOS device
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project FrameScout.xcodeproj \
+            -scheme FrameScout \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never|unused)|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+
+  core-tests:
+    name: Core logic tests (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+      - name: Run core tests
+        run: ./Tests/run_core_tests.sh
+      - name: Validate GLB with the Khronos glTF validator
+        run: |
+          npm install --no-save gltf-validator@2
+          node -e "
+            const v = require('gltf-validator'); const fs = require('fs');
+            v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/test.glb'))).then(r => {
+              console.log(JSON.stringify(r.issues, null, 1));
+              if (r.issues.numErrors > 0) process.exit(1);
+            });"
+      - name: Validate USD with Pixar USD
+        run: |
+          pip install --quiet usd-core
+          python3 -c "
+          from pxr import Usd, UsdGeom
+          for f in ['test.usda', 'test.usdz']:
+              s = Usd.Stage.Open('/tmp/framescout-core-tests/' + f)
+              assert UsdGeom.GetStageUpAxis(s) == 'Y' and UsdGeom.GetStageMetersPerUnit(s) == 1.0
+              print(f, 'ok', len(list(s.Traverse())), 'prims')
+          "

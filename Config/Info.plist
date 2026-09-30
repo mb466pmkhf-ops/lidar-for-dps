@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>FrameScout</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FrameScout uses the camera and LiDAR sensor to scan locations, measure distances and show lens frame lines.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FrameScout records the GPS position of a location to calculate sun direction, sunrise and sunset. GPS works without a network connection.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>FrameScout uses motion sensors to estimate which way north is inside a scan.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+</dict>
+</plist>
