@@ -33,7 +33,7 @@ enum ExportService {
         StoragePaths.ensureDirectory(folder)
         let geometryOptions = RoomPlanConverter.GeometryOptions(includeCeiling: options.includeCeiling,
                                                                 includeObjects: options.includeFurniture)
-        let scene = try ScanAssets.geometry(for: scan, ref: ref, options: geometryOptions)
+        var scene = try ScanAssets.geometry(for: scan, ref: ref, options: geometryOptions)
         scene.metadata["location"] = location.name
         let floorY = floorHeight(scan: scan, ref: ref)
 

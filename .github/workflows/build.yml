@@ -46,7 +46,7 @@ jobs:
         run: ./Tests/run_core_tests.sh
       - name: Validate GLB with the Khronos glTF validator
         run: |
-          npm install --no-save gltf-validator@2
+          npm install --no-save gltf-validator@2.0.0-dev.3.10
           node -e "
             const v = require('gltf-validator'); const fs = require('fs');
             v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/test.glb'))).then(r => {
