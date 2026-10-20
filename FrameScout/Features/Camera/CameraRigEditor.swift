@@ -83,11 +83,11 @@ struct SensorPicker: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(SensorLibrary.format(id: sensorID, custom: customSensor).displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.fsBodyStrong)
                         .foregroundStyle(Theme.textPrimary)
                         .multilineTextAlignment(.leading)
                     Text(SensorLibrary.format(id: sensorID, custom: customSensor).sizeDescription)
-                        .font(.caption)
+                        .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
@@ -255,7 +255,7 @@ struct ClearanceGrid: View {
         }
         if let behind = clearances.behind, behind < 1.2 {
             Text("Tight behind camera — limited room for operator, dolly or pull-back.")
-                .font(.caption)
+                .font(.fsCaption)
                 .foregroundStyle(Theme.accent)
         }
     }
@@ -286,7 +286,7 @@ struct LensCalculator: View {
                 .font(.fsLabel).foregroundStyle(Theme.textSecondary)
             ForEach(Optics.ShotSize.allCases) { size in
                 HStack {
-                    Text(size.label).font(.subheadline)
+                    Text(size.label).font(.fsBody)
                     Spacer()
                     Text(UnitsFormatter.distance(Optics.distance(toCover: size.verticalCoverage, size: area.height, focalLength: rig.focalLength)))
                         .font(.subheadline.monospacedDigit().weight(.semibold))

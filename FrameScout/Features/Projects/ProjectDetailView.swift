@@ -115,7 +115,7 @@ struct ProjectDetailView: View {
             TextField("Client / production company", text: Binding(
                 get: { store.project(projectID)?.client ?? "" },
                 set: { value in store.updateProject(projectID) { $0.client = value } }))
-                .font(.subheadline)
+                .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)
         }
         .card()
@@ -132,15 +132,15 @@ struct LocationRow: View {
                 .frame(width: 76, height: 76)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text(location.name).font(.headline).foregroundStyle(Theme.textPrimary)
+                Text(location.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary)
                 if let s = location.primaryScan?.stats {
                     Text("\(UnitsFormatter.dimensions(s.width, s.length)) · ceiling \(UnitsFormatter.distance(s.ceilingHeight))")
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                        .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 } else {
-                    Text("Not scanned").font(.caption).foregroundStyle(Theme.textTertiary)
+                    Text("Not scanned").font(.fsCaption).foregroundStyle(Theme.textTertiary)
                 }
                 Text("\(location.photos.count) photos · \(location.cameraPositions.count) cameras · \(location.shots.count) shots")
-                    .font(.caption2).foregroundStyle(Theme.textTertiary)
+                    .font(.fsMicro).foregroundStyle(Theme.textTertiary)
                 if !location.tags.isEmpty {
                     Text(location.sortedTags.prefix(4).map(\.label).joined(separator: " · "))
                         .font(.system(size: 10, weight: .bold).width(.condensed))

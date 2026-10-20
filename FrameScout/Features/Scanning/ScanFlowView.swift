@@ -52,7 +52,7 @@ struct ScanModePicker: View {
                             .foregroundStyle(Theme.textSecondary)
                     } else if target.projectID == nil {
                         Text("Quick scan — saved to “\(ProjectStore.quickScanProjectName)”. You can move it later by exporting/importing.")
-                            .font(.subheadline)
+                            .font(.fsBody)
                             .foregroundStyle(Theme.textSecondary)
                     }
 
@@ -108,11 +108,11 @@ struct ScanModePicker: View {
                 }
                 ForEach(bullets, id: \.self) { b in
                     Label(b, systemImage: "checkmark")
-                        .font(.subheadline)
+                        .font(.fsBody)
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Text(enabled ? note : "Not available on this device. \(note)")
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(enabled ? Theme.textTertiary : Theme.danger)
             }
             .card()
@@ -208,7 +208,7 @@ struct ScanHUD: View {
             topBar
             if let hint, phase == .scanning {
                 Text(hint)
-                    .font(.headline)
+                    .font(.fsHeadline)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Theme.accent, in: Capsule())
                     .foregroundStyle(.black)
@@ -243,7 +243,7 @@ struct ScanHUD: View {
         case .processing, .finalizing:
             HStack(spacing: 10) {
                 ProgressView().tint(.white)
-                Text(phase == .processing ? "Processing segment…" : "Building model…").font(.headline)
+                Text(phase == .processing ? "Processing segment…" : "Building model…").font(.fsHeadline)
             }
             .padding(12)
             .background(.ultraThinMaterial, in: Capsule())

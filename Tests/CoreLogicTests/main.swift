@@ -20,6 +20,41 @@ check(abs(Optics.distance(toCover: 3.6, size: 36, focalLength: 50) - 5) < 1e-9, 
 let scope = Optics.imageArea(sensor: SensorLibrary.format(id: "generic-ff"), aspect: .r239)
 check(abs(scope.width - 36) < 1e-9 && abs(scope.height - 36 / 2.39) < 1e-9, "2.39 frame lines fit sensor width")
 
+// MARK: Viewfinder
+let ff = SensorLibrary.format(id: "generic-ff")
+let vfTarget = ViewfinderMath.targetFOV(focalLength: 50, sensor: ff, aspect: .sensor, squeeze: 1)
+// A phone image whose long side spans exactly the target's horizontal FOV: frame = full width.
+let vfImage = ViewfinderMath.Size(width: 1600, height: 1200)
+let vfFrame = ViewfinderMath.frameSize(target: vfTarget, image: vfImage, phoneFOV: vfTarget.width)
+check(abs(vfFrame.width - 1600) < 1e-6 && abs(vfFrame.width / vfFrame.height - 1.5) < 1e-6, "frame spans image when FOVs match, keeps 3:2")
+let vfZoomed = ViewfinderMath.effectiveFOV(baseFOV: 100, zoom: 2)
+check(abs(tan(vfZoomed * .pi / 360) - tan(50 * .pi / 180) / 2) < 1e-9, "zoom halves tan(fov/2)")
+// Frame width doubles when zoom doubles.
+let w1 = ViewfinderMath.frameSize(target: vfTarget, image: vfImage, phoneFOV: ViewfinderMath.effectiveFOV(baseFOV: 110, zoom: 1)).width
+let w2 = ViewfinderMath.frameSize(target: vfTarget, image: vfImage, phoneFOV: ViewfinderMath.effectiveFOV(baseFOV: 110, zoom: 2)).width
+check(abs(w2 / w1 - 2) < 1e-9, "frame scales linearly with zoom")
+let vfFill = ViewfinderMath.fillZoom(target: vfTarget, image: vfImage, baseFOV: 110, fill: 0.9)
+let filled = ViewfinderMath.frameSize(target: vfTarget, image: vfImage, phoneFOV: ViewfinderMath.effectiveFOV(baseFOV: 110, zoom: vfFill))
+check(abs(max(filled.width / 1600, filled.height / 1200) - 0.9) < 1e-9, "fill zoom fills 90% of the tighter axis")
+let wide14 = ViewfinderMath.targetFOV(focalLength: 14, sensor: ff, aspect: .sensor, squeeze: 1)
+check(ViewfinderMath.exceedsImage(target: wide14, image: vfImage, baseFOV: 100, minZoom: 1), "14mm FF is wider than a 100° phone image")
+check(!ViewfinderMath.exceedsImage(target: vfTarget, image: vfImage, baseFOV: 100, minZoom: 1), "50mm FF fits a 100° phone image")
+let ana = ViewfinderMath.imageArea(sensor: SensorLibrary.format(id: "generic-s35-4perf"), aspect: .r239, squeeze: 2)
+check(abs(ana.height - 18.66) < 1e-6 && abs(ana.width - 18.66 * 2.39) < 1e-6, "2× anamorphic 4-perf desqueezes to 2.67:1, 2.39 fits the height")
+check(ViewfinderMath.prefersWidescreenFormat(target: ViewfinderMath.targetFOV(focalLength: 32, sensor: ff, aspect: .r239, squeeze: 1))
+      && !ViewfinderMath.prefersWidescreenFormat(target: ViewfinderMath.targetFOV(focalLength: 32, sensor: ff, aspect: .sensor, squeeze: 1)),
+      "16:9 phone format for 2.39, 4:3 for 3:2")
+let upright = ViewfinderMath.attitude(gravityX: 0, gravityY: -1, gravityZ: 0)
+check(abs(upright.roll) < 1e-9 && abs(upright.tilt) < 1e-9, "portrait upright is level")
+let rot = 5 * Double.pi / 180
+let cw = ViewfinderMath.attitude(gravityX: sin(rot), gravityY: -cos(rot), gravityZ: 0)
+check(abs(cw.roll - 5) < 1e-9, "5° clockwise roll in portrait")
+let land = ViewfinderMath.attitude(gravityX: -cos(rot), gravityY: -sin(rot), gravityZ: 0)
+check(abs(abs(land.roll) - 5) < 1e-9, "5° roll in landscape")
+check(abs(ViewfinderMath.attitude(gravityX: 0, gravityY: 0, gravityZ: -1).tilt + 90) < 1e-9, "flat on a table looks straight down")
+check(ViewfinderMath.steppedFocalLength(from: 32, by: 1) == 35 && ViewfinderMath.steppedFocalLength(from: 33, by: -1) == 32
+      && ViewfinderMath.steppedFocalLength(from: 135, by: 1) == 135, "focal length stepping")
+
 // MARK: Sun (NOAA) — London midsummer: sunrise 04:43, sunset 21:21 BST
 let iso = ISO8601DateFormatter()
 let noon = iso.date(from: "2024-06-21T12:00:00Z")!

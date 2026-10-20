@@ -26,7 +26,7 @@ struct ScanDetailView: View {
                 ZStack {
                     SceneKitContainer(model: preview, orbit: true)
                     if !preview.loaded {
-                        if let error = preview.error { Text(error).font(.caption).foregroundStyle(Theme.danger) } else { ProgressView() }
+                        if let error = preview.error { Text(error).font(.fsCaption).foregroundStyle(Theme.danger) } else { ProgressView() }
                     }
                 }
                 .frame(height: 300)

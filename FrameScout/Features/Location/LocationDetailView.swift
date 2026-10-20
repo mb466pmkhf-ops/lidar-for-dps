@@ -96,7 +96,7 @@ struct LocationDetailView: View {
                 Text(project.name.uppercased()).font(.fsLabel).tracking(1.2).foregroundStyle(Theme.accent)
             }
             TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
-                .font(.subheadline)
+                .font(.fsBody)
             HStack(spacing: 12) {
                 Label(location.dateScanned.map { "Scanned \(UnitsFormatter.shortDate($0))" } ?? "Not scanned yet",
                       systemImage: "calendar")
@@ -104,7 +104,7 @@ struct LocationDetailView: View {
                     Label(String(format: "%.4f, %.4f", c.latitude, c.longitude), systemImage: "location")
                 }
             }
-            .font(.caption)
+            .font(.fsCaption)
             .foregroundStyle(Theme.textSecondary)
             Button {
                 Task {
@@ -119,11 +119,11 @@ struct LocationDetailView: View {
             } label: {
                 Label(locator.isLocating ? "Locating…" : (location.coordinate == nil ? "Use current GPS position" : "Update GPS position"),
                       systemImage: "location.fill")
-                    .font(.caption.weight(.semibold))
+                    .font(.fsCaptionStrong)
             }
             .disabled(locator.isLocating)
             if let error = locator.lastError {
-                Text(error).font(.caption).foregroundStyle(Theme.danger)
+                Text(error).font(.fsCaption).foregroundStyle(Theme.danger)
             }
         }
     }
@@ -172,7 +172,7 @@ struct LocationDetailView: View {
                 }
                 if !s.objectCategories.isEmpty {
                     Text(s.objectCategories.sorted { $0.key < $1.key }.map { "\($0.value)× \($0.key)" }.joined(separator: "  ·  "))
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                        .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 }
             }
             .card()
@@ -188,7 +188,7 @@ struct LocationDetailView: View {
                     .frame(height: 260)
                     .background(Theme.background, in: RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { router.open(.plan(ref)) }
-                Text("Tap to place cameras, shots and measure on the plan.").font(.caption).foregroundStyle(Theme.textTertiary)
+                Text("Tap to place cameras, shots and measure on the plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
             .card()
         }
@@ -266,7 +266,7 @@ struct LocationDetailView: View {
             }
             if location.measurements.isEmpty {
                 Text("Use Measure (AR), measure on the plan, or generate room measurements from the scan.")
-                    .font(.caption).foregroundStyle(Theme.textTertiary)
+                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
         .card()
@@ -281,7 +281,7 @@ struct LocationDetailView: View {
                     VStack(alignment: .leading) {
                         Text(c.name)
                         Text("\(c.rig.lensSummary) · h \(UnitsFormatter.distance(c.rig.height))")
-                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                            .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                     }
                     Spacer()
                     Button { router.start(.virtualCamera(ref, cameraID: c.id)) } label: { Image(systemName: "cube") }
@@ -295,7 +295,7 @@ struct LocationDetailView: View {
             }
             if location.cameraPositions.isEmpty && location.shots.isEmpty {
                 Text("Open the plan and tap “+ Camera” to place a camera position.")
-                    .font(.caption).foregroundStyle(Theme.textTertiary)
+                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
         .card()
@@ -305,18 +305,18 @@ struct LocationDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Notes", systemImage: "note.text", action: { router.open(.notes(ref)) }, actionLabel: "Edit")
             ForEach(location.quickNotes.prefix(6)) { note in
-                Label(note.text, systemImage: note.category.symbol).font(.subheadline)
+                Label(note.text, systemImage: note.category.symbol).font(.fsBody)
             }
             ForEach([("General", location.notes), ("Lighting", location.lightingNotes), ("Production", location.productionNotes)], id: \.0) { title, text in
                 if !text.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
-                        Text(text).font(.subheadline).lineLimit(4)
+                        Text(text).font(.fsBody).lineLimit(4)
                     }
                 }
             }
             if location.quickNotes.isEmpty && location.notes.isEmpty && location.lightingNotes.isEmpty && location.productionNotes.isEmpty {
-                Text("Nothing yet — add lighting, power, access and production notes.").font(.caption).foregroundStyle(Theme.textTertiary)
+                Text("Nothing yet — add lighting, power, access and production notes.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
         .card()
@@ -333,7 +333,7 @@ struct LocationDetailView: View {
                         VStack(alignment: .leading) {
                             Text(scan.name).foregroundStyle(Theme.textPrimary)
                             Text("\(scan.kind.label) · \(scan.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                                .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                         }
                         Spacer()
                         if scan.id == location.primaryScan?.id {
@@ -347,7 +347,7 @@ struct LocationDetailView: View {
             if location.scans.isEmpty {
                 Text(DeviceCapabilities.hasLiDAR ? "No scan yet. Tap Scan to capture the space with LiDAR."
                                                  : "This device has no LiDAR, so it cannot scan. Scans made on a LiDAR iPhone/iPad can be imported via a project backup.")
-                    .font(.caption).foregroundStyle(Theme.textTertiary)
+                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
         .card()

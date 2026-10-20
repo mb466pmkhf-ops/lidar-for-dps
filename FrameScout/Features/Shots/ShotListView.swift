@@ -145,15 +145,15 @@ struct ShotRow: View {
             .frame(width: 64, height: 48)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(shot.code)\(shot.title.isEmpty ? "" : " · \(shot.title)")").font(.headline)
+                Text("\(shot.code)\(shot.title.isEmpty ? "" : " · \(shot.title)")").font(.fsHeadline)
                 Text("\(Optics.formatFocal(shot.rig.focalLength)) · \(shot.rig.sensor.name) · h \(UnitsFormatter.distance(shot.rig.height))")
-                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                    .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 if let d = shot.subjectDistance {
                     Text("Subject \(UnitsFormatter.distance(d)) · frame \(UnitsFormatter.distance(Optics.frameSize(atDistance: d, size: shot.rig.imageArea.width, focalLength: shot.rig.focalLength))) wide")
-                        .font(.caption).foregroundStyle(Theme.textTertiary)
+                        .font(.fsCaption).foregroundStyle(Theme.textTertiary)
                 }
                 if !shot.notes.isEmpty {
-                    Text(shot.notes).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(2)
+                    Text(shot.notes).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(2)
                 }
             }
         }

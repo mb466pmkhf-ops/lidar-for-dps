@@ -27,7 +27,7 @@ struct PhotoGalleryView: View {
                         .overlay(alignment: .bottomLeading) {
                             if photo.source == .viewfinder || photo.source == .scan {
                                 Image(systemName: photo.source == .scan ? "cube.transparent" : "camera.viewfinder")
-                                    .font(.caption2)
+                                    .font(.fsMicro)
                                     .padding(4)
                                     .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
                                     .padding(4)
@@ -99,7 +99,7 @@ struct PhotoDetailView: View {
                         if let lens = photo.lensDescription { Text("· \(lens)") }
                         if photo.pose != nil { Text("· position recorded in scan") }
                     }
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)
                 }
                 .padding(.horizontal)

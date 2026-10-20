@@ -60,7 +60,7 @@ struct HomeView: View {
                 }
 
                 Text(DeviceCapabilities.summary)
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(Theme.textTertiary)
                     .padding(.top, 8)
             }
@@ -104,7 +104,7 @@ struct HomeView: View {
                 .tracking(2)
                 .foregroundStyle(Theme.accent)
             Text("Scan it. Measure it. Frame it. Take it to Unreal.")
-                .font(.subheadline)
+                .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)
         }
     }
@@ -143,8 +143,8 @@ struct ProjectRow: View {
                 .frame(width: 40, height: 40)
                 .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
-                Text(project.name).font(.headline).foregroundStyle(Theme.textPrimary)
-                Text(summary).font(.caption).foregroundStyle(Theme.textSecondary)
+                Text(project.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary)
+                Text(summary).font(.fsCaption).foregroundStyle(Theme.textSecondary)
             }
             Spacer()
             Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)

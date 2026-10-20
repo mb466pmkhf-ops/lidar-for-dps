@@ -90,7 +90,7 @@ struct PlanEditorView: View {
                         .gesture(dragGesture(viewport: viewport))
                         .simultaneousGesture(pinchGesture)
                     Text(tool.hint)
-                        .font(.caption)
+                        .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
                         .padding(8)
                         .background(.ultraThinMaterial, in: Capsule())
@@ -428,7 +428,7 @@ struct PlanEditorView: View {
                         Button(k.label) { measurementKind = k }
                     }
                 } label: {
-                    Label(measurementKind.label, systemImage: measurementKind.symbol).font(.caption)
+                    Label(measurementKind.label, systemImage: measurementKind.symbol).font(.fsCaption)
                 }
                 Button("Save") { showSaveMeasurement = true }
                     .buttonStyle(.borderedProminent)
@@ -445,9 +445,9 @@ struct PlanEditorView: View {
         let clear = PlanGeometry.clearances(for: rig, plan: plan)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(title).font(.headline)
+                Text(title).font(.fsHeadline)
                 Spacer()
-                Text(rig.lensSummary).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                Text(rig.lensSummary).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             LensPicker(focalLength: rigBinding.focalLength)
             HStack {
@@ -527,9 +527,9 @@ struct PlanEditorView: View {
     private var noScanNotice: some View {
         VStack(spacing: 6) {
             Image(systemName: "square.dashed").font(.title)
-            Text("No scan for this location").font(.headline)
+            Text("No scan for this location").font(.fsHeadline)
             Text("You can still place cameras on the grid (1 m squares).\(DeviceCapabilities.hasLiDAR ? " Scan the location to plan against real walls." : "")")
-                .font(.caption)
+                .font(.fsCaption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.textSecondary)
         }

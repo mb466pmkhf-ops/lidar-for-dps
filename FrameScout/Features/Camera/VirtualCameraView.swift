@@ -247,7 +247,7 @@ struct VirtualCameraView: View {
                     .overlay(Rectangle().stroke(Theme.accent, lineWidth: 1.5))
                     .overlay(alignment: .topLeading) {
                         Text("\(vp.label) · \(vp.rig.lensSummary) · H \(Optics.formatAngle(vp.rig.horizontalFOV))")
-                            .font(.caption.bold())
+                            .font(.fsCaptionStrong)
                             .foregroundStyle(Theme.accent)
                             .padding(6)
                     }
@@ -340,7 +340,7 @@ struct VirtualCameraView: View {
                     Slider(value: $sunMinutes, in: 0...1439, step: 5)
                     Text(String(format: "%02d:%02d", Int(sunMinutes) / 60, Int(sunMinutes) % 60)).monospacedDigit()
                 }
-                .font(.caption)
+                .font(.fsCaption)
             }
         }
         .padding(10)
@@ -353,7 +353,7 @@ struct VirtualCameraView: View {
             HStack {
                 Text(title).font(.fsLabel).foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Text(format(value)).font(.caption.monospacedDigit())
+                Text(format(value)).font(.fsMono)
             }
             Slider(value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: set), in: range)
         }

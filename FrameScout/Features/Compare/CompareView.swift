@@ -81,7 +81,7 @@ struct CompareView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LOCATION \(letter)").font(.fsLabel).foregroundStyle(Theme.accent)
-                    Text(location?.name ?? "Choose…").font(.headline).lineLimit(1)
+                    Text(location?.name ?? "Choose…").font(.fsHeadline).lineLimit(1)
                 }
                 .frame(width: 180, height: 56, alignment: .leading)
             }
@@ -115,7 +115,7 @@ struct CompareView: View {
             }
             cell(13) {
                 Text(notesSummary(location))
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(7)
             }
@@ -133,12 +133,12 @@ struct CompareView: View {
     private func value(_ text: String, best: Bool = false) -> some View {
         HStack(spacing: 4) {
             Text(text).font(.system(.body, design: .rounded).monospacedDigit().weight(.semibold))
-            if best { Image(systemName: "arrowtriangle.up.fill").font(.caption2).foregroundStyle(Theme.success) }
+            if best { Image(systemName: "arrowtriangle.up.fill").font(.fsMicro).foregroundStyle(Theme.success) }
         }
     }
 
     private func placeholder(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(Theme.textTertiary)
+        Text(text).font(.fsCaption).foregroundStyle(Theme.textTertiary)
     }
 
     private func isBest(_ key: KeyPath<ScanStats, Double?>, higher: Bool, ref: LocationRef?) -> Bool {

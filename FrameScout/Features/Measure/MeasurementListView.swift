@@ -99,11 +99,11 @@ struct MeasurementRow: View {
                     Text(measurement.source.label.uppercased()).font(.fsLabel).foregroundStyle(Theme.textTertiary)
                     if let h = measurement.horizontal, let v = measurement.vertical, measurement.source == .ar {
                         Text("h \(UnitsFormatter.distance(h)) · v \(UnitsFormatter.distance(v))")
-                            .font(.caption2).foregroundStyle(Theme.textSecondary)
+                            .font(.fsMicro).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 if !measurement.notes.isEmpty {
-                    Text(measurement.notes).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text(measurement.notes).font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 }
             }
             Spacer()

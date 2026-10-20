@@ -35,7 +35,7 @@ struct ExportView: View {
                         LabeledContent("Scan", value: "\(scan.name) · \(scan.kind.label)")
                     } else {
                         Text("This location has no scan — the package will contain photos, notes, measurements and cameras only.")
-                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                            .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                     }
                 }
             }
@@ -185,7 +185,7 @@ struct UnrealInfoSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Group {
-                        Text("What gets exported").font(.headline)
+                        Text("What gets exported").font(.fsHeadline)
                         Text("• **Geometry** — room scans export RoomPlan's parametric model: walls with real door/window openings cut out, floor polygons, glass panes, door leaves and furniture boxes. Mesh scans export the raw LiDAR surface split by type (walls, floor, ceiling, seats…).")
                         Text("• **Scale** — true metres. GLB/USD carry units so Unreal converts to centimetres automatically.")
                         Text("• **Orientation** — Y-up for GLB/USD/OBJ (Unreal converts). The Unreal-preset OBJ is already Z-up, X-forward, centimetres. The compass bearing of the scan is in metadata.json.")
@@ -194,15 +194,15 @@ struct UnrealInfoSheet: View {
                         Text("• **Cameras** — camera positions and shots become glTF cameras with correct field of view, plus a CSV with CineCameraActor values (location, rotation, focal length, filmback).")
                     }
                     Group {
-                        Text("Recommended workflow").font(.headline)
+                        Text("Recommended workflow").font(.fsHeadline)
                         Text("1. AirDrop or save the ZIP to your computer and unzip.\n2. In Unreal 5.1+, drag **Scan/location.glb** into the Content Browser (or use Import Into Level to keep the hierarchy and cameras).\n3. Or enable the **USD Importer** plugin and open **location.usdz / .usda** in a USD Stage.\n4. For older engines use **Scan/Unreal/location_unreal_cm_zup.obj** with Import Uniform Scale 1.0.\n5. Place CineCameraActors from **cameras_unreal.csv** if you imported a format without cameras.")
                     }
                     Group {
-                        Text("Known limitations").font(.headline)
+                        Text("Known limitations").font(.fsHeadline)
                         Text("• iOS has no FBX writer and no Unreal SDK, so FrameScout produces standard interchange files rather than a .uasset/.umap.\n• RoomPlan doesn't detect ceilings; an estimated flat ceiling can be added in export options.\n• Very large mesh scans (> 1M triangles) are best decimated in a DCC before import.")
                     }
                 }
-                .font(.subheadline)
+                .font(.fsBody)
                 .padding()
             }
             .fsScreen()
