@@ -16,6 +16,11 @@ struct RootView: View {
                 .environmentObject(store)
                 .environmentObject(router)
         }
+        .onAppear {
+            #if DEBUG
+            if DemoContent.isEnabled, router.path.isEmpty { DemoContent.routes.forEach(router.open) }
+            #endif
+        }
         .alert("Something went wrong", isPresented: Binding(
             get: { store.lastError != nil },
             set: { if !$0 { store.lastError = nil } })) {

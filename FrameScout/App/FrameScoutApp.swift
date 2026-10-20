@@ -9,6 +9,9 @@ struct FrameScoutApp: App {
 
     init() {
         Self.registerBundledFonts()
+        #if DEBUG
+        if DemoContent.isEnabled { DemoContent.install() }
+        #endif
         Theme.configureUIKitAppearance()
     }
 

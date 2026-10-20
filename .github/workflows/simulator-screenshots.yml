@@ -1,0 +1,72 @@
+name: Simulator screenshots
+
+# Builds a Debug app for the iOS Simulator, opens the main screens with the sample project
+# (FrameScout/App/DemoContent.swift) and uploads PNG screenshots as a build artifact.
+# LiDAR scanning, RoomPlan, Object Capture, camera and AR can't run in the Simulator.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    name: iPhone Simulator screenshots
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Pick and boot an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = [d | {"runtime": r} for r, ds in json.load(sys.stdin)["devices"].items()
+                     if "iOS" in r for d in ds if d["name"].startswith("iPhone")]
+          pro = [d for d in devices if "Pro" in d["name"] and "Max" not in d["name"]] or devices
+          pro.sort(key=lambda d: (d["runtime"], d["name"]))
+          print(pro[-1]["udid"])')
+          xcrun simctl list devices | grep "$UDID"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+      - name: Build for the Simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project FrameScout.xcodeproj \
+            -scheme FrameScout \
+            -configuration Debug \
+            -destination "id=$UDID" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee xcodebuild-sim.log | grep -E "error:|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild-sim.log
+      - name: Install and capture screens
+        run: |
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p screenshots
+          for SCREEN in home project location scan measurements plan shots sun; do
+            xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
+            xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen "$SCREEN"
+            sleep 8
+            xcrun simctl io "$UDID" screenshot "screenshots/$SCREEN.png"
+          done
+          ls -la screenshots
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: screenshots
+          retention-days: 14
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-sim-log
+          path: xcodebuild-sim.log
