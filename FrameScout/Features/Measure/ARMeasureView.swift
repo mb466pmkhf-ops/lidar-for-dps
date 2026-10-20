@@ -406,7 +406,9 @@ struct SaveMeasurementSheet: View {
         guard let ref else { return }
         let m = DistanceMeasurement(kind: kind, label: label, value: value,
                                     vertical: reading.vertical, horizontal: reading.horizontal,
-                                    source: .ar, notes: notes)
+                                    source: .ar,
+                                    provenanceOverride: DeviceCapabilities.hasLiDAR ? nil : .estimated,
+                                    notes: notes)
         store.updateLocation(ref) { $0.measurements.append(m) }
         onSaved()
         dismiss()

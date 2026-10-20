@@ -55,6 +55,29 @@ check(abs(ViewfinderMath.attitude(gravityX: 0, gravityY: 0, gravityZ: -1).tilt +
 check(ViewfinderMath.steppedFocalLength(from: 32, by: 1) == 35 && ViewfinderMath.steppedFocalLength(from: 33, by: -1) == 32
       && ViewfinderMath.steppedFocalLength(from: 135, by: 1) == 135, "focal length stepping")
 
+// MARK: Provenance
+var provStats = ScanStats()
+check(provStats.provenance(of: .ceilingHeight, kind: .room) == .estimated, "RoomPlan ceiling (tallest wall) is estimated")
+check(provStats.provenance(of: .ceilingHeight, kind: .mesh) == .measured, "mesh ceiling (classified triangles) is measured")
+check(provStats.provenance(of: .roomSize, kind: .mesh) == .estimated, "mesh room size (bounding box) is estimated")
+check(provStats.provenance(of: .floorArea, kind: .room) == .measured, "floor polygon area is measured")
+provStats.floorAreaIsEstimate = true
+check(provStats.provenance(of: .floorArea, kind: .room) == .estimated, "bounding-box floor area is estimated")
+var manualM = DistanceMeasurement(kind: .custom, label: "", value: 2, source: .manual)
+check(manualM.provenance == .manual, "manual entry is manual")
+manualM.source = .ar
+manualM.provenanceOverride = .estimated
+check(manualM.provenance == .estimated, "override wins (plane-based AR without LiDAR)")
+let legacyJSON = #"{"id":"6F9619FF-8B86-D011-B42D-00CF4FC964FF","kind":"door","label":"Door","value":0.9,"source":"scanAuto","notes":"","createdAt":0}"#
+let legacy = try JSONDecoder().decode(DistanceMeasurement.self, from: Data(legacyJSON.utf8))
+check(legacy.provenance == .measured && legacy.provenanceOverride == nil, "older project files without provenance still decode")
+var provScan = ScanRecord(name: "s", kind: .room, stats: ScanStats(), northOffset: 120, measuredNorthOffset: 120)
+check(provScan.northProvenance == .estimated, "compass north is estimated")
+provScan.northOffset = 131
+check(provScan.northProvenance == .manual, "calibrated north is manual")
+provScan.northOffset = nil
+check(provScan.northProvenance == nil, "no north, no provenance")
+
 // MARK: Sun (NOAA) — London midsummer: sunrise 04:43, sunset 21:21 BST
 let iso = ISO8601DateFormatter()
 let noon = iso.date(from: "2024-06-21T12:00:00Z")!

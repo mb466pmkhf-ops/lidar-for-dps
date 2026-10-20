@@ -319,6 +319,63 @@ struct OverlayButton: View {
     }
 }
 
+/// Says whether a figure was measured, estimated or entered by hand. Shape and word carry the
+/// meaning (not colour alone), so it reads in sunlight, in grayscale and with VoiceOver.
+struct ProvenanceBadge: View {
+    var provenance: Provenance
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
+            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
+        .overlay(Rectangle().stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+                                    style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(provenance.label) value")
+        .accessibilityHint(provenance.explanation)
+    }
+}
+
+/// A labelled figure with its provenance badge, for Forms and Lists.
+struct ProvenanceFigureRow: View {
+    var label: String
+    var value: String
+    var provenance: Provenance?
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                Text(value)
+                if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
+            }
+        } label: {
+            Text(label)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One-line key to the badges, shown under lists of figures.
+struct ProvenanceLegend: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Provenance.allCases) { p in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ProvenanceBadge(provenance: p).accessibilityHidden(true)
+                    Text(p.explanation).font(.fsMicro).foregroundStyle(Theme.textTertiary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(p.label): \(p.explanation)")
+            }
+        }
+    }
+}
+
 /// Explains a hardware limitation instead of silently hiding a feature.
 struct RequirementBanner: View {
     var title: String
