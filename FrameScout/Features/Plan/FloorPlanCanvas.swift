@@ -186,7 +186,7 @@ struct PlanRenderer {
             ctx.fill(path, with: .color(Theme.planObject.opacity(0.18)))
             ctx.stroke(path, with: .color(Theme.planObject), lineWidth: 1)
             if full && vp.scale > 40 {
-                ctx.draw(Text(o.category).font(.system(size: 9)).foregroundColor(Theme.textSecondary), at: c)
+                ctx.draw(Text(o.category).font(.poppins(.light, 9)).foregroundColor(Theme.textSecondary), at: c)
             }
         }
     }
@@ -272,7 +272,7 @@ struct PlanRenderer {
             let n = inwardNormal(w, centroid: centroid)
             let pos = s(w.midpoint + n * (14 / Double(vp.scale)))
             ctx.draw(Text(UnitsFormatter.distance(w.length))
-                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundColor(Theme.textSecondary), at: pos)
         }
     }
@@ -328,7 +328,7 @@ struct PlanRenderer {
             }
             let labelPos = CGPoint(x: origin.x - d.dx * 22, y: origin.y - d.dy * 22)
             ctx.draw(Text("\(cam.label) · \(Optics.formatFocal(cam.rig.focalLength))")
-                        .font(.system(size: 11, weight: .bold).width(.condensed))
+                        .font(.poppins(.medium, 10))
                         .foregroundColor(color), at: labelPos)
         }
     }
@@ -340,7 +340,7 @@ struct PlanRenderer {
             ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.danger))
             ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r - 3, y: c.y - r - 3, width: 2 * r + 6, height: 2 * r + 6)),
                        with: .color(Theme.danger.opacity(0.5)), lineWidth: 1)
-            ctx.draw(Text(subject.label).font(.system(size: 10, weight: .bold)).foregroundColor(Theme.danger),
+            ctx.draw(Text(subject.label).font(.poppins(.medium, 10)).foregroundColor(Theme.danger),
                      at: CGPoint(x: c.x, y: c.y + r + 10))
         }
     }
@@ -357,7 +357,7 @@ struct PlanRenderer {
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)), with: .color(color))
             }
             let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-            let text = Text(m.label).font(.system(size: 12, weight: .bold).monospacedDigit()).foregroundColor(.black)
+            let text = Text(m.label).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundColor(.black)
             let resolved = ctx.resolve(text)
             let sz = resolved.measure(in: CGSize(width: 300, height: 40))
             let bg = CGRect(x: mid.x - sz.width / 2 - 5, y: mid.y - sz.height / 2 - 3, width: sz.width + 10, height: sz.height + 6)
@@ -406,7 +406,7 @@ struct PlanRenderer {
         arrow.closeSubpath()
         ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22, y: c.y - 22, width: 44, height: 44)), with: .color(.black.opacity(0.5)))
         ctx.fill(arrow, with: .color(Theme.danger))
-        ctx.draw(Text("N").font(.system(size: 10, weight: .heavy)).foregroundColor(.white),
+        ctx.draw(Text("N").font(.poppins(.medium, 10)).foregroundColor(.white),
                  at: CGPoint(x: c.x + d.dx * 27, y: c.y + d.dy * 27))
     }
 
@@ -423,7 +423,7 @@ struct PlanRenderer {
         bar.move(to: CGPoint(x: origin.x + length, y: origin.y - 4))
         bar.addLine(to: CGPoint(x: origin.x + length, y: origin.y + 4))
         ctx.stroke(bar, with: .color(Theme.textSecondary), lineWidth: 1.5)
-        ctx.draw(Text(UnitsFormatter.distance(metres)).font(.system(size: 10, weight: .medium)).foregroundColor(Theme.textSecondary),
+        ctx.draw(Text(UnitsFormatter.distance(metres)).font(.system(size: 10, weight: .regular, design: .monospaced)).foregroundColor(Theme.textSecondary),
                  at: CGPoint(x: origin.x + length / 2, y: origin.y - 10))
     }
 }

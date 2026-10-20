@@ -49,10 +49,12 @@ jobs:
           npm install --no-save gltf-validator@2.0.0-dev.3.10
           node -e "
             const v = require('gltf-validator'); const fs = require('fs');
-            v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/test.glb'))).then(r => {
-              console.log(JSON.stringify(r.issues, null, 1));
-              if (r.issues.numErrors > 0) process.exit(1);
-            });"
+            for (const f of ['test.glb', 'object.glb']) {
+              v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/' + f))).then(r => {
+                console.log(f, JSON.stringify(r.issues, null, 1));
+                if (r.issues.numErrors > 0) process.exit(1);
+              });
+            }"
       - name: Validate USD with Pixar USD
         run: |
           pip install --quiet usd-core

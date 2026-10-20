@@ -200,7 +200,8 @@ final class ViewfinderModel: NSObject, ObservableObject {
                 self.displayZoomBase = hasUltraWide ? (switchOvers.first ?? 1) : 1
                 self.isWidescreenFormat = isWide
                 self.zoom = Double(device.videoZoomFactor)
-                self.zoomObservation = device.observe(\.videoZoomFactor, options: [.new]) { [weak self] d, _ in
+                // KVO fires on the camera's queue while the zoom ramps.
+                self.zoomObservation = device.observe(\.videoZoomFactor, options: [.new]) { @Sendable [weak self] d, _ in
                     let z = Double(d.videoZoomFactor)
                     Task { @MainActor in self?.zoomChanged(z) }
                 }
@@ -377,7 +378,7 @@ final class ViewfinderModel: NSObject, ObservableObject {
                                 height: frameRect.height / imageRect.height)
         let delegate = PhotoCaptureDelegate { data in
             let cropped = data.flatMap { ViewfinderModel.crop($0, to: normalized) }
-            DispatchQueue.main.async { completion(cropped) }
+            Task { @MainActor in completion(cropped) }
         }
         photoDelegate = delegate
         photoOutput.capturePhoto(with: settings, delegate: delegate)
@@ -400,8 +401,9 @@ final class ViewfinderModel: NSObject, ObservableObject {
 }
 
 final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
-    private let completion: (Data?) -> Void
-    init(completion: @escaping (Data?) -> Void) { self.completion = completion }
+    private let completion: @Sendable (Data?) -> Void
+    /// Called on AVFoundation's queue, so the handler must not assume the main actor.
+    init(completion: @escaping @Sendable (Data?) -> Void) { self.completion = completion }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         completion(error == nil ? photo.fileDataRepresentation() : nil)

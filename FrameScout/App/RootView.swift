@@ -49,6 +49,8 @@ struct RouteDestination: View {
             PhotoGalleryView(ref: ref)
         case .notes(let ref):
             LocationNotesView(ref: ref)
+        case .object(let projectID, let objectID):
+            ObjectDetailView(projectID: projectID, objectID: objectID)
         case .compare:
             CompareView()
         case .export(let projectID, let location):
@@ -68,6 +70,8 @@ struct CaptureFlowView: View {
             ARMeasureView(target: target)
         case .viewfinder(let target):
             ViewfinderView(target: target)
+        case .objectScan(let projectID):
+            ObjectCaptureFlowView(projectID: projectID)
         case .virtualCamera(let ref, let cameraID):
             VirtualCameraView(ref: ref, initialCameraID: cameraID)
         }

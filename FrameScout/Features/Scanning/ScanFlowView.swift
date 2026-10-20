@@ -64,7 +64,7 @@ struct ScanModePicker: View {
                     }
 
                     modeCard(kind: .room,
-                             title: "ROOM SCAN",
+                             title: "Room scan",
                              symbol: "cube.transparent",
                              bullets: ["Walls, doors, windows, openings, floor, furniture",
                                        "Accurate room dimensions and ceiling height",
@@ -74,7 +74,7 @@ struct ScanModePicker: View {
                              enabled: DeviceCapabilities.supportsRoomPlan)
 
                     modeCard(kind: .mesh,
-                             title: "MESH SCAN",
+                             title: "Mesh scan",
                              symbol: "square.stack.3d.down.forward",
                              bullets: ["Raw LiDAR surface mesh of whatever you point at",
                                        "Exteriors, courtyards, stages, irregular spaces",
@@ -101,13 +101,13 @@ struct ScanModePicker: View {
         Button { onSelect(kind) } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Image(systemName: symbol).font(.title).foregroundStyle(Theme.accent)
-                    Text(title).font(.fsButton).foregroundStyle(Theme.textPrimary)
+                    Image(systemName: symbol).font(.system(size: 22, weight: .ultraLight)).foregroundStyle(Theme.textTertiary)
+                    Text(title).font(.poppins(.light, 21)).tracking(0.6).foregroundStyle(Theme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
                 }
                 ForEach(bullets, id: \.self) { b in
-                    Label(b, systemImage: "checkmark")
+                    Text(b)
                         .font(.fsBody)
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -210,7 +210,7 @@ struct ScanHUD: View {
                 Text(hint)
                     .font(.fsHeadline)
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Theme.accent, in: Capsule())
+                    .background(Theme.accent, in: Rectangle())
                     .foregroundStyle(.black)
             }
             Spacer()
@@ -226,9 +226,9 @@ struct ScanHUD: View {
         HStack(alignment: .top, spacing: 8) {
             Button(action: onCancel) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.fsButton).tracking(Theme.tracking)
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.black.opacity(0.6), in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(phase == .finalizing)
@@ -246,19 +246,19 @@ struct ScanHUD: View {
                 Text(phase == .processing ? "Processing segment…" : "Building model…").font(.fsHeadline)
             }
             .padding(12)
-            .background(.ultraThinMaterial, in: Capsule())
+            .background(Color.black.opacity(0.6), in: Rectangle())
         case .paused:
-            Text(kind == .room ? "PAUSED — walk to the next area, then resume" : "PAUSED — resume from the same spot")
+            Text(kind == .room ? "Paused — walk to the next area, then resume" : "Paused — resume from the same spot")
                 .font(.fsLabel)
                 .padding(10)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(Color.black.opacity(0.6), in: Rectangle())
         case .failed(let message):
             VStack(spacing: 10) {
                 Text(message).multilineTextAlignment(.center)
-                Button("Close", action: onCancel).buttonStyle(.borderedProminent)
+                Button("Close", action: onCancel).buttonStyle(HairlineButtonStyle(prominent: true))
             }
             .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .background(Color.black.opacity(0.6), in: Rectangle())
         default:
             EmptyView()
         }
@@ -316,13 +316,13 @@ struct ScanStatsStrip: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.black.opacity(0.6), in: Rectangle())
     }
 
     private func figure(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.system(size: 9, weight: .bold).width(.condensed)).foregroundStyle(Theme.textSecondary)
-            Text(value).font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+            Text(label.lowercased()).font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
+            Text(value).font(.system(size: 14, weight: .regular, design: .monospaced))
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
     }

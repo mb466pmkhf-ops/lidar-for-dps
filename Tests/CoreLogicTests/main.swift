@@ -148,5 +148,42 @@ check(dataStart % 64 == 0, "USDZ payload is 64-byte aligned")
 check(CRC32.checksum(Data("123456789".utf8)) == 0xCBF43926, "CRC-32 check value")
 
 print("Artifacts in \(outDir.path)")
+// MARK: Persistence compatibility
+let legacyProject = Data(#"{"id":"7D1E3C55-5B55-4C4B-9E3B-0B4E3B6B8C11","name":"Old Job","client":"","notes":"","createdAt":"2025-01-01T10:00:00Z","modifiedAt":"2025-01-02T10:00:00Z","locations":[]}"#.utf8)
+let decodedLegacy = try? JSONCoding.decoder.decode(Project.self, from: legacyProject)
+check(decodedLegacy?.name == "Old Job" && decodedLegacy?.objects.isEmpty == true, "project saved before objects existed still loads")
+var withObject = decodedLegacy ?? Project(name: "x")
+withObject.objects = [CapturedObject(name: "Plush", status: .ready, width: 0.2, height: 0.3, depth: 0.1)]
+let roundTrip = try? JSONCoding.decoder.decode(Project.self, from: JSONCoding.encoder.encode(withObject))
+check(roundTrip?.objects.first?.name == "Plush" && roundTrip?.id == decodedLegacy?.id, "objects round-trip with the project")
+
+// MARK: Object capture (textured GLB / OBJ)
+let png1x1 = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+let tex = ModelTexture(data: png1x1, mimeType: "image/png")
+var plush = TexturedMesh(name: "Plush", material: TexturedMaterial(name: "Plush Mat", baseColor: tex, normal: tex, roughness: tex))
+let cube = SceneMesh.box(center: Vec3(0.3, 0.5, -0.2), axes: (Vec3(1, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, 1)), size: Vec3(0.2, 0.3, 0.1), material: .object)
+plush.positions = cube.positions
+plush.normals = cube.normals
+plush.uvs = cube.positions.map { SIMD2(($0.x + 1) / 2, ($0.y + 1) / 2) }
+plush.indices = cube.indices
+let objModel = TexturedModel(name: "Plush", meshes: [plush], metadata: ["source": "test"]).pivotAtBase()
+let ob = objModel.bounds()!
+check(abs(ob.min.y) < 1e-6 && abs(ob.min.x + ob.max.x) < 1e-6 && abs(ob.min.z + ob.max.z) < 1e-6, "object pivot moved to base centre")
+check(abs(objModel.dimensions.y - 0.3) < 1e-6, "object dimensions")
+check(objModel.textures.count == 1, "shared texture stored once")
+let objGLB = try TexturedGLBWriter.data(for: objModel)
+try objGLB.write(to: outDir.appendingPathComponent("object.glb"))
+let objJSONLen = Int(objGLB.subdata(in: 12..<16).withUnsafeBytes { $0.load(as: UInt32.self) })
+let objJSON = try JSONSerialization.jsonObject(with: objGLB.subdata(in: 20..<(20 + objJSONLen))) as! [String: Any]
+let objMat = (objJSON["materials"] as! [[String: Any]])[0]
+check((objJSON["images"] as! [Any]).count == 1 && objMat["normalTexture"] != nil
+      && (objMat["pbrMetallicRoughness"] as! [String: Any])["metallicFactor"] as! Double == 0, "GLB embeds texture and wires material")
+let objOut = TexturedOBJWriter.make(objModel, baseName: "Plush", unrealUnits: true)
+check(objOut.obj.contains("vt ") && objOut.mtl.contains("map_Kd Plush_Plush_Mat_BaseColor.png")
+      && objOut.textures.count == 1, "OBJ has UVs, MTL references texture files")
+let firstFace = objOut.obj.split(separator: "\n").first { $0.hasPrefix("f ") }!
+check(firstFace.split(separator: " ").dropFirst().allSatisfy { $0.split(separator: "/").count == 3 }, "OBJ faces carry v/vt/vn")
+check(objOut.obj.contains("centimetres"), "OBJ Unreal units header")
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

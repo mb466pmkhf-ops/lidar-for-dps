@@ -93,7 +93,7 @@ struct PlanEditorView: View {
                         .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
                         .padding(8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color.black.opacity(0.6), in: Rectangle())
                         .padding(.top, 8)
                     if plan.isEmpty {
                         noScanNotice.padding(.top, 60)
@@ -328,11 +328,11 @@ struct PlanEditorView: View {
                 ForEach(PlanTool.allCases) { t in
                     Button { tool = t; if t != .measure { measurePoints = [] } } label: {
                         Label(t.label, systemImage: t.symbol)
-                            .font(.system(size: 14, weight: .bold).width(.condensed))
+                            .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 12)
                             .frame(minHeight: 40)
                             .foregroundStyle(tool == t ? Color.black : Theme.textPrimary)
-                            .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: Capsule())
+                            .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled((t == .aim && selection == nil) || (t == .subject && !isShotSelected))
@@ -431,7 +431,7 @@ struct PlanEditorView: View {
                     Label(measurementKind.label, systemImage: measurementKind.symbol).font(.fsCaption)
                 }
                 Button("Save") { showSaveMeasurement = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(HairlineButtonStyle(prominent: true))
                     .foregroundStyle(.black)
             }
         }
@@ -462,13 +462,13 @@ struct PlanEditorView: View {
             }
             HStack {
                 Button { showRigSheet = true } label: { Label("Details", systemImage: "slider.horizontal.3") }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(HairlineButtonStyle())
                 if location?.primaryScan != nil, case .camera(let id)? = selection {
                     Button { router.start(.virtualCamera(ref, cameraID: id)) } label: { Label("Frame in 3D", systemImage: "camera.metering.center.weighted") }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(HairlineButtonStyle())
                 } else if location?.primaryScan != nil, case .shot(let id)? = selection {
                     Button { router.start(.virtualCamera(ref, cameraID: id)) } label: { Label("Frame in 3D", systemImage: "camera.metering.center.weighted") }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(HairlineButtonStyle())
                 }
             }
             extra
@@ -526,7 +526,7 @@ struct PlanEditorView: View {
 
     private var noScanNotice: some View {
         VStack(spacing: 6) {
-            Image(systemName: "square.dashed").font(.title)
+            Image(systemName: "square.dashed").font(.system(size: 26, weight: .ultraLight))
             Text("No scan for this location").font(.fsHeadline)
             Text("You can still place cameras on the grid (1 m squares).\(DeviceCapabilities.hasLiDAR ? " Scan the location to plan against real walls." : "")")
                 .font(.fsCaption)
@@ -534,7 +534,7 @@ struct PlanEditorView: View {
                 .foregroundStyle(Theme.textSecondary)
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.black.opacity(0.6), in: Rectangle())
         .padding(.horizontal, 40)
         .allowsHitTesting(false)
     }

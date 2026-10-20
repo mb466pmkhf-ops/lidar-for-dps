@@ -9,6 +9,26 @@ struct Project: Identifiable, Codable, Hashable {
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
     var locations: [Location] = []
+    var objects: [CapturedObject] = []
+}
+
+extension Project {
+    enum CodingKeys: String, CodingKey {
+        case id, name, client, notes, createdAt, modifiedAt, locations, objects
+    }
+
+    /// Decodes projects saved before objects existed (and tolerates other missing keys).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(name: try c.decode(String.self, forKey: .name))
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? id
+        client = try c.decodeIfPresent(String.self, forKey: .client) ?? ""
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? createdAt
+        modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? modifiedAt
+        locations = try c.decodeIfPresent([Location].self, forKey: .locations) ?? []
+        objects = try c.decodeIfPresent([CapturedObject].self, forKey: .objects) ?? []
+    }
 }
 
 /// Stable address of a location inside a project. Used for navigation and file paths.

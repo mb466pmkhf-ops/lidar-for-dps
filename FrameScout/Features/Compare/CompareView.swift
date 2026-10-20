@@ -25,7 +25,7 @@ struct CompareView: View {
                                 Button { selections.append(nil) } label: {
                                     Label("Add", systemImage: "plus").frame(width: 80, height: 60)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(HairlineButtonStyle())
                             }
                         }
                     }
@@ -55,8 +55,9 @@ struct CompareView: View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: 56)
             ForEach(Array(Self.rowLabels.enumerated()), id: \.offset) { i, label in
-                Text(label.uppercased())
+                Text(label)
                     .font(.fsLabel)
+                    .tracking(Theme.tracking)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 96, height: Self.rowHeights[i], alignment: .leading)
             }
@@ -80,7 +81,7 @@ struct CompareView: View {
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("LOCATION \(letter)").font(.fsLabel).foregroundStyle(Theme.accent)
+                    Text("Location \(letter)").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                     Text(location?.name ?? "Choose…").font(.fsHeadline).lineLimit(1)
                 }
                 .frame(width: 180, height: 56, alignment: .leading)
@@ -94,7 +95,7 @@ struct CompareView: View {
                 if let ref, let photo = location?.photos.first {
                     StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 400)
                         .frame(width: 180, height: 96).clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(Rectangle())
                 } else { placeholder("No photos") }
             }
             cell(2) { value(UnitsFormatter.dimensions(stats?.width, stats?.length)) }
@@ -109,7 +110,7 @@ struct CompareView: View {
             cell(11) { value(location.map { "\($0.shots.count)" } ?? "—") }
             cell(12) {
                 Text(location?.sortedTags.map(\.label).joined(separator: " · ") ?? "")
-                    .font(.system(size: 10, weight: .bold).width(.condensed))
+                    .font(.fsMicro).tracking(Theme.tracking)
                     .foregroundStyle(Theme.accent)
                     .lineLimit(4)
             }
@@ -121,7 +122,7 @@ struct CompareView: View {
             }
         }
         .padding(.horizontal, 8)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.surface, in: Rectangle())
     }
 
     private func cell<Content: View>(_ row: Int, @ViewBuilder content: () -> Content) -> some View {

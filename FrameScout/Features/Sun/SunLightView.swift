@@ -106,7 +106,7 @@ struct SunLightView: View {
                     let lit = litWindows(plan: plan, north: north, sun: sun)
                     FloorPlanCanvas(plan: plan, overlay: sunOverlay(north: north, sun: sun, lit: lit), style: .full)
                         .frame(height: 300)
-                        .background(Theme.background, in: RoundedRectangle(cornerRadius: 10))
+                        .background(Theme.background, in: Rectangle())
                     Text(lit.isEmpty ? "No window is in direct sun at this time."
                                      : "\(lit.count) window\(lit.count == 1 ? "" : "s") in direct sun (highlighted).")
                         .font(.fsBody)
@@ -228,7 +228,7 @@ struct SunLightView: View {
                 Label(locator.isLocating ? "Locating…" : "Use current GPS position", systemImage: "location.fill")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(HairlineButtonStyle(prominent: true))
             .foregroundStyle(.black)
             if let error = locator.lastError { Text(error).font(.fsCaption).foregroundStyle(Theme.danger) }
             HStack {
@@ -287,7 +287,7 @@ struct SunPathDiagram: View {
                 guard hour % 2 == 0 else { continue }
                 let p = point(sample.1)
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4)), with: .color(Theme.sun))
-                ctx.draw(Text("\(hour)").font(.system(size: 9)).foregroundColor(Theme.textSecondary),
+                ctx.draw(Text("\(hour)").font(.system(size: 9, design: .monospaced)).foregroundColor(Theme.textSecondary),
                          at: CGPoint(x: p.x, y: p.y - 9))
             }
             if current.elevation > 0 {

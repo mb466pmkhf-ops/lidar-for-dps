@@ -229,10 +229,10 @@ struct ARMeasureView: View {
             reticle
             if let pos = model.labelPosition, let m = model.measured {
                 Text(UnitsFormatter.distance(m.total, precise: true))
-                    .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 18, weight: .regular, design: .monospaced))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Theme.accent, in: Capsule())
+                    .background(Theme.accent, in: Rectangle())
                     .position(pos)
             }
             VStack {
@@ -280,14 +280,14 @@ struct ARMeasureView: View {
                 .onChange(of: model.mode) { _, _ in model.reset() }
                 Spacer()
                 if savedCount > 0 {
-                    Text("\(savedCount) saved").font(.fsCaptionStrong).padding(8).background(.ultraThinMaterial, in: Capsule())
+                    Text("\(savedCount) saved").font(.fsCaptionStrong).padding(8).background(Color.black.opacity(0.6), in: Rectangle())
                 }
             }
             Text(model.trackingMessage ?? model.mode.hint)
                 .font(.fsCaption)
                 .multilineTextAlignment(.center)
                 .padding(8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .background(Color.black.opacity(0.6), in: Rectangle())
             if !DeviceCapabilities.hasLiDAR {
                 Text("No LiDAR: accuracy depends on detected planes (typically ±2–5 cm at short range).")
                     .font(.fsMicro)
@@ -314,7 +314,7 @@ struct ARMeasureView: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.black.opacity(0.6), in: Rectangle())
     }
 
     private var controls: some View {

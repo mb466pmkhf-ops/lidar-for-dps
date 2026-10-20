@@ -27,18 +27,22 @@ struct ProjectDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 summary(project)
 
-                HStack(spacing: 12) {
-                    ActionTile(title: "Scan Location", subtitle: "New location + LiDAR scan", systemImage: "viewfinder.circle",
+                HStack(spacing: 8) {
+                    ActionTile(title: "Scan location", subtitle: "New location + LiDAR", systemImage: "viewfinder",
                                prominent: true, disabled: !DeviceCapabilities.hasLiDAR) {
                         router.start(.scan(CaptureTarget(projectID: projectID, locationID: nil)))
                     }
-                    ActionTile(title: "Add Location", subtitle: "Notes / photos first", systemImage: "mappin.and.ellipse") {
+                    ActionTile(title: "Scan object", subtitle: "Prop → 3D model", systemImage: "cube",
+                               disabled: !ObjectCaptureModel.isSupported) {
+                        router.start(.objectScan(projectID: projectID))
+                    }
+                    ActionTile(title: "Add location", subtitle: "Notes, photos first", systemImage: "plus") {
                         newLocationName = ""
                         showAddLocation = true
                     }
                 }
 
-                SectionHeader(title: "Locations", systemImage: "mappin")
+                SectionHeader(title: "Locations")
                 if project.locations.isEmpty {
                     EmptyStateView(systemImage: "map", title: "No locations yet",
                                    message: "Scan a location or add one to start collecting photos and notes.")
@@ -53,6 +57,30 @@ struct ProjectDetailView: View {
                         .contextMenu {
                             Button(role: .destructive) { store.deleteLocation(ref) } label: {
                                 Label("Delete Location", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+
+                if !project.objects.isEmpty {
+                    SectionHeader(title: "Objects", action: { router.start(.objectScan(projectID: projectID)) }, actionLabel: "Scan")
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8),
+                                        GridItem(.flexible(), spacing: 8)], spacing: 14) {
+                        ForEach(project.objects) { object in
+                            Button { router.open(.object(projectID: projectID, objectID: object.id)) } label: {
+                                VStack(spacing: 6) {
+                                    ObjectThumbnail(projectID: projectID, object: object)
+                                        .aspectRatio(1, contentMode: .fit)
+                                    Text(object.name).font(.fsLabel).tracking(0.4).lineLimit(1)
+                                    Text(object.dimensionsSummary ?? object.status.rawValue)
+                                        .font(.fsMicro).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) { store.deleteObject(projectID, object.id) } label: {
+                                    Label("Delete Object", systemImage: "trash")
+                                }
                             }
                         }
                     }
@@ -77,7 +105,7 @@ struct ProjectDetailView: View {
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Project", systemImage: "trash") }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .light))
                 }
             }
         }
@@ -111,6 +139,7 @@ struct ProjectDetailView: View {
                 StatView(label: "Locations", value: "\(project.locations.count)")
                 StatView(label: "Scans", value: "\(project.locations.reduce(0) { $0 + $1.scans.count })")
                 StatView(label: "Shots", value: "\(project.locations.reduce(0) { $0 + $1.shots.count })")
+                StatView(label: "Objects", value: "\(project.objects.count)")
             }
             TextField("Client / production company", text: Binding(
                 get: { store.project(projectID)?.client ?? "" },
@@ -129,8 +158,8 @@ struct LocationRow: View {
     var body: some View {
         HStack(spacing: 14) {
             LocationThumbnail(location: location, ref: ref)
-                .frame(width: 76, height: 76)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 96, height: 64)
+                .clipped()
             VStack(alignment: .leading, spacing: 4) {
                 Text(location.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary)
                 if let s = location.primaryScan?.stats {
@@ -142,15 +171,17 @@ struct LocationRow: View {
                 Text("\(location.photos.count) photos · \(location.cameraPositions.count) cameras · \(location.shots.count) shots")
                     .font(.fsMicro).foregroundStyle(Theme.textTertiary)
                 if !location.tags.isEmpty {
-                    Text(location.sortedTags.prefix(4).map(\.label).joined(separator: " · "))
-                        .font(.system(size: 10, weight: .bold).width(.condensed))
-                        .foregroundStyle(Theme.accent)
+                    Text(location.sortedTags.prefix(4).map { $0.label.capitalized }.joined(separator: " · "))
+                        .font(.fsMicro)
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(Theme.textSecondary)
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
+            Text("→").font(.poppins(.light, 16)).foregroundStyle(Theme.textTertiary)
         }
-        .card(padding: 10)
+        .padding(.vertical, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
     }
 }
 
@@ -169,7 +200,7 @@ struct LocationThumbnail: View {
                 FloorPlanCanvas(plan: plan, style: .thumbnail)
                     .padding(6)
             } else {
-                Image(systemName: "photo").foregroundStyle(Theme.textTertiary)
+                Image(systemName: "photo").font(.system(size: 14, weight: .ultraLight)).foregroundStyle(Theme.textTertiary)
             }
         }
     }

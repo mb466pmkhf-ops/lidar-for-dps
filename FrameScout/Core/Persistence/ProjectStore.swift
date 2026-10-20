@@ -234,6 +234,38 @@ final class ProjectStore: ObservableObject {
         return plan
     }
 
+    // MARK: Objects
+
+    func object(_ projectID: UUID, _ objectID: UUID) -> CapturedObject? {
+        project(projectID)?.objects.first { $0.id == objectID }
+    }
+
+    /// Creates the record and its folder before capture starts, so images land in place.
+    @discardableResult
+    func addObject(to projectID: UUID, name: String) -> CapturedObject? {
+        guard project(projectID) != nil else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let count = (project(projectID)?.objects.count ?? 0) + 1
+        let object = CapturedObject(name: trimmed.isEmpty ? String(format: "Object %02d", count) : trimmed,
+                                    deviceModel: DeviceCapabilities.modelIdentifier)
+        StoragePaths.ensureDirectory(StoragePaths.objectFile(projectID, objectID: object.id, .images))
+        updateProject(projectID) { $0.objects.append(object) }
+        flush()
+        return object
+    }
+
+    func updateObject(_ projectID: UUID, _ objectID: UUID, _ mutate: (inout CapturedObject) -> Void) {
+        updateProject(projectID) { project in
+            guard let i = project.objects.firstIndex(where: { $0.id == objectID }) else { return }
+            mutate(&project.objects[i])
+        }
+    }
+
+    func deleteObject(_ projectID: UUID, _ objectID: UUID) {
+        try? fm.removeItem(at: StoragePaths.objectDir(projectID, objectID: objectID))
+        updateProject(projectID) { $0.objects.removeAll { $0.id == objectID } }
+    }
+
     // MARK: Import
 
     /// Imports a project backup ZIP produced by "Export Project Backup".

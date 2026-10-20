@@ -11,44 +11,57 @@ struct HomeView: View {
     @State private var showImporter = false
     @State private var importMessage: String?
 
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 26) {
                 header
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ActionTile(title: "New Project", subtitle: "Production / job", systemImage: "folder.badge.plus", prominent: true) {
-                        newProjectName = ""
-                        showNewProject = true
-                    }
-                    ActionTile(title: "Quick Scan", subtitle: DeviceCapabilities.hasLiDAR ? "LiDAR room or mesh" : "Needs LiDAR",
-                               systemImage: "viewfinder.circle", disabled: !DeviceCapabilities.hasLiDAR) {
+
+                VStack(spacing: 0) {
+                    MenuRow(title: "Scan a location",
+                            subtitle: DeviceCapabilities.hasLiDAR ? "Room plan or LiDAR mesh" : "Needs LiDAR",
+                            disabled: !DeviceCapabilities.hasLiDAR) {
                         router.start(.scan(.quick))
                     }
-                    ActionTile(title: "Measure", subtitle: DeviceCapabilities.hasLiDAR ? "AR tape, LiDAR accurate" : "AR tape (plane-based)",
-                               systemImage: "ruler", disabled: !DeviceCapabilities.supportsWorldTracking) {
-                        router.start(.measure(.quick))
+                    MenuRow(title: "Scan an object",
+                            subtitle: ObjectCaptureModel.isSupported ? "Prop or toy → textured 3D model for Unreal" : "Needs LiDAR + iOS 17",
+                            disabled: !ObjectCaptureModel.isSupported) {
+                        router.start(.objectScan(projectID: nil))
                     }
-                    ActionTile(title: "Camera", subtitle: "Lens / FOV viewfinder", systemImage: "camera.viewfinder",
-                               disabled: !DeviceCapabilities.hasCamera) {
+                    MenuRow(title: "Viewfinder", subtitle: "Cinema lens frame lines", disabled: !DeviceCapabilities.hasCamera) {
                         router.start(.viewfinder(.quick))
                     }
-                    ActionTile(title: "Export", subtitle: "Unreal · USD · OBJ · GLB · ZIP", systemImage: "square.and.arrow.up.on.square") {
+                    MenuRow(title: "Measure",
+                            subtitle: DeviceCapabilities.hasLiDAR ? "AR tape, LiDAR accurate" : "AR tape, plane-based",
+                            disabled: !DeviceCapabilities.supportsWorldTracking) {
+                        router.start(.measure(.quick))
+                    }
+                    MenuRow(title: "Export", subtitle: "Unreal · USD · OBJ · GLB · ZIP") {
                         router.open(.export(projectID: nil, location: nil))
                     }
-                    ActionTile(title: "Compare", subtitle: "Location A vs B", systemImage: "rectangle.split.2x1") {
+                    MenuRow(title: "Compare", subtitle: "Location A vs B") {
                         router.open(.compare)
                     }
                 }
 
-                SectionHeader(title: "Recent Projects", systemImage: "clock")
+                HStack {
+                    SectionHeader(title: "Projects")
+                    Button {
+                        newProjectName = ""
+                        showNewProject = true
+                    } label: {
+                        Text("+ New")
+                            .font(.fsLabel).tracking(Theme.tracking)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.white, in: Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 if store.recentProjects.isEmpty {
-                    EmptyStateView(systemImage: "film.stack", title: "No projects yet",
-                                   message: "Create a project for each production, then add locations and scan them.")
-                        .card()
+                    EmptyStateView(systemImage: "film", title: "No projects yet",
+                                   message: "Make a project for each production, then add locations, scans and props to it.")
                 } else {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 30) {
                         ForEach(store.recentProjects.prefix(12)) { project in
                             Button { router.open(.project(project.id)) } label: {
                                 ProjectRow(project: project)
@@ -60,21 +73,24 @@ struct HomeView: View {
                 }
 
                 Text(DeviceCapabilities.summary)
-                    .font(.fsCaption)
+                    .font(.fsMono)
                     .foregroundStyle(Theme.textTertiary)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
         .fsScreen()
-        .navigationTitle("FrameScout")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) { Wordmark() }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showImporter = true } label: { Label("Import Project Backup…", systemImage: "square.and.arrow.down") }
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .light))
                 }
             }
         }
@@ -98,15 +114,15 @@ struct HomeView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("LOCATION SCOUT · PREVIS")
-                .font(.fsLabel)
-                .tracking(2)
-                .foregroundStyle(Theme.accent)
-            Text("Scan it. Measure it. Frame it. Take it to Unreal.")
-                .font(.fsBody)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Scout, measure\nand frame it.")
+                .font(.fsTitle)
                 .foregroundStyle(Theme.textSecondary)
+            Text("Then take it to Unreal.")
+                .font(.fsBody)
+                .foregroundStyle(Theme.textTertiary)
         }
+        .padding(.top, 8)
     }
 
     @ViewBuilder
@@ -132,29 +148,69 @@ struct HomeView: View {
     }
 }
 
+/// A project as the site shows a piece of work: a centred "Name | type" caption over three stills.
 struct ProjectRow: View {
     let project: Project
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: project.name == ProjectStore.quickScanProjectName ? "bolt.fill" : "film")
-                .font(.title3)
-                .foregroundStyle(Theme.accent)
-                .frame(width: 40, height: 40)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(project.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary)
-                Text(summary).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+        VStack(spacing: 12) {
+            Text(caption)
+                .font(.fsLabel)
+                .tracking(0.4)
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+            let stills = self.stills
+            if stills.isEmpty {
+                Rectangle()
+                    .fill(Theme.surface)
+                    .aspectRatio(16 / 5, contentMode: .fit)
+                    .overlay(Text("no stills yet").font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary))
+            } else {
+                HStack(spacing: 8) {
+                    ForEach(stills.indices, id: \.self) { i in
+                        Color.clear
+                            .aspectRatio(16 / 10, contentMode: .fit)
+                            .overlay { stills[i] }
+                            .clipped()
+                    }
+                }
             }
-            Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
+            Text(summary)
+                .font(.fsMono)
+                .foregroundStyle(Theme.textTertiary)
+                .frame(maxWidth: .infinity)
         }
-        .card(padding: 12)
+        .contentShape(Rectangle())
+    }
+
+    private var caption: String {
+        let kind = project.name == ProjectStore.quickScanProjectName ? "quick captures"
+            : (project.client.isEmpty ? "production" : project.client)
+        return "\(project.name) | \(kind)"
+    }
+
+    /// Up to three reference photos, then object thumbnails.
+    private var stills: [AnyView] {
+        var out: [AnyView] = []
+        for location in project.locations {
+            let ref = LocationRef(projectID: project.id, locationID: location.id)
+            for photo in location.photos.prefix(3) where out.count < 3 {
+                out.append(AnyView(StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 500)))
+            }
+            if out.count == 3 { return out }
+        }
+        for object in project.objects where out.count < 3 && object.status == .ready {
+            out.append(AnyView(ObjectThumbnail(projectID: project.id, object: object)))
+        }
+        return out
     }
 
     private var summary: String {
         let scans = project.locations.reduce(0) { $0 + $1.scans.count }
-        let shots = project.locations.reduce(0) { $0 + $1.shots.count }
-        return "\(project.locations.count) locations · \(scans) scans · \(shots) shots · \(project.modifiedAt.formatted(.relative(presentation: .named)))"
+        var parts = ["\(project.locations.count) loc", "\(scans) scans"]
+        if !project.objects.isEmpty { parts.append("\(project.objects.count) obj") }
+        parts.append(project.modifiedAt.formatted(.relative(presentation: .named)))
+        return parts.joined(separator: " · ")
     }
 }

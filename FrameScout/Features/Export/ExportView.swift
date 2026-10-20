@@ -71,7 +71,7 @@ struct ExportView: View {
                           systemImage: "shippingbox")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(HairlineButtonStyle(prominent: true))
                 .foregroundStyle(.black)
                 .disabled(busy || selectedProject == nil)
 

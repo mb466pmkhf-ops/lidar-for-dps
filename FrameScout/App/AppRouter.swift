@@ -10,6 +10,7 @@ enum Route: Hashable {
     case measurements(LocationRef)
     case photos(LocationRef)
     case notes(LocationRef)
+    case object(projectID: UUID, objectID: UUID)
     case compare
     case export(projectID: UUID?, location: LocationRef?)
 }
@@ -42,6 +43,7 @@ enum CaptureFlow: Identifiable, Hashable {
     case scan(CaptureTarget)
     case measure(CaptureTarget)
     case viewfinder(CaptureTarget)
+    case objectScan(projectID: UUID?)
     case virtualCamera(LocationRef, cameraID: UUID?)
 
     var id: String {
@@ -49,6 +51,7 @@ enum CaptureFlow: Identifiable, Hashable {
         case .scan(let t): return "scan-\(t.hashValue)"
         case .measure(let t): return "measure-\(t.hashValue)"
         case .viewfinder(let t): return "viewfinder-\(t.hashValue)"
+        case .objectScan(let p): return "object-\(p?.uuidString ?? "quick")"
         case .virtualCamera(let r, let c): return "vcam-\(r.hashValue)-\(c?.uuidString ?? "")"
         }
     }

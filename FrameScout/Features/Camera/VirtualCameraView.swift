@@ -309,7 +309,7 @@ struct VirtualCameraView: View {
                 HStack(spacing: 6) {
                     TagChip(text: "ORBIT", selected: orbit) { orbit = true }
                     ForEach(viewpoints) { vp in
-                        TagChip(text: vp.label.uppercased(), selected: !orbit && selected?.id == vp.id) {
+                        TagChip(text: vp.label, selected: !orbit && selected?.id == vp.id) {
                             orbit = false
                             selectedID = vp.id
                         }
@@ -344,7 +344,7 @@ struct VirtualCameraView: View {
             }
         }
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.black.opacity(0.6), in: Rectangle())
     }
 
     private func compactSlider(_ title: String, value: Double, range: ClosedRange<Double>,

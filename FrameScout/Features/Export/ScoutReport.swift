@@ -84,7 +84,7 @@ private enum Paper {
     static let ink = Color(white: 0.08)
     static let muted = Color(white: 0.42)
     static let rule = Color(white: 0.85)
-    static let accent = Color(red: 0.85, green: 0.55, blue: 0.0)
+    static let accent = Color(white: 0.08)
 }
 
 private struct ReportPageFrame<Content: View>: View {
@@ -96,9 +96,9 @@ private struct ReportPageFrame<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text("FRAMESCOUT · SCOUT REPORT").font(.system(size: 8, weight: .heavy)).tracking(1.5).foregroundStyle(Paper.accent)
+                Text("frame scout · scout report").font(.poppins(.medium, 8)).tracking(1.5).foregroundStyle(Paper.accent)
                 Spacer()
-                Text(data.projectName.uppercased()).font(.system(size: 8, weight: .semibold)).foregroundStyle(Paper.muted)
+                Text(data.projectName).font(.poppins(.medium, 8)).foregroundStyle(Paper.muted)
             }
             Rectangle().fill(Paper.rule).frame(height: 0.5).padding(.vertical, 6)
             content()
@@ -109,7 +109,7 @@ private struct ReportPageFrame<Content: View>: View {
                 Spacer()
                 Text("Page \(page) of \(pageCount)")
             }
-            .font(.system(size: 7))
+            .font(.poppins(.light, 7))
             .foregroundStyle(Paper.muted)
         }
         .padding(32)
@@ -122,8 +122,8 @@ private struct ReportFigure: View {
     var value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(label.uppercased()).font(.system(size: 7, weight: .bold)).foregroundStyle(Paper.muted)
-            Text(value).font(.system(size: 13, weight: .semibold).monospacedDigit()).foregroundStyle(Paper.ink)
+            Text(label).font(.poppins(.regular, 7)).tracking(0.6).foregroundStyle(Paper.muted)
+            Text(value).font(.system(size: 13, weight: .regular, design: .monospaced)).foregroundStyle(Paper.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -134,7 +134,7 @@ private struct ReportSection<Content: View>: View {
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title.uppercased()).font(.system(size: 8, weight: .heavy)).tracking(1).foregroundStyle(Paper.accent)
+            Text(title).font(.poppins(.medium, 8)).tracking(0.9).foregroundStyle(Paper.accent)
             content()
         }
     }
@@ -148,16 +148,16 @@ private struct OverviewPage: View {
         let s = loc.primaryScan?.stats
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(loc.name).font(.system(size: 24, weight: .heavy)).foregroundStyle(Paper.ink)
-                if !loc.address.isEmpty { Text(loc.address).font(.system(size: 10)).foregroundStyle(Paper.muted) }
+                Text(loc.name).font(.poppins(.medium, 24)).foregroundStyle(Paper.ink)
+                if !loc.address.isEmpty { Text(loc.address).font(.poppins(.light, 10)).foregroundStyle(Paper.muted) }
                 HStack(spacing: 10) {
                     Text("Scanned \(UnitsFormatter.shortDate(loc.dateScanned))")
                     if let c = loc.coordinate { Text(String(format: "GPS %.5f, %.5f", c.latitude, c.longitude)) }
                 }
-                .font(.system(size: 8)).foregroundStyle(Paper.muted)
+                .font(.poppins(.light, 8)).foregroundStyle(Paper.muted)
                 if !loc.tags.isEmpty {
                     Text(loc.sortedTags.map(\.label).joined(separator: "  ·  "))
-                        .font(.system(size: 8, weight: .bold)).foregroundStyle(Paper.accent)
+                        .font(.poppins(.medium, 8)).foregroundStyle(Paper.accent)
                 }
             }
 
@@ -172,19 +172,19 @@ private struct OverviewPage: View {
                 ReportSection(title: "Plan · cameras & shots") {
                     FloorPlanCanvas(plan: plan, overlay: overlay(for: loc), style: .full)
                         .frame(height: 430)
-                        .background(Color(white: 0.06), in: RoundedRectangle(cornerRadius: 6))
+                        .background(Color(white: 0.06), in: Rectangle())
                     Text("Amber: camera positions · blue: shots · red: subject marks. Grid squares are 1 m. North arrow from the scan compass (approximate).")
-                        .font(.system(size: 7)).foregroundStyle(Paper.muted)
+                        .font(.poppins(.light, 7)).foregroundStyle(Paper.muted)
                 }
             } else {
-                Text("No LiDAR scan for this location.").font(.system(size: 10)).foregroundStyle(Paper.muted)
+                Text("No LiDAR scan for this location.").font(.poppins(.light, 10)).foregroundStyle(Paper.muted)
             }
 
             let quick = loc.quickNotes.prefix(6)
             if !quick.isEmpty {
                 ReportSection(title: "Scout notes") {
                     ForEach(Array(quick)) { note in
-                        Text("• \(note.text)").font(.system(size: 9)).foregroundStyle(Paper.ink)
+                        Text("• \(note.text)").font(.poppins(.light, 9)).foregroundStyle(Paper.ink)
                     }
                 }
             }
@@ -224,7 +224,7 @@ private struct PhotoPage: View {
                             .frame(height: 300)
                             .frame(maxWidth: .infinity)
                             .clipped()
-                        Text(photo.caption).font(.system(size: 7)).foregroundStyle(Paper.muted).lineLimit(1)
+                        Text(photo.caption).font(.poppins(.light, 7)).foregroundStyle(Paper.muted).lineLimit(1)
                     }
                 }
             }
@@ -262,7 +262,7 @@ private struct DetailsPage: View {
                             Text(m.source.label).foregroundStyle(Paper.muted)
                             Text(UnitsFormatter.distance(m.value)).fontWeight(.semibold).monospacedDigit().frame(width: 70, alignment: .trailing)
                         }
-                        .font(.system(size: 8.5))
+                        .font(.poppins(.light, 8.5))
                         .foregroundStyle(Paper.ink)
                     }
                 }
@@ -270,7 +270,7 @@ private struct DetailsPage: View {
             ForEach([("Lighting notes", loc.lightingNotes), ("Production notes", loc.productionNotes), ("General notes", loc.notes)], id: \.0) { title, text in
                 if !text.isEmpty {
                     ReportSection(title: title) {
-                        Text(text).font(.system(size: 9)).foregroundStyle(Paper.ink).lineLimit(12)
+                        Text(text).font(.poppins(.light, 9)).foregroundStyle(Paper.ink).lineLimit(12)
                     }
                 }
             }
@@ -286,7 +286,7 @@ private struct DetailsPage: View {
                     .frame(maxWidth: widths[i], alignment: .leading)
             }
         }
-        .font(.system(size: 8, weight: header ? .bold : .regular))
+        .font(.poppins(header ? .medium : .light, 8))
         .foregroundStyle(header ? Paper.muted : Paper.ink)
         .padding(.vertical, 2)
         .overlay(alignment: .bottom) { Rectangle().fill(Paper.rule).frame(height: 0.5) }

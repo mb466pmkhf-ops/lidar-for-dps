@@ -56,7 +56,7 @@ struct LocationDetailView: View {
                     }
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Location", systemImage: "trash") }
-                } label: { Image(systemName: "ellipsis.circle") }
+                } label: { Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)) }
             }
         }
         .alert("Rename Location", isPresented: $showRename) {
@@ -93,7 +93,7 @@ struct LocationDetailView: View {
     private func header(_ location: Location) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let project = store.project(ref.projectID) {
-                Text(project.name.uppercased()).font(.fsLabel).tracking(1.2).foregroundStyle(Theme.accent)
+                Text(project.name).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
             }
             TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
                 .font(.fsBody)
@@ -186,7 +186,7 @@ struct LocationDetailView: View {
                 SectionHeader(title: "Plan", systemImage: "map")
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
-                    .background(Theme.background, in: RoundedRectangle(cornerRadius: 10))
+                    .background(Theme.background, in: Rectangle())
                     .onTapGesture { router.open(.plan(ref)) }
                 Text("Tap to place cameras, shots and measure on the plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
@@ -233,7 +233,7 @@ struct LocationDetailView: View {
                         ForEach(Array(location.photos.suffix(12).reversed())) { photo in
                             StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 300)
                                 .frame(width: 110, height: 82)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(Rectangle())
                                 .onTapGesture { router.open(.photos(ref)) }
                         }
                     }
@@ -241,12 +241,12 @@ struct LocationDetailView: View {
             }
             HStack {
                 Button { showCamera = true } label: { Label("Take Photo", systemImage: "camera") }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(HairlineButtonStyle())
                     .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
                 PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
                     Label("Import", systemImage: "photo.badge.plus")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(HairlineButtonStyle())
             }
         }
         .card()
@@ -258,10 +258,10 @@ struct LocationDetailView: View {
                           action: { router.open(.measurements(ref)) }, actionLabel: "All")
             ForEach(Array(location.measurements.suffix(5).reversed())) { m in
                 HStack {
-                    Image(systemName: m.kind.symbol).foregroundStyle(Theme.accent).frame(width: 24)
+                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     Text(m.label.isEmpty ? m.kind.label : m.label)
                     Spacer()
-                    Text(UnitsFormatter.distance(m.value)).font(.body.monospacedDigit().weight(.semibold))
+                    Text(UnitsFormatter.distance(m.value)).font(.fsMono)
                 }
             }
             if location.measurements.isEmpty {
@@ -277,7 +277,7 @@ struct LocationDetailView: View {
             SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.plan(ref)) }, actionLabel: "Plan")
             ForEach(location.cameraPositions) { c in
                 HStack {
-                    Image(systemName: "video.fill").foregroundStyle(Theme.accent).frame(width: 24)
+                    Image(systemName: "video.fill").font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     VStack(alignment: .leading) {
                         Text(c.name)
                         Text("\(c.rig.lensSummary) · h \(UnitsFormatter.distance(c.rig.height))")
@@ -310,7 +310,7 @@ struct LocationDetailView: View {
             ForEach([("General", location.notes), ("Lighting", location.lightingNotes), ("Production", location.productionNotes)], id: \.0) { title, text in
                 if !text.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+                        Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                         Text(text).font(.fsBody).lineLimit(4)
                     }
                 }
@@ -337,7 +337,7 @@ struct LocationDetailView: View {
                         }
                         Spacer()
                         if scan.id == location.primaryScan?.id {
-                            Text("PRIMARY").font(.fsLabel).foregroundStyle(Theme.accent)
+                            Text("primary").font(.fsMono).foregroundStyle(Theme.textTertiary)
                         }
                         Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
                     }
@@ -385,12 +385,13 @@ struct SmallTool: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.accent)
-                Text(title.uppercased()).font(.system(size: 12, weight: .heavy).width(.condensed))
+                Image(systemName: symbol).font(.system(size: 18, weight: .ultraLight)).foregroundStyle(Theme.textSecondary)
+                Text(title).font(.fsLabel).tracking(Theme.tracking)
                     .foregroundStyle(Theme.textPrimary)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(Theme.surface, in: Rectangle())
+            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
             .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)

@@ -143,7 +143,7 @@ struct ShotRow: View {
                 }
             }
             .frame(width: 64, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(Rectangle())
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(shot.code)\(shot.title.isEmpty ? "" : " · \(shot.title)")").font(.fsHeadline)
                 Text("\(Optics.formatFocal(shot.rig.focalLength)) · \(shot.rig.sensor.name) · h \(UnitsFormatter.distance(shot.rig.height))")
@@ -188,8 +188,8 @@ struct ShotFields: View {
                         ForEach(photos) { photo in
                             StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 200)
                                 .frame(width: 72, height: 54)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(RoundedRectangle(cornerRadius: 6)
+                                .clipShape(Rectangle())
+                                .overlay(Rectangle()
                                     .stroke(shot.photoID == photo.id ? Theme.accent : .clear, lineWidth: 3))
                                 .onTapGesture { update { $0.photoID = photo.id } }
                         }

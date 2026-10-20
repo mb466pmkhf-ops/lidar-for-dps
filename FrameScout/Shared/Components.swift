@@ -231,6 +231,26 @@ struct TagChip: View {
     }
 }
 
+/// Square hairline button (secondary) or white block (primary) — replaces the system's
+/// rounded bordered styles.
+struct HairlineButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.fsLabel)
+            .tracking(Theme.tracking)
+            .labelStyle(.titleOnly)
+            .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(prominent ? Color.white : Color.clear, in: Rectangle())
+            .overlay(Rectangle().stroke(prominent ? Color.clear : Color.white.opacity(0.45), lineWidth: 0.5))
+            .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
+    }
+}
+
 /// Simple wrapping layout for tag chips.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8

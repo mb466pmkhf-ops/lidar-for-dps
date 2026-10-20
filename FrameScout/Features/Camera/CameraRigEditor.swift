@@ -14,11 +14,11 @@ struct LensPicker: View {
                         let selected = abs(f - focalLength) < 0.01
                         Button { focalLength = f } label: {
                             Text("\(Int(f))")
-                                .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                                .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .frame(minWidth: 44, minHeight: 40)
                                 .foregroundStyle(selected ? Color.black : Theme.textPrimary)
                                 .background(selected ? Theme.accent : Theme.surfaceRaised,
-                                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                            in: Rectangle())
                         }
                         .buttonStyle(.plain)
                         .id(f)
@@ -29,12 +29,12 @@ struct LensPicker: View {
                         showCustom = true
                     } label: {
                         Text(isCustom ? Optics.formatFocal(focalLength) : "Custom")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 40)
                             .foregroundStyle(isCustom ? Color.black : Theme.textPrimary)
                             .background(isCustom ? Theme.accent : Theme.surfaceRaised,
-                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                        in: Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -94,7 +94,7 @@ struct SensorPicker: View {
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
             }
             .padding(10)
-            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .background(Theme.surfaceRaised, in: Rectangle())
         }
     }
 }
@@ -120,7 +120,7 @@ struct LabeledNumberField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+            Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
             TextField(title, value: $value, format: .number.precision(.fractionLength(0...2)))
                 .keyboardType(.decimalPad)
                 .font(.fsValue)
@@ -182,7 +182,7 @@ struct CameraRigForm: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     ForEach(HeightPreset.allCases) { p in
-                        TagChip(text: p.label.uppercased(), selected: abs(rig.height - p.metres) < 0.02) { rig.height = p.metres }
+                        TagChip(text: p.label, selected: abs(rig.height - p.metres) < 0.02) { rig.height = p.metres }
                     }
                 }
             }
@@ -216,7 +216,7 @@ struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+                Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 Spacer()
                 Text(format(value)).font(.system(.body, design: .rounded).monospacedDigit().weight(.semibold))
             }

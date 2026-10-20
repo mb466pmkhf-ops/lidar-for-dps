@@ -92,11 +92,11 @@ struct MeasurementRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: measurement.kind.symbol).foregroundStyle(Theme.accent).frame(width: 26)
+            Image(systemName: measurement.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(measurement.label.isEmpty ? measurement.kind.label : measurement.label)
                 HStack(spacing: 6) {
-                    Text(measurement.source.label.uppercased()).font(.fsLabel).foregroundStyle(Theme.textTertiary)
+                    Text(measurement.source.label).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                     if let h = measurement.horizontal, let v = measurement.vertical, measurement.source == .ar {
                         Text("h \(UnitsFormatter.distance(h)) · v \(UnitsFormatter.distance(v))")
                             .font(.fsMicro).foregroundStyle(Theme.textSecondary)
@@ -108,7 +108,7 @@ struct MeasurementRow: View {
             }
             Spacer()
             Text(UnitsFormatter.distance(measurement.value, precise: true))
-                .font(.body.monospacedDigit().weight(.semibold))
+                .font(.fsMono)
         }
     }
 }
