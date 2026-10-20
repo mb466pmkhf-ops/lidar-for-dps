@@ -62,7 +62,7 @@ struct ObjectDetailView: View {
                 preview(object)
 
                 if builder.phase != .idle {
-                    ObjectBuildProgressView(builder: builder, onOpen: {}, onLater: { builder.cancel() })
+                    ObjectBuildProgressView(builder: builder, onLater: { builder.cancel() })
                         .frame(minHeight: 260)
                         .card(padding: 0)
                 }

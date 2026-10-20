@@ -13,6 +13,7 @@ Built for DOPs, camera operators, directors and location managers. Every screen 
 | How far from the actor for a full shot? | Lens calculator (any lens/sensor) |
 | Which direction does the light come from at 4 pm? | Sun & Light (sun path, windows in direct sun, times of direct sun per window) |
 | Can I bring this into Unreal? | Export → Unreal preset (GLB / USD / cm-Z-up OBJ / CineCamera CSV) |
+| Can I get this prop / toy / camera into Unreal? | Scan an object → textured model → Unreal pack (GLB / OBJ / USDZ) |
 | Can I show the director the space? | 3D view, top-down plan, location package ZIP |
 
 ## Requirements
@@ -30,6 +31,8 @@ Built for DOPs, camera operators, directors and location managers. Every screen 
 
 The simulator builds, but RoomPlan/ARKit scanning only works on a real LiDAR device.
 
+**App stopped opening after a week?** That's the free Apple ID's 7-day signing limit. Your data is still there. See [`Docs/INSTALL.md`](Docs/INSTALL.md) for the options: re-run from Xcode, SideStore/AltStore with the unsigned IPA that CI builds on every push, or the paid developer program.
+
 ## Features (MVP status)
 
 | # | Feature | Status | Implementation |
@@ -41,7 +44,8 @@ The simulator builds, but RoomPlan/ARKit scanning only works on a real LiDAR dev
 | 4 | Measurement: AR tape / rangefinder / height; plan measure with wall snapping; auto room measurements; manual | ✅ | `ARMeasureView`, `PlanEditorView`, `MeasurementListView` |
 | 5 | Photos (camera, library, snapped during scans with pose) and notes (general, lighting, production, quick scout notes, tags) | ✅ | `PhotoGalleryView`, `LocationNotesView` |
 | 6 | Camera positions: position, height (with tripod presets), pan/tilt, lens, sensor, notes, FOV wedge on plan, clearance | ✅ | `PlanEditorView`, `CameraRigForm` |
-| 7 | Lens/FOV: AR-free director's viewfinder with frame lines for any lens/sensor/aspect, auto phone-lens switching; virtual camera in the scan | ✅ | `ViewfinderView` (AVFoundation), `VirtualCameraView` (SceneKit) |
+| 7 | Lens/FOV: director's viewfinder on the fused multi-camera (seamless lens hand-over via zoom), Fill / Context framing, anamorphic squeeze, horizon level + tilt, AE/AF lock, EV, pinch to change lens, FOV calibration; virtual camera in the scan | ✅ | `ViewfinderView` (AVFoundation), `ViewfinderMath` (tested), `VirtualCameraView` (SceneKit) |
+| 7b | Object scan: guided Object Capture of a single prop, on-device textured model, Unreal pack (GLB with PBR textures, OBJ in cm/Z-up, USDZ), AR Quick Look, capture images for a full-detail Mac rebuild | ✅ | `ObjectCaptureFlowView`, `ObjectReconstructor` (PhotogrammetrySession), `ObjectModelConverter`, `TexturedModel` writers |
 | 8 | USD / USDZ export | ✅ | `USDAWriter` (+ Apple's native RoomPlan USDZ) |
 | 9 | OBJ and GLB export | ✅ | `OBJWriter`, `GLBWriter` (validated with the Khronos glTF validator) |
 | 10 | Shot planning: SHOT 01, 02… with camera, lens, height, direction, subject mark, notes, reference photo, top-down view | ✅ | `ShotListView` |
@@ -54,6 +58,18 @@ The simulator builds, but RoomPlan/ARKit scanning only works on a real LiDAR dev
 ### Devices without LiDAR
 
 The app tells the user plainly that 3D scanning needs LiDAR and keeps everything else working: projects, locations, photos, notes, tags, **AR measure** (plane-based, with an accuracy note), **lens viewfinder**, **sun tools**, camera/shot planning on a blank 1 m grid, comparison and export of non-scan data. Scans made on a LiDAR device can be moved over via *Export Project Backup* → *Import Project Backup*.
+
+## Object pack (Unreal)
+
+```
+OBJECT_NAME/
+  OBJECT_NAME.glb       ← drag into the Content Browser (UE 5.1+); textures wired up
+  OBJECT_NAME.usdz      ← Apple original (USD Importer, Reality Composer, Blender)
+  Unreal_OBJ/           OBJECT_NAME.obj/.mtl + textures, centimetres, Z up
+  README_UNREAL.txt  object.json  [Capture_Images/]
+```
+
+Pivot is the centre of the object's base, so it sits on the floor at 0. Object scans need a LiDAR iPhone/iPad Pro on iOS 17.
 
 ## Location package
 

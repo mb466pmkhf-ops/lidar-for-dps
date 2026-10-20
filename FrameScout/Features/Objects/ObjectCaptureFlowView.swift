@@ -1,4 +1,3 @@
-import ARKit
 import RealityKit
 import SwiftUI
 
@@ -25,7 +24,6 @@ final class ObjectCaptureModel: ObservableObject {
     @Published private(set) var maxShots = 0
     @Published private(set) var passCompleted = false
     @Published private(set) var passes = 1
-    @Published private(set) var tracking = ""
     private(set) var projectID: UUID?
     private(set) var objectID: UUID?
     private var tasks: [Task<Void, Never>] = []
@@ -70,7 +68,6 @@ final class ObjectCaptureModel: ObservableObject {
                 self.shots = s.numberOfShotsTaken
                 self.maxShots = s.maximumNumberOfInputImages
                 if s.userCompletedScanPass != self.passCompleted { self.passCompleted = s.userCompletedScanPass }
-                self.tracking = Self.trackingMessage(s.cameraTracking)
                 try? await Task.sleep(nanoseconds: 300_000_000)
             }
         })
@@ -143,21 +140,6 @@ final class ObjectCaptureModel: ObservableObject {
         case .overCapturing: return "Enough shots here — keep moving round"
         case .objectNotDetected: return "Object not found"
         @unknown default: return nil
-        }
-    }
-
-    private static func trackingMessage(_ state: ARCamera.TrackingState?) -> String {
-        guard let state else { return "" }
-        switch state {
-        case .normal: return ""
-        case .notAvailable: return "Tracking unavailable"
-        case .limited(let reason):
-            switch reason {
-            case .excessiveMotion: return "Moving too fast"
-            case .insufficientFeatures: return "Not enough detail in view"
-            case .initializing, .relocalizing: return "Finding position…"
-            @unknown default: return "Tracking limited"
-            }
         }
     }
 }
@@ -286,7 +268,7 @@ struct ObjectCaptureFlowView: View {
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 2)
                 }
-                if let line = (model.feedback.first ?? (model.tracking.isEmpty ? nil : model.tracking)) {
+                if let line = model.feedback.first {
                     Text(line)
                         .font(.fsCaption).tracking(Theme.tracking)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -425,7 +407,7 @@ struct ObjectCaptureFlowView: View {
 /// Progress for an on-device model build (shared by the capture flow and the object page).
 struct ObjectBuildProgressView: View {
     @ObservedObject var builder: ObjectReconstructor
-    var onOpen: () -> Void
+    var onOpen: (() -> Void)? = nil
     var onLater: () -> Void
 
     var body: some View {
@@ -455,6 +437,7 @@ struct ObjectBuildProgressView: View {
             }
             Spacer()
             if builder.phase == .finished {
+                if let onOpen {
                 Button(action: onOpen) {
                     Text("Open object").font(.fsButton).tracking(Theme.tracking)
                         .foregroundStyle(.black)
@@ -462,6 +445,7 @@ struct ObjectBuildProgressView: View {
                         .background(Color.white, in: Rectangle())
                 }
                 .buttonStyle(.plain)
+                }
             } else {
                 Button(action: onLater) {
                     Text(builder.isBusy ? "Stop · build later" : "Close").font(.fsButton).tracking(Theme.tracking)
