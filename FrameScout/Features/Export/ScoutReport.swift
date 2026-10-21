@@ -148,9 +148,7 @@ private struct OverviewPage: View {
         let s = loc.primaryScan?.stats
         let kind = loc.primaryScan?.kind ?? .room
         func mark(_ value: String, _ figure: ScanFigure) -> String {
-            guard let s, value != "—" else { return value }
-            let m = s.provenance(of: figure, kind: kind).marker
-            return m.isEmpty ? value : "\(m) \(value)"
+            s?.marked(value, figure, kind: kind) ?? value
         }
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {

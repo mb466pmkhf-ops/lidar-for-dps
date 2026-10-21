@@ -68,6 +68,8 @@ struct CompareView: View {
         let ref = selections[index]
         let location = ref.flatMap { store.location($0) }
         let stats = location?.primaryScan?.stats
+        let kind = location?.primaryScan?.kind ?? .room
+        func mark(_ value: String, _ figure: ScanFigure) -> String { stats?.marked(value, figure, kind: kind) ?? value }
         let letter = String(Character(UnicodeScalar(65 + index)!))
         return VStack(alignment: .leading, spacing: 0) {
             Menu {
@@ -98,10 +100,10 @@ struct CompareView: View {
                         .clipShape(Rectangle())
                 } else { placeholder("No photos") }
             }
-            cell(2) { value(UnitsFormatter.dimensions(stats?.width, stats?.length)) }
-            cell(3) { value(UnitsFormatter.area(stats?.floorArea), best: isBest(\.floorArea, higher: true, ref: ref)) }
-            cell(4) { value(UnitsFormatter.distance(stats?.ceilingHeight), best: isBest(\.ceilingHeight, higher: true, ref: ref)) }
-            cell(5) { value(UnitsFormatter.distance(stats?.minCeilingHeight)) }
+            cell(2) { value(mark(UnitsFormatter.dimensions(stats?.width, stats?.length), .roomSize)) }
+            cell(3) { value(mark(UnitsFormatter.area(stats?.floorArea), .floorArea), best: isBest(\.floorArea, higher: true, ref: ref)) }
+            cell(4) { value(mark(UnitsFormatter.distance(stats?.ceilingHeight), .ceilingHeight), best: isBest(\.ceilingHeight, higher: true, ref: ref)) }
+            cell(5) { value(mark(UnitsFormatter.distance(stats?.minCeilingHeight), .ceilingHeight)) }
             cell(6) { value(stats.map { "\($0.windowCount)" } ?? "—") }
             cell(7) { value(stats.map { "\($0.doorCount)" } ?? "—") }
             cell(8) { value(stats.map { "\($0.openingCount)" } ?? "—") }
