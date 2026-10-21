@@ -24,3 +24,11 @@ and is not merged into the default branch `claude/framescout-ios-app-pbswdo`. Ne
 
 ## D-004 · Docs folder is `Docs/`
 The repository already uses `Docs/`. `Docs/ARCHITECTURE.md` serves as the technical guide.
+
+## D-005 · Original look everywhere except Home — 2026-10-21
+After comparing three versions in the Simulator, the owner kept the original site style (Poppins light, wide
+tracking, square hairline frames, white as the only accent) for every screen except Home. Home uses its own
+`HomeStyle` (Features/Home/HomeStyle.swift): Poppins at readable weights with Dynamic Type, a teal accent,
+rounded icon tiles that say why a tool is unavailable, and more spacing. No yellow accents. Bug fixes from the
+practical pass stay app-wide: plan labels avoid marks and stay on screen, Sun time chips scroll, the provenance
+badge sits under the value.

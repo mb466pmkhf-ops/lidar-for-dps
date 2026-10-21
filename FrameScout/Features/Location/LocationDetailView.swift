@@ -400,5 +400,6 @@ struct SmallTool: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .accessibilityHint(disabled ? "Not available on this device" : "")
     }
 }

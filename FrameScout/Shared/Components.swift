@@ -194,14 +194,11 @@ struct StatView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(label)
-                    .font(.fsLabel)
-                    .tracking(Theme.tracking)
-                    .foregroundStyle(Theme.textTertiary)
-                    .lineLimit(1)
-                if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
-            }
+            Text(label)
+                .font(.fsLabel)
+                .tracking(Theme.tracking)
+                .foregroundStyle(Theme.textTertiary)
+                .lineLimit(1)
             Text(value)
                 .font(.fsValue)
                 .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
@@ -210,6 +207,8 @@ struct StatView: View {
             if let detail {
                 Text(detail).font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
+            // Under the value, so a long label ("Floor area") never gets truncated by the badge.
+            if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
