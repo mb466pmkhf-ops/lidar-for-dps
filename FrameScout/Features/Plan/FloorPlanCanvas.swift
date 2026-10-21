@@ -365,7 +365,13 @@ struct PlanRenderer {
     /// Cameras and subjects are always drawn; dimensions and furniture names are dropped
     /// rather than drawn on top of something else.
     private func drawLabels(_ ctx: inout GraphicsContext, _ labels: [PlanLabel]) {
-        var placed: [CGRect] = []
+        // Camera bodies and subject marks are obstacles too, so labels never cover them.
+        var placed: [CGRect] = overlay.cameras.map { c in
+            let p = s(c.rig.position); return CGRect(x: p.x - 13, y: p.y - 13, width: 26, height: 26)
+        } + overlay.subjects.map { m in
+            let p = s(m.point); return CGRect(x: p.x - 11, y: p.y - 11, width: 22, height: 22)
+        }
+        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
         for label in labels.sorted(by: { $0.priority.rawValue < $1.priority.rawValue }) {
             let resolved = ctx.resolve(label.text)
             let size = resolved.measure(in: CGSize(width: 300, height: 40))
@@ -377,9 +383,12 @@ struct PlanRenderer {
                 CGRect(x: label.anchor.x + o.x - size.width / 2 - 3, y: label.anchor.y + o.y - size.height / 2 - 1,
                        width: size.width + 6, height: size.height + 2)
             }
-            let free = offsets.first { o in !placed.contains { $0.intersects(rect(o)) } }
+            let free = offsets.first { o in bounds.contains(rect(o)) && !placed.contains { $0.intersects(rect(o)) } }
             guard let offset = free ?? (label.priority.alwaysShown ? CGPoint.zero : nil) else { continue }
-            let box = rect(offset)
+            var box = rect(offset)
+            // Keep always-shown labels on screen even when no free slot was found.
+            box.origin.x = min(max(box.minX, bounds.minX), max(bounds.minX, bounds.maxX - box.width))
+            box.origin.y = min(max(box.minY, bounds.minY), max(bounds.minY, bounds.maxY - box.height))
             placed.append(box)
             ctx.fill(Path(roundedRect: box, cornerRadius: 3), with: .color(Theme.background.opacity(0.7)))
             ctx.draw(resolved, at: CGPoint(x: box.midX, y: box.midY))

@@ -389,16 +389,19 @@ struct SmallTool: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 18, weight: .ultraLight)).foregroundStyle(Theme.textSecondary)
-                Text(title).font(.fsLabel).tracking(Theme.tracking)
+                Image(systemName: disabled ? "lock" : symbol).font(.title3)
+                    .foregroundStyle(disabled ? Theme.textTertiary : Theme.accent)
+                Text(title).font(.fsLabel)
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
-            .opacity(disabled ? 0.35 : 1)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .opacity(disabled ? 0.55 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .accessibilityHint(disabled ? "Not available on this device" : "")
     }
 }
