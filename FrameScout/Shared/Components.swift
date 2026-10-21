@@ -190,13 +190,18 @@ struct StatView: View {
     var value: String
     var detail: String? = nil
     var highlight = false
+    var provenance: Provenance? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.fsLabel)
-                .tracking(Theme.tracking)
-                .foregroundStyle(Theme.textTertiary)
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.fsLabel)
+                    .tracking(Theme.tracking)
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+                if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
+            }
             Text(value)
                 .font(.fsValue)
                 .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
@@ -207,6 +212,7 @@ struct StatView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

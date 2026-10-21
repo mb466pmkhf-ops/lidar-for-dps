@@ -63,6 +63,9 @@ check(provStats.provenance(of: .roomSize, kind: .mesh) == .estimated, "mesh room
 check(provStats.provenance(of: .floorArea, kind: .room) == .measured, "floor polygon area is measured")
 provStats.floorAreaIsEstimate = true
 check(provStats.provenance(of: .floorArea, kind: .room) == .estimated, "bounding-box floor area is estimated")
+check(provStats.marked("2.74 m", .ceilingHeight, kind: .room) == "≈ 2.74 m"
+      && provStats.marked("2.74 m", .ceilingHeight, kind: .mesh) == "2.74 m"
+      && provStats.marked("—", .ceilingHeight, kind: .room) == "—", "plain-text estimate marker")
 var manualM = DistanceMeasurement(kind: .custom, label: "", value: 2, source: .manual)
 check(manualM.provenance == .manual, "manual entry is manual")
 manualM.source = .ar

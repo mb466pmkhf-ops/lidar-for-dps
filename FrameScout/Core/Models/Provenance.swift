@@ -83,6 +83,12 @@ extension ScanStats {
             return .estimated
         }
     }
+
+    /// Prefixes a formatted figure with its plain-text marker (≈ / ✎) where badges can't be drawn.
+    func marked(_ value: String, _ figure: ScanFigure, kind: ScanKind) -> String {
+        let marker = provenance(of: figure, kind: kind).marker
+        return marker.isEmpty || value == "—" ? value : "\(marker) \(value)"
+    }
 }
 
 extension ScanRecord {
