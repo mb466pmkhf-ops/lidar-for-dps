@@ -27,7 +27,7 @@ struct LocationDetailView: View {
 
     private func content(_ location: Location) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
                 header(location)
                 toolGrid(location)
                 keyFigures(location)
@@ -39,7 +39,9 @@ struct LocationDetailView: View {
                 notesCard(location)
                 scansCard(location)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
         }
         .fsScreen()
         .navigationTitle(location.name)
@@ -91,7 +93,7 @@ struct LocationDetailView: View {
     // MARK: Sections
 
     private func header(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             if let project = store.project(ref.projectID) {
                 Text(project.name).font(.fsLabel).foregroundStyle(Theme.textTertiary)
             }
@@ -129,8 +131,8 @@ struct LocationDetailView: View {
     }
 
     private func toolGrid(_ location: Location) -> some View {
-        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-        return LazyVGrid(columns: columns, spacing: 10) {
+        let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+        return LazyVGrid(columns: columns, spacing: 12) {
             SmallTool(title: "Scan", symbol: "viewfinder.circle", disabled: !DeviceCapabilities.hasLiDAR) {
                 router.start(.scan(CaptureTarget(ref)))
             }
@@ -157,9 +159,9 @@ struct LocationDetailView: View {
     private func keyFigures(_ location: Location) -> some View {
         if let scan = location.primaryScan {
             let s = scan.stats
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Theme.itemSpacing) {
                 SectionHeader(title: "Key figures", systemImage: "ruler")
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 20) {
                     GridRow {
                         StatView(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length),
                                  provenance: s.provenance(of: .roomSize, kind: scan.kind))
@@ -186,7 +188,7 @@ struct LocationDetailView: View {
     @ViewBuilder
     private func planCard(_ location: Location) -> some View {
         if let scan = location.primaryScan, let plan = store.floorPlan(ref, scanID: scan.id) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Theme.itemSpacing) {
                 SectionHeader(title: "Plan", systemImage: "map")
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
@@ -212,7 +214,7 @@ struct LocationDetailView: View {
     }
 
     private func tagsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Tags", systemImage: "tag")
             FlowLayout(spacing: 8) {
                 ForEach(LocationTag.allCases) { tag in
@@ -228,7 +230,7 @@ struct LocationDetailView: View {
     }
 
     private func photosCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Photos (\(location.photos.count))", systemImage: "photo.on.rectangle",
                           action: { router.open(.photos(ref)) }, actionLabel: "All")
             if !location.photos.isEmpty {
@@ -257,7 +259,7 @@ struct LocationDetailView: View {
     }
 
     private func measurementsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Measurements (\(location.measurements.count))", systemImage: "ruler",
                           action: { router.open(.measurements(ref)) }, actionLabel: "All")
             ForEach(Array(location.measurements.suffix(5).reversed())) { m in
@@ -277,7 +279,7 @@ struct LocationDetailView: View {
     }
 
     private func camerasCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.plan(ref)) }, actionLabel: "Plan")
             ForEach(location.cameraPositions) { c in
                 HStack {
@@ -306,7 +308,7 @@ struct LocationDetailView: View {
     }
 
     private func notesCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Notes", systemImage: "note.text", action: { router.open(.notes(ref)) }, actionLabel: "Edit")
             ForEach(location.quickNotes.prefix(6)) { note in
                 Label(note.text, systemImage: note.category.symbol).font(.fsBody)
@@ -327,7 +329,7 @@ struct LocationDetailView: View {
     }
 
     private func scansCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             SectionHeader(title: "Scans (\(location.scans.count))", systemImage: "cube.transparent")
             ForEach(location.scans) { scan in
                 Button { router.open(.scanDetail(ref, scanID: scan.id)) } label: {
@@ -388,14 +390,14 @@ struct SmallTool: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Image(systemName: disabled ? "lock" : symbol).font(.title3)
                     .foregroundStyle(disabled ? Theme.textTertiary : Theme.accent)
                 Text(title).font(.fsLabel)
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity, minHeight: 72)
+            .frame(maxWidth: .infinity, minHeight: 80)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
             .opacity(disabled ? 0.55 : 1)
             .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))

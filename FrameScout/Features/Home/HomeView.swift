@@ -13,7 +13,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     ActionTile(title: "Scan a location",
                                subtitle: DeviceCapabilities.hasLiDAR ? "Room plan or LiDAR mesh" : "Needs a LiDAR iPhone",
@@ -45,35 +45,38 @@ struct HomeView: View {
                         router.open(.compare)
                     }
                 }
-                .card(padding: 12)
+                .card(padding: 14)
 
-                SectionHeader(title: "Projects", action: {
-                    newProjectName = ""
-                    showNewProject = true
-                }, actionLabel: "New")
-                if store.recentProjects.isEmpty {
-                    EmptyStateView(systemImage: "film", title: "No projects yet",
-                                   message: "Make a project for each production, then add locations, scans and props to it.")
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(store.recentProjects.prefix(12).enumerated()), id: \.element.id) { i, project in
-                            if i > 0 { Divider().padding(.leading, 88) }
-                            Button { router.open(.project(project.id)) } label: {
-                                ProjectRow(project: project)
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: "Projects", action: {
+                        newProjectName = ""
+                        showNewProject = true
+                    }, actionLabel: "New")
+                    if store.recentProjects.isEmpty {
+                        EmptyStateView(systemImage: "film", title: "No projects yet",
+                                       message: "Make a project for each production, then add locations, scans and props to it.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(store.recentProjects.prefix(12).enumerated()), id: \.element.id) { i, project in
+                                if i > 0 { Divider().padding(.leading, 88) }
+                                Button { router.open(.project(project.id)) } label: {
+                                    ProjectRow(project: project)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { projectMenu(project) }
                             }
-                            .buttonStyle(.plain)
-                            .contextMenu { projectMenu(project) }
                         }
+                        .card(padding: 14)
                     }
-                    .card(padding: 12)
                 }
 
                 Label(DeviceCapabilities.summary, systemImage: DeviceCapabilities.hasLiDAR ? "checkmark.circle" : "info.circle")
-                    .font(.footnote)
+                    .font(.fsFootnote)
                     .foregroundStyle(Theme.textTertiary)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
         }
         .fsScreen()
         .navigationTitle("FrameScout")
@@ -148,14 +151,14 @@ struct ProjectRow: View {
             }
             .frame(width: 76, height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(project.name).font(.headline).foregroundStyle(Theme.textPrimary).lineLimit(1)
-                Text(summary).font(.footnote).foregroundStyle(Theme.textTertiary).lineLimit(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(project.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                Text(summary).font(.fsFootnote).foregroundStyle(Theme.textTertiary).lineLimit(2)
             }
             Spacer(minLength: 4)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens the project")

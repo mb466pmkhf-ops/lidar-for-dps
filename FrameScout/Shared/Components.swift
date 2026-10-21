@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct CardModifier: ViewModifier {
-    var padding: CGFloat = 16
+    var padding: CGFloat = 18
     func body(content: Content) -> some View {
         content
             .padding(padding)
@@ -12,7 +12,7 @@ struct CardModifier: ViewModifier {
 }
 
 extension View {
-    func card(padding: CGFloat = 16) -> some View { modifier(CardModifier(padding: padding)) }
+    func card(padding: CGFloat = 18) -> some View { modifier(CardModifier(padding: padding)) }
 
     /// Standard dark screen background.
     func fsScreen() -> some View {
@@ -28,8 +28,8 @@ struct Wordmark: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("FrameScout").font(.headline)
-            Text(subtitle).font(.caption).foregroundStyle(Theme.textTertiary)
+            Text("FrameScout").font(.fsHeadline)
+            Text(subtitle).font(.fsMicro).foregroundStyle(Theme.textTertiary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -44,7 +44,7 @@ struct SectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title)
-                .font(.title3.weight(.semibold))
+                .font(.fsSection)
                 .foregroundStyle(Theme.textPrimary)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
@@ -58,7 +58,7 @@ struct SectionHeader: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.top, 6)
+        .padding(.top, 4)
     }
 }
 
@@ -74,25 +74,25 @@ struct ActionTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: disabled ? "lock" : systemImage)
                     .font(.title2)
                     .foregroundStyle(prominent && !disabled ? Color.black : (disabled ? Theme.textTertiary : Theme.accent))
                     .frame(height: 30)
                 Text(title)
-                    .font(.headline)
+                    .font(.fsHeadline)
                     .foregroundStyle(prominent && !disabled ? Color.black : Theme.textPrimary)
                     .multilineTextAlignment(.leading)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.footnote)
+                        .font(.fsFootnote)
                         .foregroundStyle(prominent && !disabled ? Color.black.opacity(0.7) : Theme.textTertiary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
             .background(prominent && !disabled ? Theme.accent : Theme.surface,
                         in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
             .opacity(disabled ? 0.6 : 1)
@@ -120,9 +120,9 @@ struct MenuRow: View {
                     Image(systemName: systemImage).font(.title3).foregroundStyle(Theme.accent).frame(width: 30)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body).foregroundStyle(Theme.textPrimary)
+                    Text(title).font(.fsBody).foregroundStyle(Theme.textPrimary)
                     if let subtitle {
-                        Text(subtitle).font(.footnote).foregroundStyle(Theme.textTertiary)
+                        Text(subtitle).font(.fsFootnote).foregroundStyle(Theme.textTertiary)
                     }
                 }
                 Spacer()
@@ -130,7 +130,7 @@ struct MenuRow: View {
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
             }
             .frame(minHeight: Theme.minTap)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .opacity(disabled ? 0.5 : 1)
         }
@@ -174,11 +174,13 @@ struct StatView: View {
     var provenance: Provenance? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
                 .font(.fsLabel)
+                .tracking(Theme.tracking)
                 .foregroundStyle(Theme.textTertiary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Text(value)
                 .font(.fsValue)
                 .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
@@ -313,8 +315,8 @@ struct ProvenanceBadge: View {
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
-        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
-        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.estimate)
+        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.estimate.opacity(0.6),
                                     style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
         .fixedSize()
         .accessibilityElement(children: .ignore)
