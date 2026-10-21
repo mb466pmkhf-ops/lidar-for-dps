@@ -344,7 +344,7 @@ struct VirtualCameraView: View {
             }
         }
         .padding(10)
-        .background(Color.black.opacity(0.6), in: Rectangle())
+        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func compactSlider(_ title: String, value: Double, range: ClosedRange<Double>,

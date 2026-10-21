@@ -57,7 +57,6 @@ struct CompareView: View {
             ForEach(Array(Self.rowLabels.enumerated()), id: \.offset) { i, label in
                 Text(label)
                     .font(.fsLabel)
-                    .tracking(Theme.tracking)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 96, height: Self.rowHeights[i], alignment: .leading)
             }
@@ -83,7 +82,7 @@ struct CompareView: View {
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Location \(letter)").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text("Location \(letter)").font(.fsLabel).foregroundStyle(Theme.textTertiary)
                     Text(location?.name ?? "Choose…").font(.fsHeadline).lineLimit(1)
                 }
                 .frame(width: 180, height: 56, alignment: .leading)
@@ -112,7 +111,7 @@ struct CompareView: View {
             cell(11) { value(location.map { "\($0.shots.count)" } ?? "—") }
             cell(12) {
                 Text(location?.sortedTags.map(\.label).joined(separator: " · ") ?? "")
-                    .font(.fsMicro).tracking(Theme.tracking)
+                    .font(.fsMicro)
                     .foregroundStyle(Theme.accent)
                     .lineLimit(4)
             }
@@ -124,7 +123,7 @@ struct CompareView: View {
             }
         }
         .padding(.horizontal, 8)
-        .background(Theme.surface, in: Rectangle())
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func cell<Content: View>(_ row: Int, @ViewBuilder content: () -> Content) -> some View {

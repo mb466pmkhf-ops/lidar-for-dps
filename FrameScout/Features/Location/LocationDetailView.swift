@@ -56,7 +56,7 @@ struct LocationDetailView: View {
                     }
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Location", systemImage: "trash") }
-                } label: { Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)) }
+                } label: { Image(systemName: "ellipsis").font(.system(size: 17, weight: .regular)) }
             }
         }
         .alert("Rename Location", isPresented: $showRename) {
@@ -93,7 +93,7 @@ struct LocationDetailView: View {
     private func header(_ location: Location) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let project = store.project(ref.projectID) {
-                Text(project.name).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                Text(project.name).font(.fsLabel).foregroundStyle(Theme.textTertiary)
             }
             TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
                 .font(.fsBody)
@@ -190,7 +190,7 @@ struct LocationDetailView: View {
                 SectionHeader(title: "Plan", systemImage: "map")
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
-                    .background(Theme.background, in: Rectangle())
+                    .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .onTapGesture { router.open(.plan(ref)) }
                 Text("Tap to place cameras, shots and measure on the plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
@@ -262,7 +262,7 @@ struct LocationDetailView: View {
                           action: { router.open(.measurements(ref)) }, actionLabel: "All")
             ForEach(Array(location.measurements.suffix(5).reversed())) { m in
                 HStack {
-                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
+                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .regular)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     Text(m.label.isEmpty ? m.kind.label : m.label)
                     Spacer()
                     Text(UnitsFormatter.distance(m.value)).font(.fsMono)
@@ -281,7 +281,7 @@ struct LocationDetailView: View {
             SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.plan(ref)) }, actionLabel: "Plan")
             ForEach(location.cameraPositions) { c in
                 HStack {
-                    Image(systemName: "video.fill").font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
+                    Image(systemName: "video.fill").font(.system(size: 14, weight: .regular)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     VStack(alignment: .leading) {
                         Text(c.name)
                         Text("\(c.rig.lensSummary) · h \(UnitsFormatter.distance(c.rig.height))")
@@ -314,7 +314,7 @@ struct LocationDetailView: View {
             ForEach([("General", location.notes), ("Lighting", location.lightingNotes), ("Production", location.productionNotes)], id: \.0) { title, text in
                 if !text.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        Text(title).font(.fsLabel).foregroundStyle(Theme.textTertiary)
                         Text(text).font(.fsBody).lineLimit(4)
                     }
                 }

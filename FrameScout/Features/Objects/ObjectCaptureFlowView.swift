@@ -198,9 +198,9 @@ struct ObjectCaptureFlowView: View {
                             .font(.fsBody).foregroundStyle(Theme.textSecondary)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Name").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        Text("Name").font(.fsLabel).foregroundStyle(Theme.textTertiary)
                         TextField("e.g. Hero teddy, Alexa Mini", text: $name)
-                            .font(.poppins(.light, 20))
+                            .font(.title3)
                             .textInputAutocapitalization(.words)
                             .padding(.vertical, 8)
                             .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
@@ -224,10 +224,10 @@ struct ObjectCaptureFlowView: View {
                 model.begin(store: store, projectID: targetProjectID, name: name)
             } label: {
                 Text("Start scanning")
-                    .font(.fsButton).tracking(Theme.tracking)
+                    .font(.fsButton)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(Color.white, in: Rectangle())
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!ObjectCaptureModel.isSupported)
@@ -255,7 +255,7 @@ struct ObjectCaptureFlowView: View {
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
                     Button { confirmDiscard = true } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .light)).frame(width: 40, height: 40)
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .regular)).frame(width: 40, height: 40)
                     }
                     .buttonStyle(.plain)
                     Spacer()
@@ -270,9 +270,9 @@ struct ObjectCaptureFlowView: View {
                 }
                 if let line = model.feedback.first {
                     Text(line)
-                        .font(.fsCaption).tracking(Theme.tracking)
+                        .font(.fsCaption)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Color.black.opacity(0.6), in: Rectangle())
+                        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding(.top, 8)
                 }
                 Spacer()
@@ -317,7 +317,7 @@ struct ObjectCaptureFlowView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.62), in: Rectangle())
+        .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var passComplete: some View {
@@ -339,27 +339,27 @@ struct ObjectCaptureFlowView: View {
             }
         }
         .padding(22)
-        .background(Theme.background.opacity(0.96), in: Rectangle())
-        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+        .background(Theme.background.opacity(0.96), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
         .padding(20)
     }
 
     private func primary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.fsButton).tracking(Theme.tracking)
+            Text(title).font(.fsButton)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .background(Color.white, in: Rectangle())
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.fsButton).tracking(Theme.tracking)
+            Text(title).font(.fsButton)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .overlay(Rectangle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.6), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
@@ -439,19 +439,19 @@ struct ObjectBuildProgressView: View {
             if builder.phase == .finished {
                 if let onOpen {
                 Button(action: onOpen) {
-                    Text("Open object").font(.fsButton).tracking(Theme.tracking)
+                    Text("Open object").font(.fsButton)
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Color.white, in: Rectangle())
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 }
             } else {
                 Button(action: onLater) {
-                    Text(builder.isBusy ? "Stop · build later" : "Close").font(.fsButton).tracking(Theme.tracking)
+                    Text(builder.isBusy ? "Stop · build later" : "Close").font(.fsButton)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 52)
-                        .overlay(Rectangle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.6), lineWidth: 0.5))
                 }
                 .buttonStyle(.plain)
             }

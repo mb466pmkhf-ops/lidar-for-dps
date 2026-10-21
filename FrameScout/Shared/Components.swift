@@ -153,7 +153,6 @@ struct UnderlineTabs<Value: Hashable>: View {
                 Button { selection = value } label: {
                     Text(label)
                         .font(.fsLabel)
-                        .tracking(Theme.tracking)
                         .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
                         .padding(.vertical, 6)
                         .overlay(alignment: .bottom) {
@@ -178,7 +177,6 @@ struct StatView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.fsLabel)
-                .tracking(Theme.tracking)
                 .foregroundStyle(Theme.textTertiary)
                 .lineLimit(1)
             Text(value)
@@ -294,7 +292,6 @@ struct OverlayButton: View {
                 if let label {
                     Text(label)
                         .font(.fsMicro)
-                        .tracking(Theme.tracking)
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.8), radius: 2)
                 }
@@ -312,12 +309,12 @@ struct ProvenanceBadge: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
-            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
+            Text(provenance.label.uppercased()).font(.fsMicroStrong)
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
         .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
-        .overlay(Rectangle().stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
                                     style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -370,10 +367,10 @@ struct RequirementBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .light))
+                .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Theme.textTertiary)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.fsHeadline).tracking(0.4)
+                Text(title).font(.fsHeadline)
                 Text(message).font(.fsBody).foregroundStyle(Theme.textSecondary)
             }
         }
@@ -405,9 +402,9 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .ultraLight))
+                .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(Theme.textTertiary)
-            Text(title).font(.fsHeadline).tracking(0.4)
+            Text(title).font(.fsHeadline)
             Text(message)
                 .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)

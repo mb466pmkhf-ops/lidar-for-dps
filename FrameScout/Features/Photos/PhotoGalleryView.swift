@@ -29,7 +29,7 @@ struct PhotoGalleryView: View {
                                 Image(systemName: photo.source == .scan ? "cube.transparent" : "camera.viewfinder")
                                     .font(.fsMicro)
                                     .padding(4)
-                                    .background(.black.opacity(0.6), in: Rectangle())
+                                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .padding(4)
                             }
                         }

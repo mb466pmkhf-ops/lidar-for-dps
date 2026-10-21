@@ -29,7 +29,7 @@ struct LensPicker: View {
                         showCustom = true
                     } label: {
                         Text(isCustom ? Optics.formatFocal(focalLength) : "Custom")
-                            .font(.fsLabel).tracking(Theme.tracking)
+                            .font(.fsLabel)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 40)
                             .foregroundStyle(isCustom ? Color.black : Theme.textPrimary)
@@ -94,7 +94,7 @@ struct SensorPicker: View {
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
             }
             .padding(10)
-            .background(Theme.surfaceRaised, in: Rectangle())
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 }
@@ -120,7 +120,7 @@ struct LabeledNumberField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+            Text(title).font(.fsLabel).foregroundStyle(Theme.textTertiary)
             TextField(title, value: $value, format: .number.precision(.fractionLength(0...2)))
                 .keyboardType(.decimalPad)
                 .font(.fsValue)
@@ -216,7 +216,7 @@ struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                Text(title).font(.fsLabel).foregroundStyle(Theme.textTertiary)
                 Spacer()
                 Text(format(value)).font(.system(.body, design: .rounded).monospacedDigit().weight(.semibold))
             }

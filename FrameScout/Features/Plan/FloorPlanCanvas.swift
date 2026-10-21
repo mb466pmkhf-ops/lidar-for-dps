@@ -456,7 +456,7 @@ struct PlanRenderer {
         arrow.closeSubpath()
         ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22, y: c.y - 22, width: 44, height: 44)), with: .color(.black.opacity(0.5)))
         ctx.fill(arrow, with: .color(Theme.danger))
-        ctx.draw(Text("N").font(.poppins(.medium, 10)).foregroundColor(.white),
+        ctx.draw(Text("N").font(.system(size: 11, weight: .bold)).foregroundColor(.white),
                  at: CGPoint(x: c.x + d.dx * 27, y: c.y + d.dy * 27))
     }
 
