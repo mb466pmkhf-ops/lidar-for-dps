@@ -27,7 +27,7 @@ struct LocationDetailView: View {
 
     private func content(_ location: Location) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
+            VStack(alignment: .leading, spacing: 18) {
                 header(location)
                 toolGrid(location)
                 keyFigures(location)
@@ -39,9 +39,7 @@ struct LocationDetailView: View {
                 notesCard(location)
                 scansCard(location)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 32)
+            .padding()
         }
         .fsScreen()
         .navigationTitle(location.name)
@@ -58,7 +56,7 @@ struct LocationDetailView: View {
                     }
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Location", systemImage: "trash") }
-                } label: { Image(systemName: "ellipsis").font(.system(size: 17, weight: .regular)) }
+                } label: { Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)) }
             }
         }
         .alert("Rename Location", isPresented: $showRename) {
@@ -93,9 +91,9 @@ struct LocationDetailView: View {
     // MARK: Sections
 
     private func header(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 8) {
             if let project = store.project(ref.projectID) {
-                Text(project.name).font(.fsLabel).foregroundStyle(Theme.textTertiary)
+                Text(project.name).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
             }
             TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
                 .font(.fsBody)
@@ -131,8 +129,8 @@ struct LocationDetailView: View {
     }
 
     private func toolGrid(_ location: Location) -> some View {
-        let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-        return LazyVGrid(columns: columns, spacing: 12) {
+        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        return LazyVGrid(columns: columns, spacing: 10) {
             SmallTool(title: "Scan", symbol: "viewfinder.circle", disabled: !DeviceCapabilities.hasLiDAR) {
                 router.start(.scan(CaptureTarget(ref)))
             }
@@ -159,9 +157,9 @@ struct LocationDetailView: View {
     private func keyFigures(_ location: Location) -> some View {
         if let scan = location.primaryScan {
             let s = scan.stats
-            VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+            VStack(alignment: .leading, spacing: 12) {
                 SectionHeader(title: "Key figures", systemImage: "ruler")
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 20) {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
                     GridRow {
                         StatView(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length),
                                  provenance: s.provenance(of: .roomSize, kind: scan.kind))
@@ -188,11 +186,11 @@ struct LocationDetailView: View {
     @ViewBuilder
     private func planCard(_ location: Location) -> some View {
         if let scan = location.primaryScan, let plan = store.floorPlan(ref, scanID: scan.id) {
-            VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+            VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: "Plan", systemImage: "map")
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
-                    .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Theme.background, in: Rectangle())
                     .onTapGesture { router.open(.plan(ref)) }
                 Text("Tap to place cameras, shots and measure on the plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
@@ -214,7 +212,7 @@ struct LocationDetailView: View {
     }
 
     private func tagsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Tags", systemImage: "tag")
             FlowLayout(spacing: 8) {
                 ForEach(LocationTag.allCases) { tag in
@@ -230,7 +228,7 @@ struct LocationDetailView: View {
     }
 
     private func photosCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Photos (\(location.photos.count))", systemImage: "photo.on.rectangle",
                           action: { router.open(.photos(ref)) }, actionLabel: "All")
             if !location.photos.isEmpty {
@@ -259,12 +257,12 @@ struct LocationDetailView: View {
     }
 
     private func measurementsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Measurements (\(location.measurements.count))", systemImage: "ruler",
                           action: { router.open(.measurements(ref)) }, actionLabel: "All")
             ForEach(Array(location.measurements.suffix(5).reversed())) { m in
                 HStack {
-                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .regular)).foregroundStyle(Theme.textTertiary).frame(width: 24)
+                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     Text(m.label.isEmpty ? m.kind.label : m.label)
                     Spacer()
                     Text(UnitsFormatter.distance(m.value)).font(.fsMono)
@@ -279,11 +277,11 @@ struct LocationDetailView: View {
     }
 
     private func camerasCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.plan(ref)) }, actionLabel: "Plan")
             ForEach(location.cameraPositions) { c in
                 HStack {
-                    Image(systemName: "video.fill").font(.system(size: 14, weight: .regular)).foregroundStyle(Theme.textTertiary).frame(width: 24)
+                    Image(systemName: "video.fill").font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
                     VStack(alignment: .leading) {
                         Text(c.name)
                         Text("\(c.rig.lensSummary) · h \(UnitsFormatter.distance(c.rig.height))")
@@ -308,7 +306,7 @@ struct LocationDetailView: View {
     }
 
     private func notesCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Notes", systemImage: "note.text", action: { router.open(.notes(ref)) }, actionLabel: "Edit")
             ForEach(location.quickNotes.prefix(6)) { note in
                 Label(note.text, systemImage: note.category.symbol).font(.fsBody)
@@ -316,7 +314,7 @@ struct LocationDetailView: View {
             ForEach([("General", location.notes), ("Lighting", location.lightingNotes), ("Production", location.productionNotes)], id: \.0) { title, text in
                 if !text.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.fsLabel).foregroundStyle(Theme.textTertiary)
+                        Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                         Text(text).font(.fsBody).lineLimit(4)
                     }
                 }
@@ -329,7 +327,7 @@ struct LocationDetailView: View {
     }
 
     private func scansCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Scans (\(location.scans.count))", systemImage: "cube.transparent")
             ForEach(location.scans) { scan in
                 Button { router.open(.scanDetail(ref, scanID: scan.id)) } label: {
@@ -390,17 +388,15 @@ struct SmallTool: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: disabled ? "lock" : symbol).font(.title3)
-                    .foregroundStyle(disabled ? Theme.textTertiary : Theme.accent)
-                Text(title).font(.fsLabel)
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: 18, weight: .ultraLight)).foregroundStyle(Theme.textSecondary)
+                Text(title).font(.fsLabel).tracking(Theme.tracking)
                     .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity, minHeight: 80)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-            .opacity(disabled ? 0.55 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 72)
+            .background(Theme.surface, in: Rectangle())
+            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+            .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
         .disabled(disabled)

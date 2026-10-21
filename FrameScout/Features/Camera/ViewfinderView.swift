@@ -506,7 +506,7 @@ struct ViewfinderView: View {
                         .frame(width: 64, height: 64)
                         .overlay(alignment: .bottom) {
                             if model.focusLocked {
-                                Text("AE/AF lock").font(.fsMicro).offset(y: 16)
+                                Text("AE/AF lock").font(.fsMicro).tracking(Theme.tracking).offset(y: 16)
                             }
                         }
                         .position(p)
@@ -520,7 +520,7 @@ struct ViewfinderView: View {
                     Spacer()
                     if !landscape {
                         Text("Turn the phone sideways for full-size frame lines")
-                            .font(.fsMicro)
+                            .font(.fsMicro).tracking(Theme.tracking)
                             .foregroundStyle(.white.opacity(0.7))
                             .padding(.bottom, 8)
                     }
@@ -660,7 +660,7 @@ struct ViewfinderView: View {
     private var topBar: some View {
         HStack(alignment: .center, spacing: 16) {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .regular)).frame(width: 36, height: 36)
+                Image(systemName: "xmark").font(.system(size: 17, weight: .light)).frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
             UnderlineTabs(options: ViewfinderModel.Framing.allCases.map { ($0, $0.label) },
@@ -668,11 +668,11 @@ struct ViewfinderView: View {
             Spacer()
             Button { model.toggleLock() } label: {
                 Text("AE/AF lock")
-                    .font(.fsLabel)
+                    .font(.fsLabel).tracking(Theme.tracking)
                     .foregroundStyle(model.focusLocked ? Color.black : .white)
                     .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(model.focusLocked ? Color.white : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.5), lineWidth: 0.5))
+                    .background(model.focusLocked ? Color.white : Color.clear, in: Rectangle())
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             exposureMenu
@@ -704,7 +704,7 @@ struct ViewfinderView: View {
             Toggle("Neighbouring lenses", isOn: $model.settings.compareNeighbours)
             Button("Calibrate field of view…") { showCalibration = true }
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 17, weight: .regular)).frame(width: 36, height: 36)
+            Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)).frame(width: 36, height: 36)
         }
     }
 
@@ -776,15 +776,16 @@ struct ViewfinderView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.black.opacity(0.62), in: Rectangle())
     }
 
     private func menuLabel(_ text: String) -> some View {
         HStack(spacing: 4) {
             Text(text).lineLimit(1)
-            Image(systemName: "chevron.down").font(.system(size: 9, weight: .regular))
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .light))
         }
         .font(.fsLabel)
+        .tracking(Theme.tracking)
         .foregroundStyle(.white)
         .frame(minHeight: 36)
     }
@@ -845,7 +846,7 @@ struct ViewfinderLensStrip: View {
                         showCustom = true
                     } label: {
                         Text(isCustom ? Optics.formatFocal(focalLength) : "mm…")
-                            .font(.fsLabel)
+                            .font(.fsLabel).tracking(Theme.tracking)
                             .foregroundStyle(isCustom ? Color.white : Color.white.opacity(0.5))
                             .padding(.horizontal, 8)
                             .frame(minHeight: 34)
@@ -874,7 +875,7 @@ struct ViewfinderCalibrationSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Calibrate field of view").font(.fsHeadline)
+            Text("Calibrate field of view").font(.fsHeadline).tracking(0.4)
             Text("The frame lines come from the field of view the phone reports for its cameras, which is usually within 1–2 %. To match a particular camera exactly: set the same lens and sensor here, frame the same edge (a door frame works) on both, then nudge until the lines agree.")
                 .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)

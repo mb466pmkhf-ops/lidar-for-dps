@@ -108,7 +108,7 @@ struct SunLightView: View {
                     let lit = litWindows(plan: plan, north: north, sun: sun)
                     FloorPlanCanvas(plan: plan, overlay: sunOverlay(north: north, sun: sun, lit: lit), style: .full)
                         .frame(height: 300)
-                        .background(Theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Theme.background, in: Rectangle())
                     Text(lit.isEmpty ? "No window is in direct sun at this time."
                                      : "\(lit.count) window\(lit.count == 1 ? "" : "s") in direct sun (highlighted).")
                         .font(.fsBody)

@@ -71,7 +71,7 @@ struct ProjectDetailView: View {
                                 VStack(spacing: 6) {
                                     ObjectThumbnail(projectID: projectID, object: object)
                                         .aspectRatio(1, contentMode: .fit)
-                                    Text(object.name).font(.fsLabel).lineLimit(1)
+                                    Text(object.name).font(.fsLabel).tracking(0.4).lineLimit(1)
                                     Text(object.dimensionsSummary ?? object.status.rawValue)
                                         .font(.fsMicro).foregroundStyle(Theme.textTertiary).lineLimit(1)
                                 }
@@ -105,7 +105,7 @@ struct ProjectDetailView: View {
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Project", systemImage: "trash") }
                 } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .regular))
+                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .light))
                 }
             }
         }
@@ -174,11 +174,12 @@ struct LocationRow: View {
                 if !location.tags.isEmpty {
                     Text(location.sortedTags.prefix(4).map { $0.label.capitalized }.joined(separator: " · "))
                         .font(.fsMicro)
+                        .tracking(Theme.tracking)
                         .foregroundStyle(Theme.textSecondary)
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
+            Text("→").font(.poppins(.light, 16)).foregroundStyle(Theme.textTertiary)
         }
         .padding(.vertical, 10)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
@@ -200,7 +201,7 @@ struct LocationThumbnail: View {
                 FloorPlanCanvas(plan: plan, style: .thumbnail)
                     .padding(6)
             } else {
-                Image(systemName: "photo").font(.system(size: 14, weight: .regular)).foregroundStyle(Theme.textTertiary)
+                Image(systemName: "photo").font(.system(size: 14, weight: .ultraLight)).foregroundStyle(Theme.textTertiary)
             }
         }
     }

@@ -110,7 +110,7 @@ struct ObjectDetailView: View {
                     .font(.fsBody)
                     .lineLimit(2...6)
                     .padding(12)
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
+                    .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
             }
             .padding()
         }
@@ -126,7 +126,7 @@ struct ObjectDetailView: View {
                     }
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }
                 } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .regular))
+                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .light))
                 }
             }
         }
@@ -137,9 +137,9 @@ struct ObjectDetailView: View {
         if hasModel {
             ModelPreview(url: usdz)
                 .frame(height: 340)
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
+                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
             Text("Drag to orbit · pinch to zoom")
-                .font(.fsMicro).foregroundStyle(Theme.textTertiary)
+                .font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 .frame(maxWidth: .infinity)
         } else {
             Rectangle()
@@ -242,6 +242,6 @@ struct ObjectThumbnail: View {
                     .font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
+        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
     }
 }

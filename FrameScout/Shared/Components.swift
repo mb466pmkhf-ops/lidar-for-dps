@@ -2,17 +2,18 @@ import SwiftUI
 import UIKit
 
 struct CardModifier: ViewModifier {
-    var padding: CGFloat = 18
+    var padding: CGFloat = 16
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .background(Theme.surface, in: Rectangle())
+            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
     }
 }
 
 extension View {
-    func card(padding: CGFloat = 18) -> some View { modifier(CardModifier(padding: padding)) }
+    func card(padding: CGFloat = 16) -> some View { modifier(CardModifier(padding: padding)) }
 
     /// Standard dark screen background.
     func fsScreen() -> some View {
@@ -20,16 +21,24 @@ extension View {
             .scrollContentBackground(.hidden)
     }
 
+    /// The site's spaced small-caps-free label treatment.
     func fsTracked(_ amount: CGFloat = Theme.tracking) -> some View { tracking(amount) }
 }
 
+/// Lower-case wordmark in the spirit of the site's "norbert varjasi / cinematographer" lockup.
 struct Wordmark: View {
-    var subtitle: String = "Location scouting"
+    var subtitle: String = "location scouting · previs"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("FrameScout").font(.fsHeadline)
-            Text(subtitle).font(.fsMicro).foregroundStyle(Theme.textTertiary)
+        VStack(alignment: .leading, spacing: 1) {
+            Text("frame scout")
+                .font(.poppins(.medium, 15))
+                .tracking(2.2)
+                .foregroundStyle(Theme.textSecondary)
+            Text(subtitle)
+                .font(.poppins(.light, 10))
+                .tracking(1.8)
+                .foregroundStyle(Theme.textTertiary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -42,28 +51,31 @@ struct SectionHeader: View {
     var actionLabel: String = "Add"
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
-                .font(.fsSection)
+                .font(.fsLabel)
+                .tracking(Theme.tracking)
                 .foregroundStyle(Theme.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
+            Rectangle()
+                .fill(Theme.hairline)
+                .frame(height: 0.5)
+                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
             if let action {
                 Button(action: action) {
-                    Label(actionLabel, systemImage: "plus")
-                        .font(.fsButton)
-                        .foregroundStyle(Theme.accent)
-                        .frame(minHeight: Theme.minTap)
+                    Text("+ \(actionLabel)")
+                        .font(.fsLabel)
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(Theme.textSecondary)
                 }
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.top, 4)
+        .padding(.horizontal, 2)
+        .padding(.top, 6)
     }
 }
 
-/// Big, labelled entry point: icon, title and a one-line explanation. Disabled tiles stay
-/// readable and say why they're unavailable.
+/// Home / toolbar entry. Square frame, hairline border, text first — no icon tiles.
 struct ActionTile: View {
     var title: String
     var subtitle: String? = nil
@@ -74,65 +86,71 @@ struct ActionTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: disabled ? "lock" : systemImage)
-                    .font(.title2)
-                    .foregroundStyle(prominent && !disabled ? Color.black : (disabled ? Theme.textTertiary : Theme.accent))
-                    .frame(height: 30)
-                Text(title)
-                    .font(.fsHeadline)
-                    .foregroundStyle(prominent && !disabled ? Color.black : Theme.textPrimary)
-                    .multilineTextAlignment(.leading)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    Text(title)
+                        .font(.poppins(.regular, 15))
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Spacer(minLength: 4)
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .ultraLight))
+                        .foregroundStyle(prominent ? Color.black.opacity(0.7) : Theme.textTertiary)
+                }
+                Spacer(minLength: 0)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.fsFootnote)
-                        .foregroundStyle(prominent && !disabled ? Color.black.opacity(0.7) : Theme.textTertiary)
+                        .font(.fsCaption)
+                        .foregroundStyle(prominent ? Color.black.opacity(0.65) : Theme.textSecondary)
+                        .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-            .background(prominent && !disabled ? Theme.accent : Theme.surface,
-                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-            .opacity(disabled ? 0.6 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+            .background(prominent ? Color.white : Theme.surface, in: Rectangle())
+            .overlay(Rectangle().stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
+            .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .accessibilityHint(disabled ? (subtitle ?? "Unavailable on this device") : "")
     }
 }
 
-/// List-style row with an optional icon and a chevron.
+/// Text row with a hairline under it, like an entry in the site's work list.
 struct MenuRow: View {
     var title: String
     var subtitle: String? = nil
     var trailing: String? = nil
-    var systemImage: String? = nil
     var disabled = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                if let systemImage {
-                    Image(systemName: systemImage).font(.title3).foregroundStyle(Theme.accent).frame(width: 30)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.fsBody).foregroundStyle(Theme.textPrimary)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.poppins(.light, 21, relativeTo: .title3))
+                        .tracking(0.6)
+                        .foregroundStyle(Theme.textPrimary)
                     if let subtitle {
-                        Text(subtitle).font(.fsFootnote).foregroundStyle(Theme.textTertiary)
+                        Text(subtitle)
+                            .font(.fsCaption)
+                            .tracking(0.4)
+                            .foregroundStyle(Theme.textTertiary)
                     }
                 }
                 Spacer()
-                if let trailing { Text(trailing).font(.fsMono).foregroundStyle(Theme.textTertiary) }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
+                Text(trailing ?? "→")
+                    .font(trailing == nil ? .poppins(.light, 16) : .fsMono)
+                    .foregroundStyle(Theme.textTertiary)
             }
-            .frame(minHeight: Theme.minTap)
-            .padding(.vertical, 8)
+            .padding(.vertical, 14)
             .contentShape(Rectangle())
-            .opacity(disabled ? 0.5 : 1)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+            .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -153,6 +171,7 @@ struct UnderlineTabs<Value: Hashable>: View {
                 Button { selection = value } label: {
                     Text(label)
                         .font(.fsLabel)
+                        .tracking(Theme.tracking)
                         .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
                         .padding(.vertical, 6)
                         .overlay(alignment: .bottom) {
@@ -174,13 +193,12 @@ struct StatView: View {
     var provenance: Provenance? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label.uppercased())
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
                 .font(.fsLabel)
                 .tracking(Theme.tracking)
                 .foregroundStyle(Theme.textTertiary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
             Text(value)
                 .font(.fsValue)
                 .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
@@ -189,6 +207,7 @@ struct StatView: View {
             if let detail {
                 Text(detail).font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
+            // Under the value, so a long label ("Floor area") never gets truncated by the badge.
             if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -204,35 +223,36 @@ struct TagChip: View {
     var body: some View {
         let label = Text(text.capitalized)
             .font(.fsLabel)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 12)
-            .frame(minHeight: 34)
-            .foregroundStyle(selected ? Color.black : Theme.textSecondary)
-            .background(selected ? Theme.accent : Theme.surfaceRaised, in: Capsule())
+            .tracking(Theme.tracking)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
+            .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
         if let action {
             Button(action: action) { label }.buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
         } else {
             label
         }
     }
 }
 
-/// Rounded button: accent fill for the primary action, outlined otherwise. At least 44 pt tall.
+/// Square hairline button (secondary) or white block (primary) — replaces the system's
+/// rounded bordered styles.
 struct HairlineButtonStyle: ButtonStyle {
     var prominent = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.fsButton)
-            .foregroundStyle(prominent ? Color.black : Theme.accent)
-            .padding(.horizontal, 16)
-            .frame(minHeight: Theme.minTap)
-            .background(prominent ? Theme.accent : Theme.surfaceRaised,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .opacity(configuration.isPressed ? 0.7 : (isEnabled ? 1 : 0.4))
+            .font(.fsLabel)
+            .tracking(Theme.tracking)
+            .labelStyle(.titleOnly)
+            .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(prominent ? Color.white : Color.clear, in: Rectangle())
+            .overlay(Rectangle().stroke(prominent ? Color.clear : Color.white.opacity(0.45), lineWidth: 0.5))
+            .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
     }
 }
 
@@ -286,7 +306,7 @@ struct OverlayButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: size * 0.36, weight: .semibold))
+                    .font(.system(size: size * 0.34, weight: .light))
                     .foregroundStyle(filled ? Color.black : tint)
                     .frame(width: size, height: size)
                     .background(filled ? AnyShapeStyle(tint) : AnyShapeStyle(Color.black.opacity(0.45)), in: Circle())
@@ -294,6 +314,7 @@ struct OverlayButton: View {
                 if let label {
                     Text(label)
                         .font(.fsMicro)
+                        .tracking(Theme.tracking)
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.8), radius: 2)
                 }
@@ -311,12 +332,12 @@ struct ProvenanceBadge: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
-            Text(provenance.label.uppercased()).font(.fsMicroStrong)
+            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
-        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.estimate)
-        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.estimate.opacity(0.6),
+        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
+        .overlay(Rectangle().stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
                                     style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -369,10 +390,10 @@ struct RequirementBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .regular))
+                .font(.system(size: 17, weight: .light))
                 .foregroundStyle(Theme.textTertiary)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.fsHeadline)
+                Text(title).font(.fsHeadline).tracking(0.4)
                 Text(message).font(.fsBody).foregroundStyle(Theme.textSecondary)
             }
         }
@@ -404,9 +425,9 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .regular))
+                .font(.system(size: 28, weight: .ultraLight))
                 .foregroundStyle(Theme.textTertiary)
-            Text(title).font(.fsHeadline)
+            Text(title).font(.fsHeadline).tracking(0.4)
             Text(message)
                 .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)

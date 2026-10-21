@@ -93,7 +93,7 @@ struct PlanEditorView: View {
                         .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
                         .padding(8)
-                        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color.black.opacity(0.6), in: Rectangle())
                         .padding(.top, 8)
                     if plan.isEmpty {
                         noScanNotice.padding(.top, 60)
@@ -328,11 +328,11 @@ struct PlanEditorView: View {
                 ForEach(PlanTool.allCases) { t in
                     Button { tool = t; if t != .measure { measurePoints = [] } } label: {
                         Label(t.label, systemImage: t.symbol)
-                            .font(.fsLabel)
+                            .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 12)
                             .frame(minHeight: 40)
                             .foregroundStyle(tool == t ? Color.black : Theme.textPrimary)
-                            .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled((t == .aim && selection == nil) || (t == .subject && !isShotSelected))
@@ -526,7 +526,7 @@ struct PlanEditorView: View {
 
     private var noScanNotice: some View {
         VStack(spacing: 6) {
-            Image(systemName: "square.dashed").font(.system(size: 26, weight: .regular))
+            Image(systemName: "square.dashed").font(.system(size: 26, weight: .ultraLight))
             Text("No scan for this location").font(.fsHeadline)
             Text("You can still place cameras on the grid (1 m squares).\(DeviceCapabilities.hasLiDAR ? " Scan the location to plan against real walls." : "")")
                 .font(.fsCaption)
@@ -534,7 +534,7 @@ struct PlanEditorView: View {
                 .foregroundStyle(Theme.textSecondary)
         }
         .padding()
-        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.black.opacity(0.6), in: Rectangle())
         .padding(.horizontal, 40)
         .allowsHitTesting(false)
     }

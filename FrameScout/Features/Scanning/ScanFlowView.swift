@@ -101,8 +101,8 @@ struct ScanModePicker: View {
         Button { onSelect(kind) } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Image(systemName: symbol).font(.system(size: 22, weight: .regular)).foregroundStyle(Theme.textTertiary)
-                    Text(title).font(.title3).foregroundStyle(Theme.textPrimary)
+                    Image(systemName: symbol).font(.system(size: 22, weight: .ultraLight)).foregroundStyle(Theme.textTertiary)
+                    Text(title).font(.poppins(.light, 21)).tracking(0.6).foregroundStyle(Theme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
                 }
@@ -210,7 +210,7 @@ struct ScanHUD: View {
                 Text(hint)
                     .font(.fsHeadline)
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Theme.accent, in: Rectangle())
                     .foregroundStyle(.black)
             }
             Spacer()
@@ -226,7 +226,7 @@ struct ScanHUD: View {
         HStack(alignment: .top, spacing: 8) {
             Button(action: onCancel) {
                 Image(systemName: "xmark")
-                    .font(.fsButton)
+                    .font(.fsButton).tracking(Theme.tracking)
                     .frame(width: 44, height: 44)
                     .background(Color.black.opacity(0.6), in: Circle())
             }
@@ -246,19 +246,19 @@ struct ScanHUD: View {
                 Text(phase == .processing ? "Processing segment…" : "Building model…").font(.fsHeadline)
             }
             .padding(12)
-            .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Color.black.opacity(0.6), in: Rectangle())
         case .paused:
             Text(kind == .room ? "Paused — walk to the next area, then resume" : "Paused — resume from the same spot")
                 .font(.fsLabel)
                 .padding(10)
-                .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Color.black.opacity(0.6), in: Rectangle())
         case .failed(let message):
             VStack(spacing: 10) {
                 Text(message).multilineTextAlignment(.center)
                 Button("Close", action: onCancel).buttonStyle(HairlineButtonStyle(prominent: true))
             }
             .padding()
-            .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Color.black.opacity(0.6), in: Rectangle())
         default:
             EmptyView()
         }
@@ -316,12 +316,12 @@ struct ScanStatsStrip: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.black.opacity(0.6), in: Rectangle())
     }
 
     private func figure(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(label.capitalized).font(.fsMicro).foregroundStyle(Theme.textSecondary)
+            Text(label.lowercased()).font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
             Text(value).font(.system(size: 14, weight: .regular, design: .monospaced))
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
