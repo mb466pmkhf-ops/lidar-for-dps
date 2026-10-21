@@ -54,6 +54,17 @@ struct PlanMeasureLine: Identifiable {
     var live = false
 }
 
+/// A text label waiting for collision-free placement on the plan.
+struct PlanLabel {
+    enum Priority: Int {
+        case camera, subject, dimension, object
+        var alwaysShown: Bool { self == .camera || self == .subject }
+    }
+    var text: Text
+    var anchor: CGPoint
+    var priority: Priority
+}
+
 struct PlanOverlay {
     var cameras: [PlanCameraMarker] = []
     var subjects: [PlanSubjectMarker] = []
@@ -108,17 +119,19 @@ struct PlanRenderer {
     private func px(_ metres: Double) -> CGFloat { CGFloat(metres) * vp.scale }
 
     func draw(in ctx: inout GraphicsContext) {
+        var labels: [PlanLabel] = []
         if full && overlay.showGrid { drawGrid(&ctx) }
         drawFloors(&ctx)
         drawOccupancy(&ctx)
-        drawObjects(&ctx)
+        drawObjects(&ctx, &labels)
         drawWalls(&ctx)
         drawApertures(&ctx)
         if full {
-            if overlay.showDimensions { drawWallDimensions(&ctx) }
+            if overlay.showDimensions { drawWallDimensions(&labels) }
             drawPhotoPoses(&ctx)
-            drawCameras(&ctx)
-            drawSubjects(&ctx)
+            drawCameras(&ctx, &labels)
+            drawSubjects(&ctx, &labels)
+            drawLabels(&ctx, labels)
             drawMeasurements(&ctx)
             drawSun(&ctx)
             drawNorth(&ctx)
@@ -168,7 +181,7 @@ struct PlanRenderer {
         ctx.fill(path, with: .color(Theme.planWall.opacity(0.75)))
     }
 
-    private func drawObjects(_ ctx: inout GraphicsContext) {
+    private func drawObjects(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for o in plan.objects {
             let ux = CGVector(dx: cos(o.rotation), dy: sin(o.rotation))
             let uz = CGVector(dx: -ux.dy, dy: ux.dx)
@@ -186,7 +199,8 @@ struct PlanRenderer {
             ctx.fill(path, with: .color(Theme.planObject.opacity(0.18)))
             ctx.stroke(path, with: .color(Theme.planObject), lineWidth: 1)
             if full && vp.scale > 40 {
-                ctx.draw(Text(o.category).font(.poppins(.light, 9)).foregroundColor(Theme.textSecondary), at: c)
+                labels.append(PlanLabel(text: Text(o.category).font(.system(size: 10)).foregroundColor(Theme.textSecondary),
+                                        anchor: c, priority: .object))
             }
         }
     }
@@ -265,15 +279,16 @@ struct PlanRenderer {
         return n
     }
 
-    private func drawWallDimensions(_ ctx: inout GraphicsContext) {
+    private func drawWallDimensions(_ labels: inout [PlanLabel]) {
         guard vp.scale > 18 else { return }
         let centroid = plan.interiorCentroid
         for w in plan.walls where w.length > 0.6 {
             let n = inwardNormal(w, centroid: centroid)
             let pos = s(w.midpoint + n * (14 / Double(vp.scale)))
-            ctx.draw(Text(UnitsFormatter.distance(w.length))
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Theme.textSecondary), at: pos)
+            labels.append(PlanLabel(text: Text(UnitsFormatter.distance(w.length))
+                                        .font(.system(size: 11).monospacedDigit())
+                                        .foregroundColor(Theme.textSecondary),
+                                    anchor: pos, priority: .dimension))
         }
     }
 
@@ -289,7 +304,7 @@ struct PlanRenderer {
         }
     }
 
-    private func drawCameras(_ ctx: inout GraphicsContext) {
+    private func drawCameras(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for cam in overlay.cameras {
             let origin = s(cam.rig.position)
             let half = cam.rig.horizontalFOV / 2
@@ -327,21 +342,47 @@ struct PlanRenderer {
                            with: .color(.white), lineWidth: 1.5)
             }
             let labelPos = CGPoint(x: origin.x - d.dx * 22, y: origin.y - d.dy * 22)
-            ctx.draw(Text("\(cam.label) · \(Optics.formatFocal(cam.rig.focalLength))")
-                        .font(.poppins(.medium, 10))
-                        .foregroundColor(color), at: labelPos)
+            labels.append(PlanLabel(text: Text("\(cam.label) · \(Optics.formatFocal(cam.rig.focalLength))")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(color),
+                                    anchor: labelPos, priority: .camera))
         }
     }
 
-    private func drawSubjects(_ ctx: inout GraphicsContext) {
+    private func drawSubjects(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for subject in overlay.subjects {
             let c = s(subject.point)
             let r: CGFloat = subject.selected ? 9 : 7
             ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.danger))
             ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r - 3, y: c.y - r - 3, width: 2 * r + 6, height: 2 * r + 6)),
                        with: .color(Theme.danger.opacity(0.5)), lineWidth: 1)
-            ctx.draw(Text(subject.label).font(.poppins(.medium, 10)).foregroundColor(Theme.danger),
-                     at: CGPoint(x: c.x, y: c.y + r + 10))
+            labels.append(PlanLabel(text: Text(subject.label).font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.danger),
+                                    anchor: CGPoint(x: c.x, y: c.y + r + 10), priority: .subject))
+        }
+    }
+
+    /// Draws labels most important first, nudging each one clear of those already placed.
+    /// Cameras and subjects are always drawn; dimensions and furniture names are dropped
+    /// rather than drawn on top of something else.
+    private func drawLabels(_ ctx: inout GraphicsContext, _ labels: [PlanLabel]) {
+        var placed: [CGRect] = []
+        for label in labels.sorted(by: { $0.priority.rawValue < $1.priority.rawValue }) {
+            let resolved = ctx.resolve(label.text)
+            let size = resolved.measure(in: CGSize(width: 300, height: 40))
+            let step = size.height + 3
+            let offsets: [CGPoint] = [.zero, CGPoint(x: 0, y: step), CGPoint(x: 0, y: -step),
+                                      CGPoint(x: 0, y: 2 * step), CGPoint(x: 0, y: -2 * step),
+                                      CGPoint(x: size.width / 2 + 8, y: 0), CGPoint(x: -size.width / 2 - 8, y: 0)]
+            func rect(_ o: CGPoint) -> CGRect {
+                CGRect(x: label.anchor.x + o.x - size.width / 2 - 3, y: label.anchor.y + o.y - size.height / 2 - 1,
+                       width: size.width + 6, height: size.height + 2)
+            }
+            let free = offsets.first { o in !placed.contains { $0.intersects(rect(o)) } }
+            guard let offset = free ?? (label.priority.alwaysShown ? CGPoint.zero : nil) else { continue }
+            let box = rect(offset)
+            placed.append(box)
+            ctx.fill(Path(roundedRect: box, cornerRadius: 3), with: .color(Theme.background.opacity(0.7)))
+            ctx.draw(resolved, at: CGPoint(x: box.midX, y: box.midY))
         }
     }
 
