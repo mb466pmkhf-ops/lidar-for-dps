@@ -12,6 +12,9 @@ struct DistanceMeasurement: Identifiable, Codable, Hashable {
     /// Horizontal component (m), where known.
     var horizontal: Double? = nil
     var source: MeasurementSource
+    /// Set when the source's default provenance doesn't hold, e.g. a scan-derived ceiling height
+    /// or plane-based AR on a device without LiDAR. Optional so older project files still decode.
+    var provenanceOverride: Provenance? = nil
     /// Endpoints in scan plan coordinates when measured on the top-down plan.
     var planA: PlanPoint? = nil
     var planB: PlanPoint? = nil

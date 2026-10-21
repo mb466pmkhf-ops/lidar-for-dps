@@ -162,8 +162,9 @@ struct LocationRow: View {
                 .clipped()
             VStack(alignment: .leading, spacing: 4) {
                 Text(location.name).font(.fsHeadline).foregroundStyle(Theme.textPrimary)
-                if let s = location.primaryScan?.stats {
-                    Text("\(UnitsFormatter.dimensions(s.width, s.length)) · ceiling \(UnitsFormatter.distance(s.ceilingHeight))")
+                if let scan = location.primaryScan {
+                    let s = scan.stats
+                    Text("\(s.marked(UnitsFormatter.dimensions(s.width, s.length), .roomSize, kind: scan.kind)) · ceiling \(s.marked(UnitsFormatter.distance(s.ceilingHeight), .ceilingHeight, kind: scan.kind))")
                         .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 } else {
                     Text("Not scanned").font(.fsCaption).foregroundStyle(Theme.textTertiary)

@@ -228,12 +228,12 @@ enum ExportService {
 
         // Measurements
         try write(json: location.measurements, to: root.appendingPathComponent("Measurements/measurements.json"))
-        var csv = "kind,label,value_m,horizontal_m,vertical_m,source,notes\n"
+        var csv = "kind,label,value_m,horizontal_m,vertical_m,source,provenance,notes\n"
         for m in location.measurements {
             csv += [m.kind.label, m.label, String(format: "%.3f", m.value),
                     m.horizontal.map { String(format: "%.3f", $0) } ?? "",
                     m.vertical.map { String(format: "%.3f", $0) } ?? "",
-                    m.source.label, m.notes].map(csvField).joined(separator: ",") + "\n"
+                    m.source.label, m.provenance.rawValue, m.notes].map(csvField).joined(separator: ",") + "\n"
         }
         try csv.write(to: root.appendingPathComponent("Measurements/measurements.csv"), atomically: true, encoding: .utf8)
 

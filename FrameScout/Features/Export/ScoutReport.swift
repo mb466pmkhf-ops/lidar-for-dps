@@ -146,7 +146,11 @@ private struct OverviewPage: View {
     var body: some View {
         let loc = data.location
         let s = loc.primaryScan?.stats
-        VStack(alignment: .leading, spacing: 12) {
+        let kind = loc.primaryScan?.kind ?? .room
+        func mark(_ value: String, _ figure: ScanFigure) -> String {
+            s?.marked(value, figure, kind: kind) ?? value
+        }
+        return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(loc.name).font(.poppins(.medium, 24)).foregroundStyle(Paper.ink)
                 if !loc.address.isEmpty { Text(loc.address).font(.poppins(.light, 10)).foregroundStyle(Paper.muted) }
@@ -162,11 +166,13 @@ private struct OverviewPage: View {
             }
 
             HStack(spacing: 8) {
-                ReportFigure(label: "Room", value: UnitsFormatter.dimensions(s?.width, s?.length))
-                ReportFigure(label: "Floor area", value: UnitsFormatter.area(s?.floorArea))
-                ReportFigure(label: "Ceiling", value: UnitsFormatter.distance(s?.ceilingHeight))
+                ReportFigure(label: "Room", value: mark(UnitsFormatter.dimensions(s?.width, s?.length), .roomSize))
+                ReportFigure(label: "Floor area", value: mark(UnitsFormatter.area(s?.floorArea), .floorArea))
+                ReportFigure(label: "Ceiling", value: mark(UnitsFormatter.distance(s?.ceilingHeight), .ceilingHeight))
                 ReportFigure(label: "Doors / windows", value: s.map { "\($0.doorCount) / \($0.windowCount)" } ?? "—")
             }
+            Text("Unmarked figures are measured from the LiDAR scan. ≈ estimated by the app or a less precise sensor · ✎ entered by hand.")
+                .font(.poppins(.light, 7)).foregroundStyle(Paper.muted)
 
             if let plan = data.plan {
                 ReportSection(title: "Plan · cameras & shots") {
@@ -260,7 +266,7 @@ private struct DetailsPage: View {
                             Text(m.label.isEmpty ? m.kind.label : m.label)
                             Spacer()
                             Text(m.source.label).foregroundStyle(Paper.muted)
-                            Text(UnitsFormatter.distance(m.value)).fontWeight(.semibold).monospacedDigit().frame(width: 70, alignment: .trailing)
+                            Text(m.provenance.marker + UnitsFormatter.distance(m.value)).fontWeight(.semibold).monospacedDigit().frame(width: 70, alignment: .trailing)
                         }
                         .font(.poppins(.light, 8.5))
                         .foregroundStyle(Paper.ink)

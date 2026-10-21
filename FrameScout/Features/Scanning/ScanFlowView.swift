@@ -357,11 +357,14 @@ struct ScanSaveView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Result") {
+                Section {
                     LabeledContent("Type", value: result.kind.label)
-                    LabeledContent("Floor area", value: UnitsFormatter.area(stats.floorArea) + (stats.floorAreaIsEstimate ? " (est.)" : ""))
-                    LabeledContent("Room", value: UnitsFormatter.dimensions(stats.width, stats.length))
-                    LabeledContent("Ceiling", value: UnitsFormatter.distance(stats.ceilingHeight))
+                    ProvenanceFigureRow(label: "Floor area", value: UnitsFormatter.area(stats.floorArea),
+                                        provenance: stats.provenance(of: .floorArea, kind: result.kind))
+                    ProvenanceFigureRow(label: "Room", value: UnitsFormatter.dimensions(stats.width, stats.length),
+                                        provenance: stats.provenance(of: .roomSize, kind: result.kind))
+                    ProvenanceFigureRow(label: "Ceiling", value: UnitsFormatter.distance(stats.ceilingHeight),
+                                        provenance: stats.provenance(of: .ceilingHeight, kind: result.kind))
                     if result.kind == .room {
                         LabeledContent("Walls / doors / windows", value: "\(stats.wallCount) / \(stats.doorCount) / \(stats.windowCount)")
                         LabeledContent("Objects", value: "\(stats.objectCount)")
@@ -369,8 +372,13 @@ struct ScanSaveView: View {
                     } else {
                         LabeledContent("Triangles", value: "\(stats.meshFaceCount)")
                     }
-                    LabeledContent("North", value: northOffset.map { String(format: "%.0f° (compass, approx.)", $0) } ?? "Not measured")
+                    ProvenanceFigureRow(label: "North", value: northOffset.map { String(format: "%.0f° (compass)", $0) } ?? "Not measured",
+                                        provenance: northOffset == nil ? nil : .estimated)
                     LabeledContent("Photos", value: "\(photos.count)")
+                } header: {
+                    Text("Result")
+                } footer: {
+                    ProvenanceLegend().padding(.top, 4)
                 }
 
                 Section("Location") {

@@ -155,18 +155,22 @@ struct LocationDetailView: View {
 
     @ViewBuilder
     private func keyFigures(_ location: Location) -> some View {
-        if let s = location.primaryScan?.stats {
+        if let scan = location.primaryScan {
+            let s = scan.stats
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader(title: "Key figures", systemImage: "ruler")
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
                     GridRow {
-                        StatView(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length))
-                        StatView(label: "Floor area", value: UnitsFormatter.area(s.floorArea), detail: s.floorAreaIsEstimate ? "estimated" : nil)
+                        StatView(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length),
+                                 provenance: s.provenance(of: .roomSize, kind: scan.kind))
+                        StatView(label: "Floor area", value: UnitsFormatter.area(s.floorArea),
+                                 provenance: s.provenance(of: .floorArea, kind: scan.kind))
                     }
                     GridRow {
                         StatView(label: "Ceiling", value: UnitsFormatter.distance(s.ceilingHeight),
                                  detail: s.minCeilingHeight.map { "lowest \(UnitsFormatter.distance($0))" },
-                                 highlight: (s.ceilingHeight ?? 9) < 2.7)
+                                 highlight: (s.ceilingHeight ?? 9) < 2.7,
+                                 provenance: s.provenance(of: .ceilingHeight, kind: scan.kind))
                         StatView(label: "Doors · Windows", value: "\(s.doorCount) · \(s.windowCount)")
                     }
                 }
