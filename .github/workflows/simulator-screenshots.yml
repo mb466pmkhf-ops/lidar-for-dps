@@ -13,6 +13,8 @@ jobs:
     name: iPhone Simulator screenshots
     runs-on: macos-15
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Xcode version
@@ -57,6 +59,20 @@ jobs:
             xcrun simctl io "$UDID" screenshot "screenshots/$SCREEN.png"
           done
           ls -la screenshots
+      # Also kept on a throwaway branch so they can be viewed without downloading the artifact.
+      - name: Publish screenshots to a branch
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="ci-screenshots/${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          cd screenshots
+          git init -q
+          git checkout -q -b "$BRANCH"
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -qm "Simulator screenshots for $GITHUB_SHA"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
