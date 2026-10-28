@@ -97,7 +97,17 @@ struct PlanEditorView: View {
         VStack(spacing: 0) {
             toolBar
             if show3D, scan != nil {
-                scenePreview
+                if let error = scene3D.error {
+                    // Don't give up a third of the screen to a view that can't load.
+                    Label(error, systemImage: "cube.transparent")
+                        .font(.fsCaption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+                } else {
+                    scenePreview
+                }
             }
             GeometryReader { geo in
                 let viewport = currentViewport(size: geo.size)
@@ -173,11 +183,7 @@ struct PlanEditorView: View {
             .frame(height: 230)
             .overlay {
                 if !scene3D.loaded {
-                    if let error = scene3D.error {
-                        Text(error).font(.fsCaption).foregroundStyle(Theme.textSecondary).padding()
-                    } else {
-                        ProgressView().tint(.white)
-                    }
+                    ProgressView().tint(.white)
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -625,7 +631,9 @@ struct PlanEditorView: View {
                 StatView(label: "Cameras", value: "\(location?.cameraPositions.count ?? 0)")
                 StatView(label: "Shots", value: "\(location?.shots.count ?? 0)")
                 StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
-                StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length))
+                StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length),
+                         provenance: scan.map { $0.stats.provenance(of: .roomSize, kind: $0.kind) })
+                    .layoutPriority(1)
             }
             .padding()
             .background(Theme.surface)
