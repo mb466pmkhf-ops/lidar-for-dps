@@ -39,6 +39,12 @@ struct PlanCameraMarker: Identifiable {
     var reach: Double = 4
 }
 
+struct PlanLightMarker: Identifiable {
+    var light: LightFixture
+    var selected = false
+    var id: UUID { light.id }
+}
+
 struct PlanSubjectMarker: Identifiable {
     var id: UUID
     var label: String
@@ -57,8 +63,8 @@ struct PlanMeasureLine: Identifiable {
 /// A text label waiting for collision-free placement on the plan.
 struct PlanLabel {
     enum Priority: Int {
-        case camera, subject, dimension, object
-        var alwaysShown: Bool { self == .camera || self == .subject }
+        case camera, light, subject, dimension, object
+        var alwaysShown: Bool { self == .camera || self == .light || self == .subject }
     }
     var text: Text
     var anchor: CGPoint
@@ -68,6 +74,7 @@ struct PlanLabel {
 struct PlanOverlay {
     var cameras: [PlanCameraMarker] = []
     var subjects: [PlanSubjectMarker] = []
+    var lights: [PlanLightMarker] = []
     var measurements: [PlanMeasureLine] = []
     var photoPoses: [PhotoPose] = []
     /// World bearing of true north (derived from the scan's north offset).
@@ -101,7 +108,7 @@ struct FloorPlanCanvas: View {
 
     private var fitBounds: PlanRect {
         var b = plan.isEmpty ? PlanRect.unit : plan.bounds
-        let extra = overlay.cameras.map(\.rig.position) + overlay.subjects.map(\.point)
+        let extra = overlay.cameras.map(\.rig.position) + overlay.subjects.map(\.point) + overlay.lights.map(\.light.position)
         if let e = PlanRect.enclosing(extra) { b = b.union(e) }
         return b
     }
@@ -129,6 +136,7 @@ struct PlanRenderer {
         if full {
             if overlay.showDimensions { drawWallDimensions(&labels) }
             drawPhotoPoses(&ctx)
+            drawLights(&ctx, &labels)
             drawCameras(&ctx, &labels)
             drawSubjects(&ctx, &labels)
             drawLabels(&ctx, labels)
@@ -349,6 +357,88 @@ struct PlanRenderer {
         }
     }
 
+    /// Lighting-diagram units: a beam tinted by colour temperature for lights, a board for grip.
+    private func drawLights(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
+        for marker in overlay.lights {
+            let light = marker.light
+            let origin = s(light.position)
+            let d = PlanViewport.direction(light.pan)
+            let side = CGVector(dx: -d.dy, dy: d.dx)
+            let rgb = Kelvin.rgb(light.colorTemperature)
+            let tint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+            let on = light.isOn
+            let halfWidth = max(px(light.width) / 2, 6)
+
+            if light.kind.emits {
+                // Beam: wedge whose reach follows the dimmer, fading out.
+                if on {
+                    let reach = px(1.5 + 3 * light.dimmer)
+                    let half = min(light.beamAngle, 170) / 2
+                    var beam = Path()
+                    beam.move(to: CGPoint(x: origin.x + side.dx * halfWidth * 0.6, y: origin.y + side.dy * halfWidth * 0.6))
+                    for i in 0...16 {
+                        let b = light.pan - half + Double(i) / 16 * 2 * half
+                        let v = PlanViewport.direction(b)
+                        beam.addLine(to: CGPoint(x: origin.x + v.dx * reach, y: origin.y + v.dy * reach))
+                    }
+                    beam.addLine(to: CGPoint(x: origin.x - side.dx * halfWidth * 0.6, y: origin.y - side.dy * halfWidth * 0.6))
+                    beam.closeSubpath()
+                    let end = CGPoint(x: origin.x + d.dx * reach, y: origin.y + d.dy * reach)
+                    ctx.fill(beam, with: .linearGradient(Gradient(colors: [tint.opacity(marker.selected ? 0.5 : 0.35), tint.opacity(0)]),
+                                                         startPoint: origin, endPoint: end))
+                }
+                // Unit body: rounded block across the beam, sized to the unit.
+                func pt(_ f: CGFloat, _ l: CGFloat) -> CGPoint {
+                    CGPoint(x: origin.x + d.dx * f + side.dx * l, y: origin.y + d.dy * f + side.dy * l)
+                }
+                let depth: CGFloat = light.kind == .tube ? 5 : 10
+                var body = Path()
+                body.move(to: pt(-depth / 2, -halfWidth))
+                body.addLine(to: pt(depth / 2, -halfWidth))
+                body.addLine(to: pt(depth / 2, halfWidth))
+                body.addLine(to: pt(-depth / 2, halfWidth))
+                body.closeSubpath()
+                ctx.fill(body, with: .color(on ? tint : Theme.textTertiary))
+                ctx.stroke(body, with: .color(.black.opacity(0.6)), lineWidth: 1)
+            } else {
+                // Grip: a board across the facing direction. White bounce, black neg, grey flag,
+                // hatched diffusion.
+                let a = CGPoint(x: origin.x - side.dx * halfWidth, y: origin.y - side.dy * halfWidth)
+                let b = CGPoint(x: origin.x + side.dx * halfWidth, y: origin.y + side.dy * halfWidth)
+                var board = Path()
+                board.move(to: a)
+                board.addLine(to: b)
+                let color: Color
+                switch light.kind {
+                case .bounce: color = .white
+                case .negative: color = Color(white: 0.05)
+                case .diffusion: color = Color(white: 0.85)
+                default: color = Color(white: 0.45)
+                }
+                if light.kind == .negative {
+                    ctx.stroke(board, with: .color(.white.opacity(0.7)), lineWidth: 7)
+                }
+                ctx.stroke(board, with: .color(color),
+                           style: StrokeStyle(lineWidth: 5, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
+                // Small tick showing which side faces the action.
+                var face = Path()
+                face.move(to: origin)
+                face.addLine(to: CGPoint(x: origin.x + d.dx * 8, y: origin.y + d.dy * 8))
+                ctx.stroke(face, with: .color(color.opacity(0.8)), lineWidth: 1.5)
+            }
+            if marker.selected {
+                let r = max(halfWidth + 6, 18)
+                ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - r, y: origin.y - r, width: 2 * r, height: 2 * r)),
+                           with: .color(.white), lineWidth: 1.5)
+            }
+            let labelPos = CGPoint(x: origin.x - d.dx * 20, y: origin.y - d.dy * 20)
+            let text = light.kind.emits && !light.power.isEmpty ? "\(light.name) · \(light.power)" : light.name
+            labels.append(PlanLabel(text: Text(text).font(.poppins(.medium, 10))
+                                        .foregroundColor(light.kind.emits && on ? tint : Theme.textSecondary),
+                                    anchor: labelPos, priority: .light))
+        }
+    }
+
     private func drawSubjects(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for subject in overlay.subjects {
             let c = s(subject.point)
@@ -370,6 +460,8 @@ struct PlanRenderer {
             let p = s(c.rig.position); return CGRect(x: p.x - 13, y: p.y - 13, width: 26, height: 26)
         } + overlay.subjects.map { m in
             let p = s(m.point); return CGRect(x: p.x - 11, y: p.y - 11, width: 22, height: 22)
+        } + overlay.lights.map { l in
+            let p = s(l.light.position); return CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)
         }
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
         for label in labels.sorted(by: { $0.priority.rawValue < $1.priority.rawValue }) {

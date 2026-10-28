@@ -83,7 +83,9 @@ final class VirtualSceneModel: ObservableObject {
     let cameraNode = SCNNode()
     let orbitCameraNode = SCNNode()
     let sunNode = SCNNode()
+    private let ambientNode = SCNNode()
     private let markers = SCNNode()
+    private let lightRig = SCNNode()
     private(set) var floorY: Double = 0
     private(set) var roomCentre = SIMD3<Float>(0, 1, 0)
 
@@ -101,11 +103,10 @@ final class VirtualSceneModel: ObservableObject {
         orbitCameraNode.camera?.zFar = 500
         scene.rootNode.addChildNode(orbitCameraNode)
 
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.intensity = 450
-        scene.rootNode.addChildNode(ambient)
+        ambientNode.light = SCNLight()
+        ambientNode.light?.type = .ambient
+        ambientNode.light?.intensity = 450
+        scene.rootNode.addChildNode(ambientNode)
 
         sunNode.light = SCNLight()
         sunNode.light?.type = .directional
@@ -117,6 +118,7 @@ final class VirtualSceneModel: ObservableObject {
         sunNode.simdLook(at: .zero)
         scene.rootNode.addChildNode(sunNode)
         scene.rootNode.addChildNode(markers)
+        scene.rootNode.addChildNode(lightRig)
         scene.background.contents = UIColor(white: 0.05, alpha: 1)
     }
 
@@ -164,6 +166,71 @@ final class VirtualSceneModel: ObservableObject {
                 markers.addChildNode(actor)
             }
         }
+    }
+
+    /// Lighting-diagram units in the scan: a spot (or omni for practicals and space lights)
+    /// tinted by colour temperature, plus a small body; grip shows as a board. Ambient drops
+    /// while any unit is on so the setup reads.
+    func setLights(_ lights: [LightFixture], selected: UUID?) {
+        lightRig.childNodes.forEach { $0.removeFromParentNode() }
+        var anyOn = false
+        for (index, l) in lights.enumerated() {
+            let pan = SCNNode()
+            pan.simdPosition = SIMD3(Float(l.position.x), Float(floorY + l.height), Float(l.position.z))
+            pan.simdEulerAngles = SIMD3(0, Float(-l.pan * .pi / 180), 0)
+            let tilt = SCNNode()
+            tilt.simdEulerAngles = SIMD3(Float(l.tilt * .pi / 180), 0, 0)
+            pan.addChildNode(tilt)
+
+            let rgb = Kelvin.rgb(l.colorTemperature)
+            let color = UIColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
+            let body: SCNGeometry
+            let material = SCNMaterial()
+            if l.kind.emits {
+                body = SCNBox(width: CGFloat(max(l.width, 0.12)), height: l.kind == .tube ? 0.05 : 0.25, length: 0.15, chamferRadius: 0.02)
+                material.diffuse.contents = l.isOn ? color : UIColor.darkGray
+                material.emission.contents = l.isOn ? color.withAlphaComponent(0.8) : UIColor.black
+                if l.isOn {
+                    anyOn = true
+                    let light = SCNLight()
+                    let omni = l.kind == .practical || l.kind == .spaceLight || l.beamAngle >= 170
+                    light.type = omni ? .omni : .spot
+                    light.color = color
+                    light.intensity = CGFloat(300 + 1500 * l.dimmer)
+                    light.attenuationStartDistance = 0.5
+                    light.attenuationEndDistance = 10
+                    if !omni {
+                        light.spotOuterAngle = CGFloat(min(max(l.beamAngle, 2), 170))
+                        light.spotInnerAngle = light.spotOuterAngle * 0.6
+                        // Shadows only for the first few units; they are the expensive part.
+                        light.castsShadow = index < 4
+                        light.shadowMode = .deferred
+                        light.shadowColor = UIColor.black.withAlphaComponent(0.55)
+                    }
+                    let lightNode = SCNNode()
+                    lightNode.light = light
+                    // Sit just in front of the body so the unit doesn't shadow itself.
+                    lightNode.simdPosition = SIMD3(0, 0, -0.12)
+                    tilt.addChildNode(lightNode)
+                }
+            } else {
+                body = SCNPlane(width: CGFloat(l.width), height: CGFloat(l.kind == .flag ? min(l.width, 0.9) : l.width))
+                switch l.kind {
+                case .bounce: material.diffuse.contents = UIColor.white
+                case .negative: material.diffuse.contents = UIColor(white: 0.04, alpha: 1)
+                case .diffusion: material.diffuse.contents = UIColor(white: 1, alpha: 0.55)
+                default: material.diffuse.contents = UIColor(white: 0.25, alpha: 1)
+                }
+                material.isDoubleSided = true
+            }
+            if l.id == selected {
+                material.emission.contents = UIColor.white.withAlphaComponent(0.35)
+            }
+            body.materials = [material]
+            tilt.addChildNode(SCNNode(geometry: body))
+            lightRig.addChildNode(pan)
+        }
+        ambientNode.light?.intensity = anyOn ? 160 : 450
     }
 
     /// Points the directional light from the sun's world direction.
@@ -217,6 +284,7 @@ struct VirtualCameraView: View {
     @State private var sunOn = false
     @State private var sunMinutes: Double = 16 * 60
     @State private var sunDate = Date()
+    @State private var rigLightsOn = true
 
     private var location: Location? { store.location(ref) }
 
@@ -273,6 +341,8 @@ struct VirtualCameraView: View {
             model.setMarkers(viewpoints: viewpoints, selected: vp?.id)
         }
         .onChange(of: sunOn) { _, _ in updateSun() }
+        .onChange(of: location?.lightFixtures) { _, _ in updateRigLights() }
+        .onChange(of: rigLightsOn) { _, _ in updateRigLights() }
         .onChange(of: sunMinutes) { _, _ in updateSun() }
     }
 
@@ -283,7 +353,14 @@ struct VirtualCameraView: View {
         selectedID = initialCameraID ?? viewpoints.first?.id
         if let vp = selected { model.apply(vp) }
         model.setMarkers(viewpoints: viewpoints, selected: selected?.id)
+        updateRigLights()
         orbit = viewpoints.isEmpty
+    }
+
+    private func updateRigLights() {
+        let sid = location?.primaryScan?.id
+        let lights = rigLightsOn ? (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid } : []
+        model.setLights(lights, selected: nil)
     }
 
     private var sunAvailable: Bool {
@@ -315,6 +392,12 @@ struct VirtualCameraView: View {
                         }
                     }
                 }
+            }
+            if !(location?.lightFixtures.isEmpty ?? true) {
+                OverlayButton(systemImage: rigLightsOn ? "lightbulb.fill" : "lightbulb", tint: rigLightsOn ? Theme.sun : .white, size: 44) {
+                    rigLightsOn.toggle()
+                }
+                .accessibilityLabel(rigLightsOn ? "Hide lighting units" : "Show lighting units")
             }
             if sunAvailable {
                 OverlayButton(systemImage: sunOn ? "sun.max.fill" : "sun.max", tint: sunOn ? Theme.sun : .white, size: 44) {

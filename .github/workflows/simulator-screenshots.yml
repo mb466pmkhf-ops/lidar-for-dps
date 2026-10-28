@@ -52,7 +52,7 @@ jobs:
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
           xcrun simctl install "$UDID" "$APP"
           mkdir -p screenshots
-          for SCREEN in home project location scan measurements plan shots sun; do
+          for SCREEN in home project location scan measurements plan lighting shots sun; do
             xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
             xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen "$SCREEN"
             sleep 8

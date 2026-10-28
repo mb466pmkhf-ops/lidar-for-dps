@@ -211,5 +211,26 @@ let firstFace = objOut.obj.split(separator: "\n").first { $0.hasPrefix("f ") }!
 check(firstFace.split(separator: " ").dropFirst().allSatisfy { $0.split(separator: "/").count == 3 }, "OBJ faces carry v/vt/vn")
 check(objOut.obj.contains("centimetres"), "OBJ Unreal units header")
 
+// MARK: Lighting diagram
+let warm = Kelvin.rgb(2700), daylight = Kelvin.rgb(5600), cool = Kelvin.rgb(9000)
+check(warm.r == 1 && warm.b < 0.7 && daylight.b > warm.b && cool.b == 1 && cool.r < 1, "Kelvin colours run warm to cool")
+var lit = Location(name: "Lit room")
+check(lit.lights == nil && lit.lightFixtures.isEmpty, "no lights by default, nothing stored")
+var keyLight = LightFixture(name: "Key", kind: .fresnel, position: P(1, 2), pan: 90)
+keyLight.power = "1.2K"; keyLight.colorTemperature = 3200; keyLight.dimmer = 0.5
+lit.lightFixtures = [keyLight, LightFixture(name: "Neg", kind: .negative, position: P(0, 0))]
+let litData = try JSONEncoder().encode(lit)
+let litBack = try JSONDecoder().decode(Location.self, from: litData)
+check(litBack.lightFixtures == lit.lightFixtures, "lights survive a save/load round trip")
+check(keyLight.summary == "Fresnel 1.2K · 3200 K · 50 %", "light summary reads like a plot")
+check(!LightKind.negative.emits && LightKind.negative.defaultBeamAngle == 0 && LightKind.fresnel.emits, "grip doesn't emit")
+// A location saved before lights existed still loads.
+var litJSON = try JSONSerialization.jsonObject(with: litData) as! [String: Any]
+litJSON.removeValue(forKey: "lights")
+let oldLoc = try JSONDecoder().decode(Location.self, from: JSONSerialization.data(withJSONObject: litJSON))
+check(oldLoc.lightFixtures.isEmpty, "location without a lights key decodes")
+lit.lightFixtures = []
+check(lit.lights == nil, "removing all lights clears the stored list")
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

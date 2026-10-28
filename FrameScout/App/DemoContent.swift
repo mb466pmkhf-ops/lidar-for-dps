@@ -7,7 +7,7 @@ import Foundation
 /// `-FSScreen <name>` to open a screen (see `Screen`). Never shipped in Release builds.
 enum DemoContent {
     enum Screen: String, CaseIterable {
-        case home, project, location, scan, measurements, plan, shots, sun
+        case home, project, location, scan, measurements, plan, lighting, shots, sun
     }
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: "FSDemo") }
@@ -39,6 +39,7 @@ enum DemoContent {
         case .scan: return [.project(projectID), .location(ref), .scanDetail(ref, scanID: scanID)]
         case .measurements: return [.project(projectID), .location(ref), .measurements(ref)]
         case .plan: return [.project(projectID), .location(ref), .plan(ref)]
+        case .lighting: return [.project(projectID), .location(ref), .lighting(ref)]
         case .shots: return [.project(projectID), .location(ref), .shots(ref)]
         case .sun: return [.project(projectID), .location(ref), .sun(ref)]
         }
@@ -117,6 +118,21 @@ enum DemoContent {
             Shot(number: 1, title: "Wide, family on sofa", rig: wide, subject: P(0.4, 1.8), scanID: scanID),
             Shot(number: 2, title: "Single on Maya", rig: single, subject: P(0.0, 1.8), scanID: scanID),
         ]
+        let sofa = P(0.4, 1.8)
+        func aimed(_ name: String, _ kind: LightKind, _ at: PlanPoint, to target: PlanPoint) -> LightFixture {
+            LightFixture(name: name, kind: kind, position: at, pan: PlanGeometry.bearing(from: at, to: target), scanID: scanID)
+        }
+        var key = aimed("Key", .hmi, P(-1.2, -1.5), to: sofa)
+        key.role = .key; key.power = "1.8K"; key.modifier = "Through 4×4 full grid"; key.height = 2.3
+        var fill = aimed("Fill", .ledPanel, P(2.2, -0.6), to: sofa)
+        fill.role = .fill; fill.power = "300 W"; fill.colorTemperature = 4300; fill.dimmer = 0.4
+        var bounce = aimed("Bounce", .bounce, P(1.7, 1.0), to: sofa)
+        bounce.width = 1.2
+        var neg = aimed("Neg", .negative, P(-1.4, 2.0), to: sofa)
+        neg.width = 1.2
+        var lamp = aimed("Lamp", .practical, P(2.6, 1.9), to: sofa)
+        lamp.role = .practical; lamp.colorTemperature = 2700; lamp.power = "60 W"
+        location.lightFixtures = [key, fill, bounce, neg, lamp]
         var project = Project(name: "Sample Commercial")
         project.id = projectID
         project.client = "Demo"

@@ -121,6 +121,8 @@ struct Location: Identifiable, Codable, Hashable {
     var measurements: [DistanceMeasurement] = []
     var cameraPositions: [CameraPosition] = []
     var shots: [Shot] = []
+    /// Lighting diagram units (see `lightFixtures`). Optional so older project files load.
+    var lights: [LightFixture]? = nil
 
     var dateScanned: Date? { scans.map(\.createdAt).max() }
 

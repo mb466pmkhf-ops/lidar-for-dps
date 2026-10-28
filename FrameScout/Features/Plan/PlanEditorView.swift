@@ -3,16 +3,18 @@ import SwiftUI
 enum PlanSelection: Hashable {
     case camera(UUID)
     case shot(UUID)
+    case light(UUID)
 }
 
 enum PlanTool: String, CaseIterable, Identifiable {
-    case select, camera, aim, subject, measure
+    case select, camera, light, aim, subject, measure
 
     var id: String { rawValue }
     var label: String {
         switch self {
         case .select: return "Select"
         case .camera: return "+ Camera"
+        case .light: return "+ Light"
         case .aim: return "Aim"
         case .subject: return "Subject"
         case .measure: return "Measure"
@@ -22,6 +24,7 @@ enum PlanTool: String, CaseIterable, Identifiable {
         switch self {
         case .select: return "hand.point.up.left"
         case .camera: return "video.badge.plus"
+        case .light: return "lightbulb"
         case .aim: return "scope"
         case .subject: return "figure.stand"
         case .measure: return "ruler"
@@ -29,19 +32,24 @@ enum PlanTool: String, CaseIterable, Identifiable {
     }
     var hint: String {
         switch self {
-        case .select: return "Tap a camera to select. Drag cameras or subjects to move them. Pinch to zoom."
+        case .select: return "Tap a camera or light to select. Drag to move. Pinch to zoom."
         case .camera: return "Tap where the camera goes."
-        case .aim: return "Tap where the selected camera should point."
+        case .light: return "Tap where the unit goes. It points at the nearest subject or the room centre."
+        case .aim: return "Tap where the selected camera or light should point."
         case .subject: return "Tap the actor's mark for the selected shot."
         case .measure: return "Tap two points. Snaps to walls and corners."
         }
     }
 }
 
-/// Top-down planning surface for a location: camera positions, shots, subjects, plan measurements.
+/// Top-down planning surface for a location: camera positions, shots, subjects, lighting units and
+/// plan measurements. With the 3D view on, the scan is shown above the plan and both show the
+/// same cameras and lights, so a change in one appears in the other.
 struct PlanEditorView: View {
     let ref: LocationRef
     var focusShots = false
+    /// Opened as the lighting diagram: lights and the 3D view first.
+    var lightingMode = false
 
     @EnvironmentObject private var store: ProjectStore
     @EnvironmentObject private var router: AppRouter
@@ -59,12 +67,19 @@ struct PlanEditorView: View {
     @State private var measurementKind: MeasurementKind = .wallToWall
     @State private var measurementLabel = ""
     @State private var showDimensions = true
+    @State private var showCameras = true
+    @State private var showLights = true
+    @State private var show3D = false
+    @State private var newLightKind: LightKind = .fresnel
+    @State private var sharedDiagram: SharedFile?
+    @StateObject private var scene3D = VirtualSceneModel()
+    @State private var scene3DLoaded = false
     /// Bounds the view is fitted to. Frozen once shown so dragging a camera past the plan edge
     /// doesn't refit (and shift) the whole plan under the user's finger.
     @State private var fittedBounds: PlanRect?
 
     private enum DragTarget: Equatable {
-        case camera(UUID), shot(UUID), subject(UUID), canvas
+        case camera(UUID), shot(UUID), subject(UUID), light(UUID), canvas
     }
 
     private var location: Location? { store.location(ref) }
@@ -81,6 +96,9 @@ struct PlanEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolBar
+            if show3D, scan != nil {
+                scenePreview
+            }
             GeometryReader { geo in
                 let viewport = currentViewport(size: geo.size)
                 ZStack(alignment: .top) {
@@ -127,18 +145,78 @@ struct PlanEditorView: View {
         } message: {
             Text(measureDistance.map { UnitsFormatter.distance($0, precise: true) } ?? "")
         }
+        .sheet(item: $sharedDiagram) { file in ShareSheet(items: [file.url]) }
         .onAppear {
             if scanID == nil { scanID = location?.primaryScan?.id }
             if fittedBounds == nil { fittedBounds = contentBounds() }
+            if lightingMode {
+                if location?.primaryScan != nil { show3D = true }
+                if location?.lightFixtures.isEmpty ?? true { tool = .light }
+            }
         }
-        .onChange(of: scanID) { _, _ in fittedBounds = contentBounds() }
+        .onChange(of: scanID) { _, _ in fittedBounds = contentBounds(); scene3DLoaded = false; if show3D { load3D() } }
+        .onChange(of: show3D) { _, on in if on { load3D() } }
+        .onChange(of: location) { _, _ in sync3D() }
+        .onChange(of: selection) { _, _ in sync3D() }
+    }
+
+    // MARK: 3D view (same data as the plan)
+
+    private var scenePreview: some View {
+        SceneKitContainer(model: scene3D, orbit: true)
+            .frame(maxWidth: .infinity)
+            .frame(height: 230)
+            .overlay {
+                if !scene3D.loaded {
+                    if let error = scene3D.error {
+                        Text(error).font(.fsCaption).foregroundStyle(Theme.textSecondary).padding()
+                    } else {
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                Text("3D · drag to orbit, pinch to zoom")
+                    .font(.fsMicro).tracking(Theme.tracking)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(6)
+            }
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+    }
+
+    private func load3D() {
+        guard !scene3DLoaded, let scan else { return }
+        scene3DLoaded = true
+        scene3D.load(scan: scan, ref: ref, floorY: plan.floorY)
+        sync3D()
+    }
+
+    /// Pushes cameras, subjects and lights to the 3D view; cheap enough to run on every edit.
+    private func sync3D() {
+        guard show3D, let location else { return }
+        let sid = scan?.id
+        var viewpoints: [VirtualViewpoint] = []
+        if showCameras {
+            viewpoints += location.cameraPositions.filter { $0.scanID == nil || $0.scanID == sid }.map {
+                VirtualViewpoint(id: $0.id, kind: .camera, label: $0.name, rig: $0.rig, subject: nil, subjectHeight: 1.75)
+            }
+            viewpoints += location.shots.filter { $0.scanID == nil || $0.scanID == sid }.map {
+                VirtualViewpoint(id: $0.id, kind: .shot, label: $0.code, rig: $0.rig, subject: $0.subject, subjectHeight: $0.subjectHeight)
+            }
+        }
+        scene3D.setMarkers(viewpoints: viewpoints, selected: nil)
+        let lights = showLights ? location.lightFixtures.filter { $0.scanID == nil || $0.scanID == sid } : []
+        var selectedLight: UUID?
+        if case .light(let id)? = selection { selectedLight = id }
+        scene3D.setLights(lights, selected: selectedLight)
     }
 
     // MARK: Viewport & gestures
 
     private func contentBounds() -> PlanRect {
         var bounds = plan.isEmpty ? PlanRect(minX: -4, minZ: -4, maxX: 4, maxZ: 4) : plan.bounds
-        if let location, let extra = PlanRect.enclosing(location.cameraPositions.map(\.rig.position) + location.shots.map(\.rig.position)) {
+        if let location, let extra = PlanRect.enclosing(location.cameraPositions.map(\.rig.position) + location.shots.map(\.rig.position)
+                                                         + location.lightFixtures.map(\.position)) {
             bounds = bounds.union(extra)
         }
         return bounds
@@ -182,6 +260,8 @@ struct PlanEditorView: View {
                     store.updateLocation(ref) { loc in
                         if let i = loc.shots.firstIndex(where: { $0.id == id }) { loc.shots[i].subject = world }
                     }
+                case .light(let id):
+                    updateLight(id) { $0.position = world }
                 default:
                     pan = CGSize(width: panBase.width + value.translation.width, height: panBase.height + value.translation.height)
                 }
@@ -201,11 +281,16 @@ struct PlanEditorView: View {
             let s = viewport.toScreen(p)
             return hypot(s.x - point.x, s.y - point.y) < radius
         }
-        for shot in location.shots {
-            if let subject = shot.subject, near(subject) { return .subject(shot.id) }
+        if showCameras {
+            for shot in location.shots {
+                if let subject = shot.subject, near(subject) { return .subject(shot.id) }
+            }
+            for shot in location.shots where near(shot.rig.position) { return .shot(shot.id) }
+            for cam in location.cameraPositions where near(cam.rig.position) { return .camera(cam.id) }
         }
-        for shot in location.shots where near(shot.rig.position) { return .shot(shot.id) }
-        for cam in location.cameraPositions where near(cam.rig.position) { return .camera(cam.id) }
+        if showLights {
+            for light in location.lightFixtures where near(light.position) { return .light(light.id) }
+        }
         return nil
     }
 
@@ -216,11 +301,18 @@ struct PlanEditorView: View {
             switch hit {
             case .camera(let id): selection = .camera(id)
             case .shot(let id), .subject(let id): selection = .shot(id)
+            case .light(let id): selection = .light(id)
             default: selection = nil
             }
         case .camera:
             addCamera(at: world)
             tool = .select
+        case .light:
+            if case .light(let id)? = hit {
+                selection = .light(id)
+            } else {
+                addLight(at: world)
+            }
         case .aim:
             aimSelection(at: world)
         case .subject:
@@ -250,6 +342,12 @@ struct PlanEditorView: View {
         o.showDimensions = showDimensions
         guard let location else { return o }
         let sid = scan?.id
+        if showLights {
+            for light in location.lightFixtures where light.scanID == nil || light.scanID == sid {
+                o.lights.append(PlanLightMarker(light: light, selected: selection == .light(light.id)))
+            }
+        }
+        guard showCameras else { return o }
         for cam in location.cameraPositions where cam.scanID == nil || cam.scanID == sid {
             o.cameras.append(PlanCameraMarker(id: cam.id, label: cam.name, rig: cam.rig,
                                               selected: selection == .camera(cam.id), reach: 4))
@@ -312,9 +410,63 @@ struct PlanEditorView: View {
                     loc.shots[i].rig.pan = PlanGeometry.bearing(from: loc.shots[i].rig.position, to: point)
                 }
             }
+        case .light(let id):
+            updateLight(id) { light in
+                light.pan = PlanGeometry.bearing(from: light.position, to: point)
+            }
         case nil:
             break
         }
+    }
+
+    private func addLight(at point: PlanPoint) {
+        guard let location else { return }
+        // Point it at the nearest subject, else the middle of the room.
+        let subjects = location.shots.compactMap(\.subject)
+        let aim = subjects.min { $0.distance(to: point) < $1.distance(to: point) }
+            ?? (plan.isEmpty ? PlanPoint(x: point.x, z: point.z - 1) : plan.interiorCentroid)
+        let emitting = location.lightFixtures.filter { $0.kind.emits }.count
+        let name = newLightKind.emits ? "L\(emitting + 1)" : newLightKind.label
+        var light = LightFixture(name: name, kind: newLightKind, position: point,
+                                 pan: PlanGeometry.bearing(from: point, to: aim), scanID: scan?.id)
+        // Start from the last unit of the same kind so a row of lights is quick to place.
+        if let last = location.lightFixtures.last(where: { $0.kind == newLightKind }) {
+            light.power = last.power
+            light.colorTemperature = last.colorTemperature
+            light.height = last.height
+            light.beamAngle = last.beamAngle
+            light.width = last.width
+            light.modifier = last.modifier
+        }
+        store.updateLocation(ref) { $0.lightFixtures.append(light) }
+        selection = .light(light.id)
+    }
+
+    private func updateLight(_ id: UUID, _ mutate: @escaping (inout LightFixture) -> Void) {
+        store.updateLocation(ref) { loc in
+            var lights = loc.lightFixtures
+            if let i = lights.firstIndex(where: { $0.id == id }) {
+                mutate(&lights[i])
+                loc.lightFixtures = lights
+            }
+        }
+    }
+
+    /// Renders the plan with cameras and lights as a PNG for sharing.
+    @MainActor
+    private func shareDiagram() {
+        let canvas = FloorPlanCanvas(plan: plan, overlay: overlay, style: .full)
+            .frame(width: 1200, height: 1200)
+            .background(Theme.background)
+        let renderer = ImageRenderer(content: canvas)
+        renderer.scale = 2
+        guard let image = renderer.uiImage, let png = image.pngData() else { return }
+        let name = (location?.name ?? "Location").replacingOccurrences(of: "/", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name) – lighting diagram.png")
+        do {
+            try png.write(to: url)
+            sharedDiagram = SharedFile(url: url)
+        } catch {}
     }
 
     private func saveMeasurement() {
@@ -349,6 +501,7 @@ struct PlanEditorView: View {
                     .buttonStyle(.plain)
                     .disabled((t == .aim && selection == nil) || (t == .subject && !isShotSelected))
                     .opacity(((t == .aim && selection == nil) || (t == .subject && !isShotSelected)) ? 0.4 : 1)
+                    .accessibilityAddTraits(tool == t ? .isSelected : [])
                 }
             }
             .padding(.horizontal)
@@ -362,6 +515,28 @@ struct PlanEditorView: View {
         return false
     }
 
+    private var isLightSelected: Bool {
+        if case .light = selection { return true }
+        return false
+    }
+
+    /// Choose what the next tap places.
+    private var newLightPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("NEXT UNIT").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(LightKind.allCases) { kind in
+                        TagChip(text: kind.label, selected: newLightKind == kind) { newLightKind = kind }
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
@@ -372,6 +547,12 @@ struct PlanEditorView: View {
                     }
                 }
                 Toggle("Wall dimensions", isOn: $showDimensions)
+                Toggle("Cameras and shots", isOn: $showCameras)
+                Toggle("Lights", isOn: $showLights)
+                if location?.primaryScan != nil {
+                    Toggle("3D view above plan", isOn: $show3D)
+                }
+                Button { shareDiagram() } label: { Label("Share diagram (PNG)", systemImage: "square.and.arrow.up") }
                 Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
                 if location?.primaryScan != nil {
                     Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
@@ -386,6 +567,8 @@ struct PlanEditorView: View {
     private var bottomPanel: some View {
         if tool == .measure {
             measurePanel
+        } else if tool == .light, selection == nil || !isLightSelected {
+            newLightPanel
         } else if let selection, let location {
             switch selection {
             case .camera(let id):
@@ -414,11 +597,29 @@ struct PlanEditorView: View {
                                        } label: { Label("Delete", systemImage: "trash") }
                                    }))
                 }
+            case .light(let id):
+                if let light = location.lightFixtures.first(where: { $0.id == id }) {
+                    LightPanel(light: light, update: { mutate in updateLight(id, mutate) },
+                               onDetails: { showRigSheet = true },
+                               onDuplicate: {
+                                   var copy = light
+                                   copy.id = UUID()
+                                   copy.name = light.name + "′"
+                                   copy.position = light.position + PlanPoint(x: 0.5, z: 0.5)
+                                   store.updateLocation(ref) { $0.lightFixtures.append(copy) }
+                                   self.selection = .light(copy.id)
+                               },
+                               onDelete: {
+                                   store.updateLocation(ref) { $0.lightFixtures.removeAll { $0.id == id } }
+                                   self.selection = nil
+                               })
+                }
             }
         } else {
             HStack(spacing: 16) {
                 StatView(label: "Cameras", value: "\(location?.cameraPositions.count ?? 0)")
                 StatView(label: "Shots", value: "\(location?.shots.count ?? 0)")
+                StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
                 StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length))
             }
             .padding()
@@ -512,12 +713,16 @@ struct PlanEditorView: View {
                                       clearances: PlanGeometry.clearances(for: shot.rig, plan: plan),
                                       ceilingHeight: scan?.stats.ceilingHeight)
                     }
+                case .light(let id):
+                    if let light = location?.lightFixtures.first(where: { $0.id == id }) {
+                        LightForm(light: Binding(get: { light }, set: { v in updateLight(id) { $0 = v } }))
+                    }
                 case nil:
                     EmptyView()
                 }
             }
             .fsScreen()
-            .navigationTitle("Camera Setup")
+            .navigationTitle(isLightSelected ? "Light" : "Camera Setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showRigSheet = false } } }
         }

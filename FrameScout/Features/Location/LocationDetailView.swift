@@ -37,6 +37,7 @@ struct LocationDetailView: View {
                 photosCard(location)
                 measurementsCard(location)
                 camerasCard(location)
+                lightingCard(location)
                 notesCard(location)
                 scansCard(location)
             }
@@ -142,6 +143,7 @@ struct LocationDetailView: View {
             }
             SmallTool(title: "Plan", symbol: "map") { router.open(.plan(ref)) }
             SmallTool(title: "Shots", symbol: "film") { router.open(.shots(ref)) }
+            SmallTool(title: "Lighting", symbol: "lightbulb") { router.open(.lighting(ref)) }
             SmallTool(title: "Sun", symbol: "sun.max") { router.open(.sun(ref)) }
             SmallTool(title: "3D View", symbol: "cube", disabled: location.primaryScan == nil) {
                 router.start(.virtualCamera(ref, cameraID: nil))
@@ -270,6 +272,31 @@ struct LocationDetailView: View {
             }
             if location.measurements.isEmpty {
                 Text("Use Measure (AR), measure on the plan, or generate room measurements from the scan.")
+                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            }
+        }
+        .card()
+    }
+
+    private func lightingCard(_ location: Location) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "Lighting (\(location.lightFixtures.count))", systemImage: "lightbulb",
+                          action: { router.open(.lighting(ref)) }, actionLabel: "Diagram")
+            ForEach(location.lightFixtures) { light in
+                HStack {
+                    let rgb = Kelvin.rgb(light.colorTemperature)
+                    Image(systemName: light.kind.symbol).font(.system(size: 14, weight: .light))
+                        .foregroundStyle(light.kind.emits && light.isOn ? Color(red: rgb.r, green: rgb.g, blue: rgb.b) : Theme.textTertiary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading) {
+                        Text(light.role.map { "\(light.name) · \($0.label)" } ?? light.name)
+                        Text(light.summary).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                    }
+                    Spacer()
+                }
+            }
+            if location.lightFixtures.isEmpty {
+                Text("Open the lighting diagram and tap “+ Light” to place units on the plan and see them in the 3D scan.")
                     .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
