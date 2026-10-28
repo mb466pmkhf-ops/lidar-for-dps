@@ -49,7 +49,11 @@ enum Theme {
         nav.buttonAppearance = button
         nav.doneButtonAppearance = button
         UINavigationBar.appearance().standardAppearance = nav
-        UINavigationBar.appearance().scrollEdgeAppearance = nav
+        // On iOS 26 a scroll-edge appearance set through the proxy hides SwiftUI large titles;
+        // leaving it unset lets the system derive it from the standard appearance.
+        if #unavailable(iOS 26) {
+            UINavigationBar.appearance().scrollEdgeAppearance = nav
+        }
         UINavigationBar.appearance().compactAppearance = nav
         UINavigationBar.appearance().tintColor = .white
 
