@@ -141,9 +141,10 @@ final class ObjectCaptureModel: ObservableObject {
 
     /// Actionable messages first; low light is advice, not a blocker, so it goes last.
     nonisolated private static func prioritized(_ set: Set<ObjectCaptureSession.Feedback>) -> [String] {
-        let order: [ObjectCaptureSession.Feedback] = [.environmentTooDark, .objectNotDetected, .outOfFieldOfView,
+        var order: [ObjectCaptureSession.Feedback] = [.environmentTooDark, .outOfFieldOfView,
                                                       .objectTooFar, .objectTooClose, .movingTooFast,
                                                       .objectNotFlippable, .overCapturing, .environmentLowLight]
+        if #available(iOS 17.4, *) { order.insert(.objectNotDetected, at: 1) }
         let known = order.filter(set.contains).compactMap(message(for:))
         let rest = set.filter { !order.contains($0) }.compactMap(message(for:)).sorted()
         return known + rest
