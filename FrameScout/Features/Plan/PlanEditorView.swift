@@ -110,9 +110,14 @@ struct PlanEditorView: View {
                     Text(tool.hint)
                         .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.8)
                         .padding(8)
                         .background(Color.black.opacity(0.6), in: Rectangle())
+                        // Clear of the north arrow in the top-right corner, and never blocks a tap.
                         .padding(.top, 8)
+                        .padding(.horizontal, 44)
+                        .allowsHitTesting(false)
                     if plan.isEmpty {
                         noScanNotice.padding(.top, 60)
                     }
