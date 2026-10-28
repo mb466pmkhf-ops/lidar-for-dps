@@ -106,7 +106,19 @@ struct PlanEditorView: View {
         .fsScreen()
         .navigationTitle(location.map { "\($0.name) · Plan" } ?? "Plan")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbarContent }
+        .toolbar {
+            // "Plan" stays readable; the location name goes underneath and shortens instead.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text("Plan").font(.fsHeadline)
+                    if let location {
+                        Text(location.name).font(.fsMicro).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            toolbarContent
+        }
         .sheet(isPresented: $showRigSheet) { rigSheet }
         .alert("Save measurement", isPresented: $showSaveMeasurement) {
             TextField("Label (e.g. Living room width)", text: $measurementLabel)

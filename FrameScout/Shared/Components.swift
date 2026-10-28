@@ -23,6 +23,31 @@ extension View {
 
     /// The site's spaced small-caps-free label treatment.
     func fsTracked(_ amount: CGFloat = Theme.tracking) -> some View { tracking(amount) }
+
+    /// For screens named after something the user typed (projects, locations): the bar keeps the
+    /// title for the back button and VoiceOver but shows none, and `ScreenHeading` draws it in the
+    /// content where it can wrap instead of being cut off like a long large title.
+    func fsWrappingTitle(_ title: String) -> some View {
+        navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+            }
+    }
+}
+
+/// Screen title drawn in the content, wrapping onto as many lines as it needs.
+struct ScreenHeading: View {
+    var title: String
+
+    var body: some View {
+        Text(title)
+            .font(.fsTitle)
+            .foregroundStyle(Theme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 /// Lower-case wordmark in the spirit of the site's "norbert varjasi / cinematographer" lockup.

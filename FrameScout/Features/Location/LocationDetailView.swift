@@ -28,6 +28,7 @@ struct LocationDetailView: View {
     private func content(_ location: Location) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                ScreenHeading(title: location.name)
                 header(location)
                 toolGrid(location)
                 keyFigures(location)
@@ -42,8 +43,7 @@ struct LocationDetailView: View {
             .padding()
         }
         .fsScreen()
-        .navigationTitle(location.name)
-        .navigationBarTitleDisplayMode(.large)
+        .fsWrappingTitle(location.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
