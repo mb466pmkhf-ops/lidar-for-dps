@@ -627,13 +627,15 @@ struct PlanEditorView: View {
                 }
             }
         } else {
-            HStack(spacing: 16) {
-                StatView(label: "Cameras", value: "\(location?.cameraPositions.count ?? 0)")
-                StatView(label: "Shots", value: "\(location?.shots.count ?? 0)")
-                StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
+            // Room size gets its own row: four across truncates it on a phone.
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 16) {
+                    StatView(label: "Cameras", value: "\(location?.cameraPositions.count ?? 0)")
+                    StatView(label: "Shots", value: "\(location?.shots.count ?? 0)")
+                    StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
+                }
                 StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length),
                          provenance: scan.map { $0.stats.provenance(of: .roomSize, kind: $0.kind) })
-                    .layoutPriority(1)
             }
             .padding()
             .background(Theme.surface)
