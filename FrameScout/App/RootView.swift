@@ -44,6 +44,8 @@ struct RouteDestination: View {
             ScanDetailView(ref: ref, scanID: scanID)
         case .plan(let ref):
             PlanEditorView(ref: ref)
+        case .lighting(let ref):
+            PlanEditorView(ref: ref, lightingMode: true)
         case .shots(let ref):
             ShotListView(ref: ref)
         case .sun(let ref):

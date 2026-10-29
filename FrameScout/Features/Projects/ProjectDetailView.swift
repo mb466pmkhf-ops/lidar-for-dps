@@ -25,6 +25,7 @@ struct ProjectDetailView: View {
     private func content(_ project: Project) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                ScreenHeading(title: project.name)
                 summary(project)
 
                 HStack(spacing: 8) {
@@ -89,8 +90,7 @@ struct ProjectDetailView: View {
             .padding()
         }
         .fsScreen()
-        .navigationTitle(project.name)
-        .navigationBarTitleDisplayMode(.large)
+        .fsWrappingTitle(project.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -256,7 +256,7 @@ enum RoomPlanConverter {
                                  size: Vec3(piece.width, piece.height, options.wallThickness), material: .wall))
             }
             let node = SceneNode(name: String(format: "Wall_%02d", i + 1), mesh: mesh)
-            node.info = ["category": "wall", "width_m": fmt(w), "height_m": fmt(h)]
+            node.info = ["category": "wall", "width_m": fmt(w), "height_m": fmt(h), "id": wall.identifier.uuidString]
             node.recentreOnMesh()
             wallsNode.addChild(node)
         }
@@ -270,7 +270,7 @@ enum RoomPlanConverter {
                                      size: Vec3(door.dimensions.x, door.dimensions.y, isOpen ? 0.005 : 0.04),
                                      material: isOpen ? .opening : .door)
             let node = SceneNode(name: String(format: "Door_%02d", i + 1), mesh: mesh)
-            node.info = ["category": "door", "open": isOpen ? "true" : "false",
+            node.info = ["category": "door", "open": isOpen ? "true" : "false", "id": door.identifier.uuidString,
                          "width_m": fmt(door.dimensions.x), "height_m": fmt(door.dimensions.y)]
             node.recentreOnMesh()
             doorsNode.addChild(node)
@@ -281,7 +281,8 @@ enum RoomPlanConverter {
             let mesh = SceneMesh.box(center: t.position, axes: (t.xAxis, t.yAxis, t.zAxis),
                                      size: Vec3(window.dimensions.x, window.dimensions.y, 0.02), material: .window)
             let node = SceneNode(name: String(format: "Window_%02d", i + 1), mesh: mesh)
-            node.info = ["category": "window", "width_m": fmt(window.dimensions.x), "height_m": fmt(window.dimensions.y),
+            node.info = ["category": "window", "id": window.identifier.uuidString,
+                         "width_m": fmt(window.dimensions.x), "height_m": fmt(window.dimensions.y),
                          "sill_m": fmt(t.position.y - window.dimensions.y / 2 - e.floorY)]
             node.recentreOnMesh()
             windowsNode.addChild(node)
@@ -320,7 +321,7 @@ enum RoomPlanConverter {
                 let index = counters[name] ?? 1
                 let node = SceneNode(name: "\(name)_\(String(format: "%02d", index))", mesh: mesh,
                                      translation: t.position)
-                node.info = ["category": name.lowercased(),
+                node.info = ["category": categoryName(object.category).lowercased(), "id": object.identifier.uuidString,
                              "size_m": "\(fmt(object.dimensions.x)) x \(fmt(object.dimensions.y)) x \(fmt(object.dimensions.z))"]
                 objectsNode.addChild(node)
             }

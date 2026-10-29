@@ -121,6 +121,16 @@ struct Location: Identifiable, Codable, Hashable {
     var measurements: [DistanceMeasurement] = []
     var cameraPositions: [CameraPosition] = []
     var shots: [Shot] = []
+    /// Lighting diagram units (see `lightFixtures`). Optional so older project files load.
+    var lights: [LightFixture]? = nil
+    /// Stand-in people for blocking and lighting (see `previsCharacters`).
+    var characters: [PrevisCharacter]? = nil
+    /// Placed light meters (see `lightMeters`).
+    var meters: [LightMeter]? = nil
+    /// Camera exposure for reading lux as stops (see `exposureSettings`).
+    var exposure: ExposureSettings? = nil
+    /// Visibility, transparency and label settings for the plan and 3D view (see `displaySettings`).
+    var display: SceneDisplay? = nil
 
     var dateScanned: Date? { scans.map(\.createdAt).max() }
 
