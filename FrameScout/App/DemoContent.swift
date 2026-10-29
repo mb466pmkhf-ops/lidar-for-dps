@@ -8,6 +8,8 @@ import Foundation
 enum DemoContent {
     enum Screen: String, CaseIterable {
         case home, project, location, scan, measurements, plan, lighting, shots, sun
+        /// The lighting editor in 3D with a person selected; the plan with the key light's panel.
+        case previs, lightpanel
     }
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: "FSDemo") }
@@ -42,6 +44,8 @@ enum DemoContent {
         case .lighting: return [.project(projectID), .location(ref), .lighting(ref)]
         case .shots: return [.project(projectID), .location(ref), .shots(ref)]
         case .sun: return [.project(projectID), .location(ref), .sun(ref)]
+        case .previs: return [.project(projectID), .location(ref), .lighting(ref)]
+        case .lightpanel: return [.project(projectID), .location(ref), .plan(ref)]
         }
     }
 
@@ -122,17 +126,39 @@ enum DemoContent {
         func aimed(_ name: String, _ kind: LightKind, _ at: PlanPoint, to target: PlanPoint) -> LightFixture {
             LightFixture(name: name, kind: kind, position: at, pan: PlanGeometry.bearing(from: at, to: target), scanID: scanID)
         }
-        var key = aimed("Key", .hmi, P(-1.2, -1.5), to: sofa)
-        key.role = .key; key.power = "1.8K"; key.modifier = "Through 4×4 full grid"; key.height = 2.3
+        // Fixture types from the library, so readings and draw come from the photometric model.
+        var key = aimed("Key", .softbox, P(-1.2, 0.2), to: sofa)
+        key.apply(profile: FixtureLibrary.profile(id: "cob-600-d")!)
+        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.5
         var fill = aimed("Fill", .ledPanel, P(2.2, -0.6), to: sofa)
-        fill.role = .fill; fill.power = "300 W"; fill.colorTemperature = 4300; fill.dimmer = 0.4
+        fill.apply(profile: FixtureLibrary.profile(id: "panel-1x1-bi")!)
+        fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.8; fill.tilt = -15
+        var back = aimed("Back", .fresnel, P(1.9, 2.15), to: P(0.0, 1.8))
+        back.apply(profile: FixtureLibrary.profile(id: "fresnel-led-200-bi")!)
+        back.role = .back; back.height = 2.4; back.tilt = -35; back.beamAngle = 25; back.dimmer = 0.7
+        back.barnDoors = BarnDoors(top: 90, bottom: 90, left: 9, right: 90)
         var bounce = aimed("Bounce", .bounce, P(1.7, 1.0), to: sofa)
         bounce.width = 1.2
         var neg = aimed("Neg", .negative, P(-1.4, 2.0), to: sofa)
         neg.width = 1.2
         var lamp = aimed("Lamp", .practical, P(2.6, 1.9), to: sofa)
-        lamp.role = .practical; lamp.colorTemperature = 2700; lamp.power = "60 W"
-        location.lightFixtures = [key, fill, bounce, neg, lamp]
+        lamp.apply(profile: FixtureLibrary.profile(id: "bulb-tungsten-100")!)
+        lamp.role = .practical; lamp.height = 1.4
+        location.lightFixtures = [key, fill, back, bounce, neg, lamp]
+        var maya = PrevisCharacter(name: "Maya", type: .woman, position: P(0.0, 1.8), facing: 330, scanID: scanID)
+        maya.posture = .sitting; maya.skinTone = .tone4
+        var leo = PrevisCharacter(name: "Leo", type: .boy, position: P(0.9, 1.8), facing: 340, scanID: scanID)
+        leo.skinTone = .tone2; leo.build = 0.4
+        location.previsCharacters = [maya, leo]
+        var meter = LightMeter(name: "Table", position: P(0.4, 0.4), height: 0.5, scanID: scanID)
+        meter.facing = .up
+        location.lightMeters = [meter]
+        var exposure = ExposureSettings()
+        exposure.iso = 800; exposure.tStop = 2.8
+        location.exposureSettings = exposure
+        var display = SceneDisplay()
+        display.showLuxMap = true
+        location.displaySettings = display
         var project = Project(name: "Sample Commercial")
         project.id = projectID
         project.client = "Demo"
