@@ -623,13 +623,25 @@ struct PlanRenderer {
             let step = size.height + 3
             let offsets: [CGPoint] = [.zero, CGPoint(x: 0, y: step), CGPoint(x: 0, y: -step),
                                       CGPoint(x: 0, y: 2 * step), CGPoint(x: 0, y: -2 * step),
-                                      CGPoint(x: size.width / 2 + 8, y: 0), CGPoint(x: -size.width / 2 - 8, y: 0)]
+                                      CGPoint(x: size.width / 2 + 8, y: 0), CGPoint(x: -size.width / 2 - 8, y: 0),
+                                      CGPoint(x: size.width / 2 + 8, y: step), CGPoint(x: -size.width / 2 - 8, y: step),
+                                      CGPoint(x: size.width / 2 + 8, y: -step), CGPoint(x: -size.width / 2 - 8, y: -step),
+                                      CGPoint(x: 0, y: 3 * step), CGPoint(x: 0, y: -3 * step)]
             func rect(_ o: CGPoint) -> CGRect {
                 CGRect(x: label.anchor.x + o.x - size.width / 2 - 3, y: label.anchor.y + o.y - size.height / 2 - 1,
                        width: size.width + 6, height: size.height + 2)
             }
             let free = offsets.first { o in bounds.contains(rect(o)) && !placed.contains { $0.intersects(rect(o)) } }
-            guard let offset = free ?? (label.priority.alwaysShown ? CGPoint.zero : nil) else { continue }
+            // Crowded: an always-shown label takes the slot it overlaps least, rather than sitting on top.
+            func overlap(_ o: CGPoint) -> CGFloat {
+                let r = rect(o)
+                return placed.reduce(0) { sum, p in
+                    let i = p.intersection(r)
+                    return sum + (i.isNull ? 0 : i.width * i.height)
+                }
+            }
+            let fallback = label.priority.alwaysShown ? offsets.min { overlap($0) < overlap($1) } : nil
+            guard let offset = free ?? fallback else { continue }
             var box = rect(offset)
             // Keep always-shown labels on screen even when no free slot was found.
             box.origin.x = min(max(box.minX, bounds.minX), max(bounds.minX, bounds.maxX - box.width))

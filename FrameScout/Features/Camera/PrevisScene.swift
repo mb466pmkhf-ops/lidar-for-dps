@@ -415,6 +415,60 @@ struct VirtualViewpoint: Identifiable, Hashable {
     var subjectHeight: Double
 }
 
+/// Dollhouse view: walls between the orbit camera and the room fade so you can see in.
+/// Runs on SceneKit's render thread; only touches the wall nodes it was given.
+final class WallFader {
+    private let lock = NSLock()
+    private var walls: [SCNNode] = []
+    private weak var world: SCNNode?
+    private var centre = SIMD3<Float>(0, 0, 0)
+    private var base: CGFloat = 1
+    private var faded: [Bool] = []
+    static let fadedOpacity: CGFloat = 0.12
+
+    func configure(walls: [SCNNode], world: SCNNode, centre: SIMD3<Float>) {
+        lock.lock(); defer { lock.unlock() }
+        self.walls = walls
+        self.world = world
+        self.centre = centre
+        faded = Array(repeating: false, count: walls.count)
+    }
+
+    /// The user's wall opacity; faded walls never go above it.
+    func setBase(_ opacity: CGFloat) {
+        lock.lock(); defer { lock.unlock() }
+        base = opacity
+        faded = Array(repeating: false, count: walls.count)
+    }
+
+    /// Back to the user's opacity everywhere (for views from inside the room).
+    func restore() {
+        lock.lock(); defer { lock.unlock() }
+        for (i, wall) in walls.enumerated() where faded[i] {
+            wall.opacity = base
+            faded[i] = false
+        }
+    }
+
+    func update(camera: SIMD3<Float>) {
+        lock.lock(); defer { lock.unlock() }
+        guard let world, !walls.isEmpty else { return }
+        let c = world.presentation.simdConvertPosition(centre, to: nil)
+        for (i, wall) in walls.enumerated() {
+            let (lo, hi) = wall.boundingBox
+            let mid = wall.presentation.simdConvertPosition(SIMD3(Float(lo.x + hi.x) / 2, Float(lo.y + hi.y) / 2, Float(lo.z + hi.z) / 2), to: nil)
+            let outward = SIMD2(mid.x - c.x, mid.z - c.z)
+            let toCamera = SIMD2(camera.x - mid.x, camera.z - mid.z)
+            // In front of the wall's outside face, and outside the room.
+            let near = simd_dot(outward, toCamera) > 0 && simd_length(SIMD2(camera.x - c.x, camera.z - c.z)) > simd_length(outward)
+            if near != faded[i] {
+                faded[i] = near
+                wall.opacity = near ? min(base, Self.fadedOpacity) : base
+            }
+        }
+    }
+}
+
 /// The 3D scene for a location: the scan (or geometry built from its plan) plus everything placed
 /// on the plan. Scan, cameras, lights and people sit under one `world` node, so a levelling or
 /// alignment correction moves them together and they stay where they are in the room.
@@ -446,6 +500,7 @@ final class VirtualSceneModel: ObservableObject {
     private var scanItems: [(node: SCNNode, category: String, id: UUID?)] = []
     private var alignment = ScanAlignment.identity
     private weak var orbitView: SCNView?
+    let wallFader = WallFader()
 
     init() {
         cameraNode.camera = SCNCamera()
@@ -508,6 +563,8 @@ final class VirtualSceneModel: ObservableObject {
                     items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
                 }
                 scanItems = items
+                wallFader.configure(walls: items.filter { group(for: $0.category) == .walls }.map(\.node), world: world,
+                                    centre: SIMD3(roomCentreLocal(node).x, Float(floorY) + 1, roomCentreLocal(node).z))
                 scanHolder.addChildNode(node)
                 let (lo, hi) = node.boundingBox
                 roomCentre = SIMD3(Float(lo.x + hi.x) / 2, Float(floorY) + 1, Float(lo.z + hi.z) / 2)
@@ -519,6 +576,11 @@ final class VirtualSceneModel: ObservableObject {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    private func roomCentreLocal(_ node: SCNNode) -> SIMD3<Float> {
+        let (lo, hi) = node.boundingBox
+        return SIMD3(Float(lo.x + hi.x) / 2, 0, Float(lo.z + hi.z) / 2)
     }
 
     // MARK: Display
@@ -552,6 +614,7 @@ final class VirtualSceneModel: ObservableObject {
                 item.node.geometry?.firstMaterial?.writesToDepthBuffer = d.windowOpacityValue > 0.95
             case .walls?:
                 item.node.opacity = CGFloat(d.wallOpacityValue)
+                wallFader.setBase(CGFloat(d.wallOpacityValue))
                 item.node.geometry?.firstMaterial?.writesToDepthBuffer = d.wallOpacityValue > 0.95
             default:
                 break
@@ -909,6 +972,10 @@ struct SceneKitContainer: UIViewRepresentable {
         }
         let c = context.coordinator
         c.view = view
+        c.fader = model.wallFader
+        c.fades = orbit
+        view.delegate = c
+        if !orbit { model.wallFader.restore() }
         let tap = UITapGestureRecognizer(target: c, action: #selector(Coordinator.tap(_:)))
         view.addGestureRecognizer(tap)
         let press = UILongPressGestureRecognizer(target: c, action: #selector(Coordinator.press(_:)))
@@ -930,7 +997,9 @@ struct SceneKitContainer: UIViewRepresentable {
         if orbit { model.attach(view) }
     }
 
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate, SCNSceneRendererDelegate {
+        var fader: WallFader?
+        var fades = false
         var parent: SceneKitContainer?
         weak var view: SCNView?
         var dragging = false
@@ -986,6 +1055,11 @@ struct SceneKitContainer: UIViewRepresentable {
                 rotateItem = nil
                 view.allowsCameraControl = parent.orbit
             }
+        }
+
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            guard fades, let pov = renderer.pointOfView else { return }
+            fader?.update(camera: pov.presentation.simdWorldPosition)
         }
 
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {

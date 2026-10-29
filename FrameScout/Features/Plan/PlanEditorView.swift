@@ -462,6 +462,7 @@ struct PlanEditorView: View {
                     .contentShape(Rectangle())
                     .gesture(dragGesture(viewport: viewport))
                     .simultaneousGesture(pinchGesture)
+                if layout == .plan || !shows3D {
                 Text(tool.hint)
                     .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)
@@ -473,10 +474,11 @@ struct PlanEditorView: View {
                     .padding(.top, 8)
                     .padding(.horizontal, 44)
                     .allowsHitTesting(false)
+                }
                 if plan.isEmpty {
                     noScanNotice.padding(.top, 60)
                 }
-                if o.luxMap != nil {
+                if o.luxMap != nil && geo.size.height > 300 {
                     luxLegend.frame(maxHeight: .infinity, alignment: .bottom).padding(8)
                 }
             }

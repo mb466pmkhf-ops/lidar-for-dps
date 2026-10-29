@@ -129,14 +129,15 @@ enum DemoContent {
         // Fixture types from the library, so readings and draw come from the photometric model.
         var key = aimed("Key", .softbox, P(-1.2, 0.2), to: sofa)
         key.apply(profile: FixtureLibrary.profile(id: "cob-600-d")!)
-        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.5
+        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.25
         var fill = aimed("Fill", .ledPanel, P(2.2, -0.6), to: sofa)
         fill.apply(profile: FixtureLibrary.profile(id: "panel-1x1-bi")!)
         fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.8; fill.tilt = -15
-        var back = aimed("Back", .fresnel, P(1.9, 2.15), to: P(0.0, 1.8))
+        // Behind the sofa, so it rims Maya without reaching her face.
+        var back = aimed("Back", .fresnel, P(-0.9, 2.25), to: P(0.0, 1.8))
         back.apply(profile: FixtureLibrary.profile(id: "fresnel-led-200-bi")!)
-        back.role = .back; back.height = 2.4; back.tilt = -35; back.beamAngle = 25; back.dimmer = 0.7
-        back.barnDoors = BarnDoors(top: 90, bottom: 90, left: 9, right: 90)
+        back.role = .back; back.height = 2.4; back.tilt = -50; back.beamAngle = 30; back.dimmer = 0.4
+        back.barnDoors = BarnDoors(top: 12, bottom: 90, left: 90, right: 10)
         var bounce = aimed("Bounce", .bounce, P(1.7, 1.0), to: sofa)
         bounce.width = 1.2
         var neg = aimed("Neg", .negative, P(-1.4, 2.0), to: sofa)
@@ -154,7 +155,7 @@ enum DemoContent {
         meter.facing = .up
         location.lightMeters = [meter]
         var exposure = ExposureSettings()
-        exposure.iso = 800; exposure.tStop = 2.8
+        exposure.iso = 800; exposure.tStop = 5.6
         location.exposureSettings = exposure
         var display = SceneDisplay()
         display.showLuxMap = true
