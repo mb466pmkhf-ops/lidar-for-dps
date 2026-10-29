@@ -82,6 +82,10 @@ enum LightKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum LightColorMode: String, Codable {
+    case cct, rgb
+}
+
 /// Job of a light in the setup, as written on a lighting plot.
 enum LightRole: String, Codable, CaseIterable, Identifiable {
     case key, fill, back, edge, background, ambient, practical, effect
@@ -119,6 +123,22 @@ struct LightFixture: Identifiable, Codable, Hashable {
     var isOn: Bool = true
     var scanID: UUID? = nil
     var notes: String = ""
+
+    // Fixture data (all optional so lights saved before the fixture library load; see `Photometrics.swift`).
+    /// `FixtureLibrary` profile; nil uses the default type for `kind`.
+    var profileID: String? = nil
+    /// `FixtureLibrary` modifier; nil uses the type's default, "none" runs it bare.
+    var modifierID: String? = nil
+    var filterIDs: [String]? = nil
+    var barnDoors: BarnDoors? = nil
+    var colorMode: LightColorMode? = nil
+    /// RGB units: hue 0–360°, saturation 0–1.
+    var hue: Double? = nil
+    var saturation: Double? = nil
+    /// The user's own photometric data for this unit (e.g. from the maker's sheet).
+    var photometricOverride: PhotometricReference? = nil
+    /// Board height for grip (m); nil uses the width (square frame).
+    var boardHeight: Double? = nil
 
     init(name: String, kind: LightKind, position: PlanPoint, pan: Double = 0, scanID: UUID? = nil) {
         self.name = name
