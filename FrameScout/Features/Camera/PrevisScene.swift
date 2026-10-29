@@ -422,6 +422,8 @@ final class WallFader {
     private var walls: [SCNNode] = []
     private weak var world: SCNNode?
     private var centre = SIMD3<Float>(0, 0, 0)
+    /// Each wall's centre in the world node's space.
+    private var mids: [SIMD3<Float>] = []
     private var base: CGFloat = 1
     private var faded: [Bool] = []
     static let fadedOpacity: CGFloat = 0.12
@@ -431,6 +433,22 @@ final class WallFader {
         self.walls = walls
         self.world = world
         self.centre = centre
+        // Wall meshes can sit on child nodes with vertices in room coordinates, so measure the geometry.
+        mids = walls.map { wall in
+            var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude), hi = -lo
+            func visit(_ n: SCNNode) {
+                if let g = n.geometry {
+                    let (a, b) = g.boundingBox
+                    for x in [a.x, b.x] { for y in [a.y, b.y] { for z in [a.z, b.z] {
+                        let p = n.simdConvertPosition(SIMD3(Float(x), Float(y), Float(z)), to: world)
+                        lo = simd_min(lo, p); hi = simd_max(hi, p)
+                    } } }
+                }
+                n.childNodes.forEach(visit)
+            }
+            visit(wall)
+            return lo.x <= hi.x ? (lo + hi) / 2 : centre
+        }
         faded = Array(repeating: false, count: walls.count)
     }
 
@@ -455,8 +473,8 @@ final class WallFader {
         guard let world, !walls.isEmpty else { return }
         let c = world.presentation.simdConvertPosition(centre, to: nil)
         for (i, wall) in walls.enumerated() {
-            let (lo, hi) = wall.boundingBox
-            let mid = wall.presentation.simdConvertPosition(SIMD3(Float(lo.x + hi.x) / 2, Float(lo.y + hi.y) / 2, Float(lo.z + hi.z) / 2), to: nil)
+            guard i < mids.count else { break }
+            let mid = world.presentation.simdConvertPosition(mids[i], to: nil)
             let outward = SIMD2(mid.x - c.x, mid.z - c.z)
             let toCamera = SIMD2(camera.x - mid.x, camera.z - mid.z)
             // In front of the wall's outside face, and outside the room.
@@ -690,6 +708,7 @@ final class VirtualSceneModel: ObservableObject {
         orbitCameraNode.simdLook(at: target)
         SCNTransaction.commit()
         orbitView?.defaultCameraController.target = SCNVector3(target.x, target.y, target.z)
+        wallFader.update(camera: position)
     }
 
     /// Plan point under a screen point, on the horizontal plane at `height` above the floor.
