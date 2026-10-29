@@ -232,62 +232,11 @@ struct LayersSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Scan") {
-                    ForEach(SceneGroup.allCases.filter(\.isScan)) { g in
-                        groupToggle(g)
-                    }
-                    if !display.isHidden(group: .windows) {
-                        SliderRow(title: "Window glass in 3D", value: Binding(get: { display.windowOpacityValue }, set: { display.windowOpacity = $0 }),
-                                  range: 0...1, step: 0.05, format: { $0 < 0.03 ? "Clear" : "\(Int(($0 * 100).rounded())) % opaque" })
-                    }
-                    SliderRow(title: "Light through glass", value: Binding(get: { display.windowTransmissionValue }, set: { display.windowTransmission = $0 }),
-                              range: 0...1, step: 0.01, format: { "\(Int(($0 * 100).rounded())) %" })
-                    if !display.isHidden(group: .walls) {
-                        SliderRow(title: "Walls in 3D", value: Binding(get: { display.wallOpacityValue }, set: { display.wallOpacity = $0 }),
-                                  range: 0.1...1, step: 0.05, format: { $0 > 0.97 ? "Solid" : "\(Int(($0 * 100).rounded())) %" })
-                    }
-                    if let onAlign, hasScan3D {
-                        Button { dismiss(); onAlign() } label: { Label("Level and align scan…", systemImage: "level") }
-                    }
-                }
-                if !categories.isEmpty && !display.isHidden(group: .furniture) {
-                    Section("Set pieces") {
-                        ForEach(Array(categories.enumerated()), id: \.offset) { pair in
-                            let category = pair.element.0, objects = pair.element.1
-                            Toggle(isOn: Binding(get: { !display.isHidden(category: category) },
-                                                 set: { display.setHidden(category: category, !$0) })) {
-                                Text("\(category) (\(objects.count))")
-                            }
-                            if objects.count > 1 && !display.isHidden(category: category) {
-                                ForEach(Array(objects.enumerated()), id: \.element.id) { pair in
-                                    let i = pair.offset, o = pair.element
-                                    Toggle(isOn: Binding(get: { !display.isHidden(item: SceneItemKey.object(o.id)) },
-                                                         set: { display.setHidden(item: SceneItemKey.object(o.id), !$0) })) {
-                                        Text("\(category) \(i + 1) · \(UnitsFormatter.distance(o.width)) × \(UnitsFormatter.distance(o.depth))")
-                                            .font(.fsCaption).foregroundStyle(Theme.textSecondary)
-                                    }
-                                    .padding(.leading, 16)
-                                }
-                            } else if let o = objects.first, objects.count == 1, display.isHidden(item: SceneItemKey.object(o.id)) {
-                                Button("Show hidden \(category.lowercased())") { display.setHidden(item: SceneItemKey.object(o.id), false) }
-                            }
-                        }
-                    }
-                }
-                Section("Planned") {
-                    ForEach(SceneGroup.allCases.filter { !$0.isScan }) { g in groupToggle(g) }
-                    Toggle("Exposure map on plan", isOn: Binding(get: { display.luxMapOn }, set: { display.showLuxMap = $0 ? true : nil }))
-                }
-                Section("Labels") {
-                    ForEach(SceneLabelGroup.allCases) { l in
-                        Toggle(l.label, isOn: Binding(get: { display.showsLabels(l) }, set: { display.setLabels(l, shown: $0) }))
-                    }
-                }
-                if display.hiddenCount > 0 {
-                    Section {
-                        Button("Show everything") { display.showAll() }
-                    }
-                }
+                scanSection
+                setPieceSection
+                plannedSection
+                labelSection
+                showAllSection
             }
             .fsScreen()
             .navigationTitle("Show and hide")
@@ -295,6 +244,80 @@ struct LayersSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+
+
+    private var scanSection: some View {
+        Section("Scan") {
+            ForEach(SceneGroup.allCases.filter(\.isScan)) { g in
+                groupToggle(g)
+            }
+            if !display.isHidden(group: .windows) {
+                SliderRow(title: "Window glass in 3D", value: Binding(get: { display.windowOpacityValue }, set: { display.windowOpacity = $0 }),
+                          range: 0...1, step: 0.05, format: { $0 < 0.03 ? "Clear" : "\(Int(($0 * 100).rounded())) % opaque" })
+            }
+            SliderRow(title: "Light through glass", value: Binding(get: { display.windowTransmissionValue }, set: { display.windowTransmission = $0 }),
+                      range: 0...1, step: 0.01, format: { "\(Int(($0 * 100).rounded())) %" })
+            if !display.isHidden(group: .walls) {
+                SliderRow(title: "Walls in 3D", value: Binding(get: { display.wallOpacityValue }, set: { display.wallOpacity = $0 }),
+                          range: 0.1...1, step: 0.05, format: { $0 > 0.97 ? "Solid" : "\(Int(($0 * 100).rounded())) %" })
+            }
+            if let onAlign, hasScan3D {
+                Button { dismiss(); onAlign() } label: { Label("Level and align scan…", systemImage: "level") }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var setPieceSection: some View {
+        if !categories.isEmpty && !display.isHidden(group: .furniture) {
+            Section("Set pieces") {
+                ForEach(Array(categories.enumerated()), id: \.offset) { pair in
+                    let category = pair.element.0, objects = pair.element.1
+                    Toggle(isOn: Binding(get: { !display.isHidden(category: category) },
+                                         set: { display.setHidden(category: category, !$0) })) {
+                        Text("\(category) (\(objects.count))")
+                    }
+                    if objects.count > 1 && !display.isHidden(category: category) {
+                        ForEach(Array(objects.enumerated()), id: \.element.id) { pair in
+                            let i = pair.offset, o = pair.element
+                            Toggle(isOn: Binding(get: { !display.isHidden(item: SceneItemKey.object(o.id)) },
+                                                 set: { display.setHidden(item: SceneItemKey.object(o.id), !$0) })) {
+                                Text("\(category) \(i + 1) · \(UnitsFormatter.distance(o.width)) × \(UnitsFormatter.distance(o.depth))")
+                                    .font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                            }
+                            .padding(.leading, 16)
+                        }
+                    } else if let o = objects.first, objects.count == 1, display.isHidden(item: SceneItemKey.object(o.id)) {
+                        Button("Show hidden \(category.lowercased())") { display.setHidden(item: SceneItemKey.object(o.id), false) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var plannedSection: some View {
+        Section("Planned") {
+            ForEach(SceneGroup.allCases.filter { !$0.isScan }) { g in groupToggle(g) }
+            Toggle("Exposure map on plan", isOn: Binding(get: { display.luxMapOn }, set: { display.showLuxMap = $0 ? true : nil }))
+        }
+    }
+
+    private var labelSection: some View {
+        Section("Labels") {
+            ForEach(SceneLabelGroup.allCases) { l in
+                Toggle(l.label, isOn: Binding(get: { display.showsLabels(l) }, set: { display.setLabels(l, shown: $0) }))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var showAllSection: some View {
+        if display.hiddenCount > 0 {
+            Section {
+                Button("Show everything") { display.showAll() }
+            }
+        }
     }
 
     private func groupToggle(_ g: SceneGroup) -> some View {
@@ -312,62 +335,10 @@ struct ExposureSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    HStack {
-                        StatView(label: "Key level", value: LuxFormat.lux(exposure.keyLux))
-                        StatView(label: "Lens", value: "\(ExposureSettings.stopLabel(exposure.tStop)) ≈ \(ExposureSettings.stopLabel(exposure.fStop, prefix: "f/"))")
-                    }
-                } footer: {
-                    Text("An incident reading of \(LuxFormat.lux(exposure.keyLux)) on a subject exposes it correctly at these settings. Each doubling of the light is one stop.")
-                }
-                Section("Sensitivity") {
-                    Picker("ISO", selection: $exposure.iso) {
-                        ForEach(ExposureSettings.isoPresets, id: \.self) { Text("\(Int($0))").tag($0) }
-                        if !ExposureSettings.isoPresets.contains(exposure.iso) { Text("\(Int(exposure.iso))").tag(exposure.iso) }
-                    }
-                }
-                Section {
-                    Picker("Set shutter as", selection: Binding(get: { exposure.shutterSeconds == nil }, set: { angle in
-                        exposure.shutterSeconds = angle ? nil : exposure.exposureTime
-                    })) {
-                        Text("Angle").tag(true)
-                        Text("Speed").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    if exposure.shutterSeconds == nil {
-                        Picker("Frame rate", selection: $exposure.frameRate) {
-                            ForEach(ExposureSettings.frameRates, id: \.self) { Text(String(format: "%g", $0)).tag($0) }
-                        }
-                        Picker("Shutter angle", selection: $exposure.shutterAngle) {
-                            ForEach(ExposureSettings.shutterAngles, id: \.self) { Text("\(ExposureSettings.trim($0))°").tag($0) }
-                        }
-                    } else {
-                        Picker("Shutter speed", selection: Binding(get: { exposure.shutterSeconds ?? 1.0 / 50 }, set: { exposure.shutterSeconds = $0 })) {
-                            ForEach([1.0 / 25, 1.0 / 30, 1.0 / 48, 1.0 / 50, 1.0 / 60, 1.0 / 100, 1.0 / 125, 1.0 / 250, 1.0 / 500], id: \.self) {
-                                Text(ExposureSettings.speedLabel($0)).tag($0)
-                            }
-                        }
-                    }
-                    LabeledContent("Exposure time", value: ExposureSettings.speedLabel(exposure.exposureTime))
-                } header: {
-                    Text("Shutter")
-                }
-                Section {
-                    Picker("T-stop", selection: $exposure.tStop) {
-                        ForEach(stops, id: \.self) { Text(ExposureSettings.stopLabel($0)).tag($0) }
-                    }
-                    SliderRow(title: "Lens transmission", value: $exposure.lensTransmission, range: 0.5...1, step: 0.01,
-                              format: { "\(Int(($0 * 100).rounded())) % (f/\(String(format: "%.2g", exposure.tStop * $0.squareRoot())))" })
-                    Picker("ND", selection: $exposure.ndStops) {
-                        ForEach([0.0, 1, 2, 3, 4, 5, 6], id: \.self) { s in
-                            Text(s == 0 ? "None" : "ND \(String(format: "%.1f", s * 0.3)) (\(Int(s)) stop\(s == 1 ? "" : "s"))").tag(s)
-                        }
-                    }
-                } header: {
-                    Text("Lens")
-                } footer: {
-                    Text("Exposure is set in T-stops: they include the light the lens loses. The f-stop is the aperture's geometry (T × √transmission) and is shown for reference. A T-stop is a camera setting, not a measure of how bright the scene is.")
-                }
+                summarySection
+                sensitivitySection
+                shutterSection
+                lensSection
             }
             .fsScreen()
             .navigationTitle("Camera exposure")
@@ -375,6 +346,107 @@ struct ExposureSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var summarySection: some View {
+        let key = LuxFormat.lux(exposure.keyLux)
+        let lens = "\(ExposureSettings.stopLabel(exposure.tStop)) ≈ \(ExposureSettings.stopLabel(exposure.fStop, prefix: "f/"))"
+        return Section {
+            HStack {
+                StatView(label: "Key level", value: key)
+                StatView(label: "Lens", value: lens)
+            }
+        } footer: {
+            Text("An incident reading of \(key) on a subject exposes it correctly at these settings. Each doubling of the light is one stop.")
+        }
+    }
+
+    private var sensitivitySection: some View {
+        Section("Sensitivity") {
+            Picker("ISO", selection: $exposure.iso) {
+                ForEach(isoOptions, id: \.self) { v in
+                    Text("\(Int(v))").tag(v)
+                }
+            }
+        }
+    }
+
+    private var isoOptions: [Double] {
+        var v = ExposureSettings.isoPresets
+        if !v.contains(exposure.iso) { v.append(exposure.iso); v.sort() }
+        return v
+    }
+
+    private var usesAngle: Binding<Bool> {
+        Binding(get: { exposure.shutterSeconds == nil },
+                set: { angle in exposure.shutterSeconds = angle ? nil : exposure.exposureTime })
+    }
+
+    private var shutterSpeed: Binding<Double> {
+        Binding(get: { exposure.shutterSeconds ?? 1.0 / 50 }, set: { exposure.shutterSeconds = $0 })
+    }
+
+    private static let speeds: [Double] = [1.0 / 25, 1.0 / 30, 1.0 / 48, 1.0 / 50, 1.0 / 60, 1.0 / 100, 1.0 / 125, 1.0 / 250, 1.0 / 500]
+
+    private var shutterSection: some View {
+        Section("Shutter") {
+            Picker("Set shutter as", selection: usesAngle) {
+                Text("Angle").tag(true)
+                Text("Speed").tag(false)
+            }
+            .pickerStyle(.segmented)
+            if exposure.shutterSeconds == nil {
+                Picker("Frame rate", selection: $exposure.frameRate) {
+                    ForEach(ExposureSettings.frameRates, id: \.self) { v in
+                        Text(String(format: "%g", v)).tag(v)
+                    }
+                }
+                Picker("Shutter angle", selection: $exposure.shutterAngle) {
+                    ForEach(ExposureSettings.shutterAngles, id: \.self) { v in
+                        Text(ExposureSettings.trim(v) + "°").tag(v)
+                    }
+                }
+            } else {
+                Picker("Shutter speed", selection: shutterSpeed) {
+                    ForEach(Self.speeds, id: \.self) { v in
+                        Text(ExposureSettings.speedLabel(v)).tag(v)
+                    }
+                }
+            }
+            LabeledContent("Exposure time", value: ExposureSettings.speedLabel(exposure.exposureTime))
+        }
+    }
+
+    private func transmissionLabel(_ t: Double) -> String {
+        let f = exposure.tStop * t.squareRoot()
+        return "\(Int((t * 100).rounded())) % (f/" + String(format: "%.2g", f) + ")"
+    }
+
+    private func ndLabel(_ s: Double) -> String {
+        if s == 0 { return "None" }
+        let stops = Int(s)
+        return "ND " + String(format: "%.1f", s * 0.3) + " (\(stops) stop" + (stops == 1 ? ")" : "s)")
+    }
+
+    private var lensSection: some View {
+        Section {
+            Picker("T-stop", selection: $exposure.tStop) {
+                ForEach(stops, id: \.self) { v in
+                    Text(ExposureSettings.stopLabel(v)).tag(v)
+                }
+            }
+            SliderRow(title: "Lens transmission", value: $exposure.lensTransmission, range: 0.5...1, step: 0.01,
+                      format: transmissionLabel)
+            Picker("ND", selection: $exposure.ndStops) {
+                ForEach([0.0, 1, 2, 3, 4, 5, 6], id: \.self) { s in
+                    Text(ndLabel(s)).tag(s)
+                }
+            }
+        } header: {
+            Text("Lens")
+        } footer: {
+            Text("Exposure is set in T-stops: they include the light the lens loses. The f-stop is the aperture's geometry (T × √transmission) and is shown for reference. A T-stop is a camera setting, not a measure of how bright the scene is.")
+        }
     }
 
     /// Thirds of a stop from T1 to T22, plus the current value.

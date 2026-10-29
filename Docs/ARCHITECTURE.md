@@ -82,6 +82,27 @@ ScanAssets.geometry(scan) ──► SceneGeometry (named groups, metres, Y-up, P
 ExportService ──► location/project package folder ──► ZipWriter ──► Documents/Exports/*.zip
 ```
 
+## Lighting previs
+
+- `Core/Models/Photometrics.swift` — fixture library (generic types), modifiers, filters, barn doors, and
+  `LightFixture.photometrics` (a pure function of the stored unit settings).
+- `Core/Models/LightingCalculator.swift` — readings at a point (walls, windows, grip, one bounce), the
+  exposure-map grid, the target solver ("Set to key"), and meter points (placed meters and people's faces).
+- `Core/Models/Exposure.swift` — ISO / shutter / T-stop / ND ↔ key lux and stops.
+- `Core/Models/Characters.swift`, `SceneDisplay.swift` — stand-in people, show/hide and label settings,
+  window opacity and transmission, light meters, scan alignment. All stored as optional fields on
+  `Location` / `ScanRecord`, so older project files load.
+- `Core/Geometry/PlanSceneBuilder.swift` — builds 3D walls, windows and set pieces from the floor plan when a
+  scan's geometry files are missing (also used by the Simulator demo).
+- `Features/Camera/PrevisScene.swift` — SceneKit: camera bodies with lens and frustum, figures, light heads
+  with barn-door leaves and gobo masks, beams, selection, moving and turning items, alignment.
+- `Features/Plan/PlanEditorView.swift` — one editor for plan, split and 3D layouts; the plan and 3D view read
+  the same `Location`, and one `LightingAnalysis` per update feeds the plan labels, 3D meter labels and panels.
+- `Features/Plan/LightEditor.swift`, `PrevisPanels.swift` — unit, person, meter and set-piece panels and the
+  Layers / Exposure / Level-and-align sheets.
+
+See D-006 for the model's assumptions and limits.
+
 ## Concurrency
 
 Swift 5 language mode. UI state is `@MainActor`; heavy work (encoding, mesh extraction, exports) runs in detached tasks on value copies. RoomPlan/ARKit delegate callbacks hop to the main actor.

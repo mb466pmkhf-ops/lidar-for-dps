@@ -252,9 +252,9 @@ struct PlanEditorView: View {
                 switch DemoContent.screen {
                 case .previs:
                     layout = .scene
-                    selection = location?.previsCharacters.first.map { .character($0.id) }
+                    selection = location?.previsCharacters.first.map { PlanSelection.character($0.id) }
                 case .lightpanel:
-                    selection = location?.lightFixtures.first.map { .light($0.id) }
+                    selection = location?.lightFixtures.first.map { PlanSelection.light($0.id) }
                 default: break
                 }
             }
@@ -619,7 +619,7 @@ struct PlanEditorView: View {
             switch hit {
             case .item(let item): selection = item
             case .subject(let id): selection = .shot(id)
-            default: selection = object(at: world).map { .object($0.id) }
+            default: selection = object(at: world).map { PlanSelection.object($0.id) }
             }
         case .add:
             if case .item(let item)? = hit {
