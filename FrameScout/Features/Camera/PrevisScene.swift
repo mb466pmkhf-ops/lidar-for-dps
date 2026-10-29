@@ -415,8 +415,8 @@ struct VirtualViewpoint: Identifiable, Hashable {
     var subjectHeight: Double
 }
 
-/// Dollhouse view: walls between the orbit camera and the room fade so you can see in.
-/// Runs on SceneKit's render thread; only touches the wall nodes it was given.
+/// Dollhouse view: walls (and their doors and windows) between the orbit camera and the room are
+/// cut away so you can see in. Runs on SceneKit's render thread; only touches the nodes it was given.
 final class WallFader {
     private let lock = NSLock()
     private var walls: [SCNNode] = []
@@ -424,9 +424,9 @@ final class WallFader {
     private var centre = SIMD3<Float>(0, 0, 0)
     /// Each wall's centre in the world node's space.
     private var mids: [SIMD3<Float>] = []
-    private var base: CGFloat = 1
-    private var faded: [Bool] = []
-    static let fadedOpacity: CGFloat = 0.12
+    /// Hidden by the user (Layers), per node.
+    private var userHidden: [Bool] = []
+    private var cut: [Bool] = []
 
     func configure(walls: [SCNNode], world: SCNNode, centre: SIMD3<Float>) {
         lock.lock(); defer { lock.unlock() }
@@ -449,22 +449,23 @@ final class WallFader {
             visit(wall)
             return lo.x <= hi.x ? (lo + hi) / 2 : centre
         }
-        faded = Array(repeating: false, count: walls.count)
+        userHidden = walls.map(\.isHidden)
+        cut = Array(repeating: false, count: walls.count)
     }
 
-    /// The user's wall opacity; faded walls never go above it.
-    func setBase(_ opacity: CGFloat) {
+    /// Records what the user has hidden; call after applying display settings.
+    func syncUserHidden() {
         lock.lock(); defer { lock.unlock() }
-        base = opacity
-        faded = Array(repeating: false, count: walls.count)
+        userHidden = walls.map(\.isHidden)
+        cut = Array(repeating: false, count: walls.count)
     }
 
-    /// Back to the user's opacity everywhere (for views from inside the room).
+    /// Puts every cut wall back (for views from inside the room).
     func restore() {
         lock.lock(); defer { lock.unlock() }
-        for (i, wall) in walls.enumerated() where faded[i] {
-            wall.opacity = base
-            faded[i] = false
+        for (i, wall) in walls.enumerated() where cut[i] {
+            wall.isHidden = userHidden[i]
+            cut[i] = false
         }
     }
 
@@ -473,15 +474,15 @@ final class WallFader {
         guard let world, !walls.isEmpty else { return }
         let c = world.presentation.simdConvertPosition(centre, to: nil)
         for (i, wall) in walls.enumerated() {
-            guard i < mids.count else { break }
+            guard i < mids.count, i < cut.count else { break }
             let mid = world.presentation.simdConvertPosition(mids[i], to: nil)
             let outward = SIMD2(mid.x - c.x, mid.z - c.z)
             let toCamera = SIMD2(camera.x - mid.x, camera.z - mid.z)
             // In front of the wall's outside face, and outside the room.
             let near = simd_dot(outward, toCamera) > 0 && simd_length(SIMD2(camera.x - c.x, camera.z - c.z)) > simd_length(outward)
-            if near != faded[i] {
-                faded[i] = near
-                wall.opacity = near ? min(base, Self.fadedOpacity) : base
+            if near != cut[i] {
+                cut[i] = near
+                wall.isHidden = near || userHidden[i]
             }
         }
     }
@@ -581,7 +582,8 @@ final class VirtualSceneModel: ObservableObject {
                     items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
                 }
                 scanItems = items
-                wallFader.configure(walls: items.filter { group(for: $0.category) == .walls }.map(\.node), world: world,
+                let cutaway: Set<SceneGroup> = [.walls, .windows, .doors]
+                wallFader.configure(walls: items.filter { group(for: $0.category).map(cutaway.contains) ?? false }.map(\.node), world: world,
                                     centre: SIMD3(roomCentreLocal(node).x, Float(floorY) + 1, roomCentreLocal(node).z))
                 scanHolder.addChildNode(node)
                 let (lo, hi) = node.boundingBox
@@ -632,12 +634,13 @@ final class VirtualSceneModel: ObservableObject {
                 item.node.geometry?.firstMaterial?.writesToDepthBuffer = d.windowOpacityValue > 0.95
             case .walls?:
                 item.node.opacity = CGFloat(d.wallOpacityValue)
-                wallFader.setBase(CGFloat(d.wallOpacityValue))
                 item.node.geometry?.firstMaterial?.writesToDepthBuffer = d.wallOpacityValue > 0.95
             default:
                 break
             }
         }
+        wallFader.syncUserHidden()
+        if let orbitView { wallFader.update(camera: orbitView.pointOfView?.presentation.simdWorldPosition ?? orbitCameraNode.simdWorldPosition) }
         markers.isHidden = d.isHidden(group: .cameras)
         people.isHidden = d.isHidden(group: .people)
         meterNodes.isHidden = d.isHidden(group: .meters)
