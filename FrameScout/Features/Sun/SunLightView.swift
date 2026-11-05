@@ -64,9 +64,11 @@ struct SunLightView: View {
                 Text(location.timeZone.identifier).font(.fsCaption).foregroundStyle(Theme.textSecondary)
             }
             Slider(value: $minutes, in: 0...1439, step: 5)
-            HStack {
-                ForEach([7, 9, 12, 15, 16, 18, 20], id: \.self) { h in
-                    TagChip(text: "\(h):00", selected: Int(minutes) == h * 60) { minutes = Double(h * 60) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach([7, 9, 12, 15, 16, 18, 20], id: \.self) { h in
+                        TagChip(text: "\(h):00", selected: Int(minutes) == h * 60) { minutes = Double(h * 60) }
+                    }
                 }
             }
         }

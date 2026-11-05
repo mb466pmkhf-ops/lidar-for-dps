@@ -20,6 +20,8 @@ final class ObjectCaptureModel: ObservableObject {
     @Published var step: Step = .intro
     @Published private(set) var session: ObjectCaptureSession?
     @Published private(set) var feedback: [String] = []
+    /// Shown when a button didn't take (e.g. no object found to box yet).
+    @Published var hint: String?
     @Published private(set) var shots = 0
     @Published private(set) var maxShots = 0
     @Published private(set) var passCompleted = false
@@ -58,7 +60,7 @@ final class ObjectCaptureModel: ObservableObject {
         })
         tasks.append(Task { [weak self] in
             for await set in session.feedbackUpdates {
-                self?.feedback = set.compactMap(Self.message(for:)).sorted()
+                self?.feedback = Self.prioritized(set)
             }
         })
         // Counters are plain properties on the session; sample them a few times a second.
@@ -77,7 +79,7 @@ final class ObjectCaptureModel: ObservableObject {
         switch state {
         case .initializing: step = .starting
         case .ready: step = .ready
-        case .detecting: step = .detecting
+        case .detecting: step = .detecting; hint = nil
         case .capturing: step = .capturing
         case .finishing: step = .finishing
         case .completed:
@@ -94,7 +96,16 @@ final class ObjectCaptureModel: ObservableObject {
         }
     }
 
-    func continueFromReady() { _ = session?.startDetecting() }
+    /// Apple's session only moves on once it has found something to box. If it can't, say so
+    /// rather than leaving the button looking dead next to a light warning.
+    func continueFromReady() {
+        guard let session else { return }
+        if session.startDetecting() {
+            hint = nil
+        } else {
+            hint = "No object found yet. Aim the centre dot at the object from about 30–60 cm and try again."
+        }
+    }
     func resetBox() { session?.resetDetection() }
     func startCapturing() { session?.startCapturing() }
 
@@ -128,12 +139,23 @@ final class ObjectCaptureModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
+    /// Actionable messages first; low light is advice, not a blocker, so it goes last.
+    nonisolated private static func prioritized(_ set: Set<ObjectCaptureSession.Feedback>) -> [String] {
+        var order: [ObjectCaptureSession.Feedback] = [.environmentTooDark, .outOfFieldOfView,
+                                                      .objectTooFar, .objectTooClose, .movingTooFast,
+                                                      .objectNotFlippable, .overCapturing, .environmentLowLight]
+        if #available(iOS 17.4, *) { order.insert(.objectNotDetected, at: 1) }
+        let known = order.filter(set.contains).compactMap(message(for:))
+        let rest = set.filter { !order.contains($0) }.compactMap(message(for:)).sorted()
+        return known + rest
+    }
+
     nonisolated private static func message(for feedback: ObjectCaptureSession.Feedback) -> String? {
         switch feedback {
         case .objectTooClose: return "Move further away"
         case .objectTooFar: return "Move closer"
         case .movingTooFast: return "Slow down"
-        case .environmentLowLight: return "More light needed"
+        case .environmentLowLight: return "Light is a bit low — you can still scan; brighter gives more detail"
         case .environmentTooDark: return "Too dark to capture"
         case .outOfFieldOfView: return "Keep the object in view"
         case .objectNotFlippable: return "This object can't be flipped — scan again without flipping"
@@ -268,7 +290,7 @@ struct ObjectCaptureFlowView: View {
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 2)
                 }
-                if let line = model.feedback.first {
+                if let line = model.hint ?? model.feedback.first {
                     Text(line)
                         .font(.fsCaption).tracking(Theme.tracking)
                         .padding(.horizontal, 12).padding(.vertical, 6)

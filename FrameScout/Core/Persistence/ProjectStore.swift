@@ -10,6 +10,11 @@ final class ProjectStore: ObservableObject {
 
     static let quickScanProjectName = "Quick Scans"
 
+    /// Sync hooks (D-007). Called after a local change to a project has been written to disk, and
+    /// after a project is deleted. Never called for changes applied with `applyRemote`.
+    var onProjectWritten: ((Project) -> Void)?
+    var onProjectDeleted: ((UUID) -> Void)?
+
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
     private var planCache: [UUID: FloorPlan] = [:]
     private let fm = FileManager.default
@@ -42,12 +47,13 @@ final class ProjectStore: ObservableObject {
         projects = loaded.sorted { $0.modifiedAt > $1.modifiedAt }
     }
 
-    private func writeNow(_ project: Project) {
+    private func writeNow(_ project: Project, notify: Bool = true) {
         let dir = StoragePaths.projectDir(project.id)
         StoragePaths.ensureDirectory(dir)
         do {
             let data = try JSONCoding.encoder.encode(project)
             try data.write(to: StoragePaths.projectFile(project.id), options: .atomic)
+            if notify { onProjectWritten?(project) }
         } catch {
             lastError = "Could not save \(project.name): \(error.localizedDescription)"
         }
@@ -62,6 +68,20 @@ final class ProjectStore: ObservableObject {
             self.writeNow(project)
             self.pendingSaves[projectID] = nil
         }
+    }
+
+    /// Puts a project that changed on another device in place (or adds it) and saves it, without
+    /// reporting it back through `onProjectWritten`. Pending local saves for it are dropped: the
+    /// caller has already merged them into `project`.
+    func applyRemote(_ project: Project) {
+        pendingSaves[project.id]?.cancel()
+        pendingSaves[project.id] = nil
+        if let i = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[i] = project
+        } else {
+            projects.insert(project, at: 0)
+        }
+        writeNow(project, notify: false)
     }
 
     /// Flush any pending writes (called when the app goes to the background).
@@ -137,6 +157,7 @@ final class ProjectStore: ObservableObject {
         pendingSaves[id] = nil
         try? fm.removeItem(at: StoragePaths.projectDir(id))
         projects.removeAll { $0.id == id }
+        onProjectDeleted?(id)
     }
 
     /// The project quick scans / quick measurements land in when started from the home screen.

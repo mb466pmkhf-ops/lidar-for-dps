@@ -36,6 +36,8 @@ struct ScanRecord: Identifiable, Codable, Hashable {
     var measuredNorthOffset: Double? = nil
     var deviceModel: String = ""
     var notes: String = ""
+    /// Levelling and placement correction for the 3D view; the scan files are never changed.
+    var alignment: ScanAlignment? = nil
 }
 
 struct OpeningSize: Codable, Hashable {

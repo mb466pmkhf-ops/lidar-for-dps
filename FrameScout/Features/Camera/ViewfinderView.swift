@@ -42,6 +42,9 @@ final class ViewfinderModel: NSObject, ObservableObject {
         var compareNeighbours = false
         /// Multiplies tan(FOV/2) of the phone image; for matching a particular phone exactly.
         var calibration: Double = 1
+        /// Burn camera, lens and framing into saved frames. Optional so older saved settings decode.
+        var burnInInfo: Bool? = nil
+        var burnsInInfo: Bool { burnInInfo ?? true }
     }
 
     static let squeezes: [Double] = [1, 1.25, 1.3, 1.5, 1.65, 1.8, 2]
@@ -52,6 +55,9 @@ final class ViewfinderModel: NSObject, ObservableObject {
     @Published var permissionDenied = false
     @Published var unavailable = false
     @Published private(set) var zoom: Double = 1
+    /// Zoom the camera is ramping towards; the Fill frame is drawn for it so the lines stay put
+    /// while the image eases in, instead of jumping and then shrinking back.
+    @Published private(set) var targetZoom: Double = 0
     @Published private(set) var minZoom: Double = 1
     @Published private(set) var maxZoom: Double = 1
     /// Long-side field of view of the phone image at zoom 1 (degrees).
@@ -110,10 +116,16 @@ final class ViewfinderModel: NSObject, ObservableObject {
 
     var currentPhoneFOV: Double { ViewfinderMath.effectiveFOV(baseFOV: calibratedBaseFOV, zoom: zoom) }
 
+    /// Phone FOV the frame lines are drawn against: the settled zoom in Fill, the live one otherwise.
+    var framingPhoneFOV: Double {
+        guard settings.framing == .fill, targetZoom > 0 else { return currentPhoneFOV }
+        return ViewfinderMath.effectiveFOV(baseFOV: calibratedBaseFOV, zoom: targetZoom)
+    }
+
     func frameRect(for target: ViewfinderMath.Size, in imageRect: CGRect) -> CGRect {
         let size = ViewfinderMath.frameSize(target: target,
                                             image: .init(width: imageRect.width, height: imageRect.height),
-                                            phoneFOV: currentPhoneFOV)
+                                            phoneFOV: framingPhoneFOV)
         guard size.width > 0 else { return .zero }
         return CGRect(x: imageRect.midX - size.width / 2, y: imageRect.midY - size.height / 2,
                       width: size.width, height: size.height)
@@ -265,10 +277,13 @@ final class ViewfinderModel: NSObject, ObservableObject {
                                               baseFOV: calibratedBaseFOV, fill: Self.fillFraction)
         }
         desired = min(max(desired, minZoom), maxZoom)
+        targetZoom = desired
         guard abs(desired - Double(device.videoZoomFactor)) / desired > 0.005 else { return }
         queue.async {
             guard (try? device.lockForConfiguration()) != nil else { return }
-            device.ramp(toVideoZoomFactor: CGFloat(desired), withRate: 24)
+            // Gentle ramp (rate is in doublings per second): a lens change eases in over a
+            // fraction of a second rather than snapping, and lens hand-overs are less obvious.
+            device.ramp(toVideoZoomFactor: CGFloat(desired), withRate: 3)
             device.unlockForConfiguration()
         }
     }
@@ -288,6 +303,7 @@ final class ViewfinderModel: NSObject, ObservableObject {
                 self.maxZoom = max(self.minZoom, min(self.maxZoom, maxAvailable))
                 // The preview's image rect changes aspect; the next report re-runs updateZoom.
                 self.lastImageSize = .init(width: 0, height: 0)
+                self.targetZoom = 0
             }
         }
     }
@@ -366,7 +382,7 @@ final class ViewfinderModel: NSObject, ObservableObject {
     // MARK: Capture
 
     /// Captures a still, cropped to the frame lines.
-    func capture(frameRect: CGRect, imageRect: CGRect, completion: @escaping (Data?) -> Void) {
+    func capture(frameRect: CGRect, imageRect: CGRect, burnIn: [String] = [], completion: @escaping (Data?) -> Void) {
         let settings = AVCapturePhotoSettings()
         if let angle = preview?.captureRotationAngle, let connection = photoOutput.connection(with: .video),
            connection.isVideoRotationAngleSupported(angle) {
@@ -378,6 +394,7 @@ final class ViewfinderModel: NSObject, ObservableObject {
                                 height: frameRect.height / imageRect.height)
         let delegate = PhotoCaptureDelegate { data in
             let cropped = data.flatMap { ViewfinderModel.crop($0, to: normalized) }
+                .map { burnIn.isEmpty ? $0 : (ViewfinderModel.burnIn($0, lines: burnIn) ?? $0) }
             Task { @MainActor in completion(cropped) }
         }
         photoDelegate = delegate
@@ -398,6 +415,34 @@ final class ViewfinderModel: NSObject, ObservableObject {
         let out = renderer.image { _ in image.draw(at: CGPoint(x: -rect.minX, y: -rect.minY)) }
         return out.jpegData(compressionQuality: 0.9)
     }
+
+    /// Draws the camera report along the bottom of the frame, like a slate in the corner of a
+    /// monitor: a dark band with monospaced white lines, sized to the image width.
+    nonisolated static func burnIn(_ data: Data, lines: [String]) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let size = image.size
+        let fontSize = max(12, min(size.width, size.height) * 0.028)
+        let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .medium)
+        let lineHeight = font.lineHeight
+        let pad = fontSize * 0.8
+        let band = CGRect(x: 0, y: size.height - (lineHeight * CGFloat(lines.count) + pad * 2),
+                          width: size.width, height: lineHeight * CGFloat(lines.count) + pad * 2)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let out = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            image.draw(at: .zero)
+            UIColor.black.withAlphaComponent(0.55).setFill()
+            ctx.fill(band)
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+            for (i, line) in lines.enumerated() {
+                let rect = CGRect(x: pad, y: band.minY + pad + lineHeight * CGFloat(i),
+                                  width: size.width - pad * 2, height: lineHeight)
+                (line as NSString).draw(with: rect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin],
+                                        attributes: attrs, context: nil)
+            }
+        }
+        return out.jpegData(compressionQuality: 0.9)
+    }
 }
 
 final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
@@ -411,10 +456,44 @@ final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 }
 
 /// UIKit preview whose image rect (aspect-fit) is reported for frame-line maths.
+///
+/// Tap, long-press and pinch live here as UIKit recognizers rather than on a full-screen SwiftUI
+/// layer: a SwiftUI gesture layer under the controls could swallow taps meant for the buttons
+/// on top of it, so the whole screen behaved like the live image.
 final class CameraPreviewView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
     var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
     var onImageRect: ((CGRect) -> Void)?
+    var onTap: ((CGPoint) -> Void)?
+    var onLongPress: (() -> Void)?
+    /// Pinch scale since the gesture began, and whether it has ended.
+    var onPinch: ((CGFloat, Bool) -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        let long = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        long.minimumPressDuration = 0.6
+        tap.require(toFail: long)
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        [tap, long, pinch].forEach(addGestureRecognizer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func handleTap(_ g: UITapGestureRecognizer) { onTap?(g.location(in: self)) }
+
+    @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
+        if g.state == .began { onLongPress?() }
+    }
+
+    @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        switch g.state {
+        case .changed: onPinch?(g.scale, false)
+        case .ended, .cancelled, .failed: onPinch?(g.scale, true)
+        default: break
+        }
+    }
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var rotationObservation: NSKeyValueObservation?
     private var timer: Timer?
@@ -462,9 +541,13 @@ final class CameraPreviewView: UIView {
 struct CameraPreview: UIViewRepresentable {
     let model: ViewfinderModel
     @Binding var imageRect: CGRect
+    var onPinch: (CGFloat, Bool) -> Void = { _, _ in }
 
     func makeUIView(context: Context) -> CameraPreviewView {
         let view = CameraPreviewView()
+        view.onTap = { [weak model] point in model?.focus(atLayerPoint: point) }
+        view.onLongPress = { [weak model] in model?.toggleLock() }
+        view.onPinch = onPinch
         view.backgroundColor = .black
         view.previewLayer.session = model.session
         view.previewLayer.videoGravity = .resizeAspect
@@ -475,7 +558,7 @@ struct CameraPreview: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: CameraPreviewView, context: Context) {}
+    func updateUIView(_ view: CameraPreviewView, context: Context) { view.onPinch = onPinch }
 }
 
 struct ViewfinderView: View {
@@ -493,13 +576,11 @@ struct ViewfinderView: View {
             let landscape = geo.size.width > geo.size.height
             ZStack {
                 Color.black.ignoresSafeArea()
-                CameraPreview(model: model, imageRect: $imageRect)
+                CameraPreview(model: model, imageRect: $imageRect, onPinch: handlePinch)
                     .ignoresSafeArea()
                 frameOverlay
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
-                gestureLayer
-                    .ignoresSafeArea()
                 if let p = model.focusIndicator {
                     Rectangle()
                         .stroke(Color.white.opacity(model.focusLocked ? 1 : 0.8), lineWidth: 1)
@@ -635,24 +716,18 @@ struct ViewfinderView: View {
         ctx.stroke(ticks, with: .color(.white.opacity(0.6)), lineWidth: 1)
     }
 
-    private var gestureLayer: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture(count: 1, coordinateSpace: .local) { point in model.focus(atLayerPoint: point) }
-            .onLongPressGesture(minimumDuration: 0.6) { model.toggleLock() }
-            .simultaneousGesture(
-                MagnifyGesture()
-                    .onChanged { value in
-                        // Pinch out = longer lens, one step per ~18 % of pinch.
-                        let steps = Int((log(value.magnification) / log(1.18)).rounded(.towardZero))
-                        if steps != pinchSteps {
-                            let f = ViewfinderMath.steppedFocalLength(from: model.settings.rig.focalLength, by: steps - pinchSteps)
-                            model.settings.rig.focalLength = f
-                            pinchSteps = steps
-                        }
-                    }
-                    .onEnded { _ in pinchSteps = 0 }
-            )
+    /// Pinch out = longer lens, one step per ~18 % of pinch.
+    private func handlePinch(_ scale: CGFloat, _ ended: Bool) {
+        if ended {
+            pinchSteps = 0
+            return
+        }
+        let steps = Int((log(Double(scale)) / log(1.18)).rounded(.towardZero))
+        if steps != pinchSteps {
+            let f = ViewfinderMath.steppedFocalLength(from: model.settings.rig.focalLength, by: steps - pinchSteps)
+            model.settings.rig.focalLength = f
+            pinchSteps = steps
+        }
     }
 
     // MARK: Chrome
@@ -660,9 +735,11 @@ struct ViewfinderView: View {
     private var topBar: some View {
         HStack(alignment: .center, spacing: 16) {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .light)).frame(width: 36, height: 36)
+                Image(systemName: "xmark").font(.system(size: 17, weight: .light)).frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close")
             UnderlineTabs(options: ViewfinderModel.Framing.allCases.map { ($0, $0.label) },
                           selection: $model.settings.framing)
             Spacer()
@@ -673,6 +750,8 @@ struct ViewfinderView: View {
                     .padding(.horizontal, 8).padding(.vertical, 5)
                     .background(model.focusLocked ? Color.white : Color.clear, in: Rectangle())
                     .overlay(Rectangle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             exposureMenu
@@ -690,6 +769,8 @@ struct ViewfinderView: View {
             Text(String(format: "%+.1f EV", model.exposureBias))
                 .font(.fsMono)
                 .foregroundStyle(abs(model.exposureBias) > 0.01 ? .white : .white.opacity(0.6))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
     }
 
@@ -702,10 +783,15 @@ struct ViewfinderView: View {
             Toggle("Thirds", isOn: $model.settings.showThirds)
             Toggle("90% safe area", isOn: $model.settings.showSafeArea)
             Toggle("Neighbouring lenses", isOn: $model.settings.compareNeighbours)
+            Toggle("Burn camera info into saved frames", isOn: Binding(
+                get: { model.settings.burnsInInfo },
+                set: { model.settings.burnInInfo = $0 }))
             Button("Calibrate field of view…") { showCalibration = true }
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)).frame(width: 36, height: 36)
+            Image(systemName: "ellipsis").font(.system(size: 17, weight: .light)).frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
+        .accessibilityLabel("Viewfinder settings")
     }
 
     /// One monospaced line of facts, like a camera monitor's status bar.
@@ -745,8 +831,9 @@ struct ViewfinderView: View {
                         }
                     }
                 } label: {
-                    menuLabel(model.rig.sensor.displayName)
+                    menuLabel(model.rig.sensor.displayName, systemImage: "video")
                 }
+                .accessibilityLabel("Camera: \(model.rig.sensor.displayName)")
                 Menu {
                     Picker("Frame lines", selection: $model.settings.rig.aspect) {
                         ForEach(FrameAspect.allCases) { Text($0.label).tag($0) }
@@ -779,15 +866,17 @@ struct ViewfinderView: View {
         .background(Color.black.opacity(0.62), in: Rectangle())
     }
 
-    private func menuLabel(_ text: String) -> some View {
+    private func menuLabel(_ text: String, systemImage: String? = nil) -> some View {
         HStack(spacing: 4) {
+            if let systemImage { Image(systemName: systemImage).font(.system(size: 12, weight: .light)) }
             Text(text).lineLimit(1)
             Image(systemName: "chevron.down").font(.system(size: 9, weight: .light))
         }
         .font(.fsLabel)
         .tracking(Theme.tracking)
         .foregroundStyle(.white)
-        .frame(minHeight: 36)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func captureFrame() {
@@ -796,14 +885,29 @@ struct ViewfinderView: View {
         withAnimation(.linear(duration: 0.1)) { flash = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { flash = false }
         let description = model.lensDescription + String(format: " · tilt %+.0f°", model.attitude.tilt)
-        model.capture(frameRect: frame, imageRect: imageRect) { data in
-            guard let data else { return }
-            let ref = target.locationRef ?? viewfinderDropLocation()
-            guard let ref else { return }
+        let ref = target.locationRef ?? viewfinderDropLocation()
+        let burnIn = model.settings.burnsInInfo ? burnInLines(locationName: ref.flatMap { store.location($0)?.name }) : []
+        model.capture(frameRect: frame, imageRect: imageRect, burnIn: burnIn) { data in
+            guard let data, let ref else { return }
             store.addPhoto(data, to: ref, source: .viewfinder, caption: description, lensDescription: model.lensDescription)
             model.lastSavedMessage = "saved to \(store.location(ref)?.name ?? "location")"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.lastSavedMessage = nil }
         }
+    }
+
+    /// Camera report for the saved frame: what was chosen, then where and when.
+    private func burnInLines(locationName: String?) -> [String] {
+        let rig = model.rig
+        var optics = [rig.sensor.displayName, Optics.formatFocal(rig.focalLength)]
+        optics.append(model.settings.squeeze > 1 ? String(format: "%g× anamorphic", model.settings.squeeze) : "spherical")
+        if rig.aspect != .sensor { optics.append(rig.aspect.label) }
+        optics.append("H \(Optics.formatAngle(model.target.width)) V \(Optics.formatAngle(model.target.height))")
+        var context: [String] = []
+        if let locationName, !locationName.isEmpty { context.append(locationName) }
+        context.append(Date().formatted(date: .abbreviated, time: .shortened))
+        context.append(String(format: "tilt %+.0f°", model.attitude.tilt))
+        if abs(model.exposureBias) > 0.01 { context.append(String(format: "%+.1f EV", model.exposureBias)) }
+        return [optics.joined(separator: " · "), context.joined(separator: " · ")]
     }
 
     /// Quick viewfinder captures land in a "Viewfinder Frames" location in Quick Scans.
