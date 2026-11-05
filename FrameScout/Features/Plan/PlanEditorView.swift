@@ -117,6 +117,44 @@ private struct LightingAnalysis {
     func reading(_ s: MeterPoint.Source) -> LightingCalculator.Reading? { readings[s] }
 }
 
+/// Undo history for the editor: whole-location snapshots. Edits within a moment of each other
+/// (a drag, a slider) collapse into one step.
+@MainActor
+final class EditHistory: ObservableObject {
+    @Published private(set) var undoStack: [Location] = []
+    @Published private(set) var redoStack: [Location] = []
+    private var lastEdit = Date.distantPast
+    private let limit = 60
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
+    /// Call with the location as it is before an edit.
+    func willEdit(_ current: Location) {
+        let now = Date()
+        if now.timeIntervalSince(lastEdit) > 0.8 {
+            undoStack.append(current)
+            if undoStack.count > limit { undoStack.removeFirst() }
+            redoStack.removeAll()
+        }
+        lastEdit = now
+    }
+
+    func undo(from current: Location) -> Location? {
+        guard let previous = undoStack.popLast() else { return nil }
+        redoStack.append(current)
+        lastEdit = .distantPast
+        return previous
+    }
+
+    func redo(from current: Location) -> Location? {
+        guard let next = redoStack.popLast() else { return nil }
+        undoStack.append(current)
+        lastEdit = .distantPast
+        return next
+    }
+}
+
 /// Top-down planning surface for a location: cameras, shots, lighting units, people and meters,
 /// with the 3D view beside it. Both show the same data, so a change in one appears in the other.
 struct PlanEditorView: View {
@@ -148,6 +186,9 @@ struct PlanEditorView: View {
     @State private var measurementLabel = ""
     @State private var sharedDiagram: SharedFile?
     @StateObject private var scene3D = VirtualSceneModel()
+    @StateObject private var history = EditHistory()
+    /// Short result of the last one-tap action (e.g. a lighting setup), shown above the panel.
+    @State private var notice: String?
     @State private var scene3DLoaded = false
     /// Bounds the view is fitted to. Frozen once shown so dragging a camera past the plan edge
     /// doesn't refit (and shift) the whole plan under the user's finger.
@@ -197,6 +238,18 @@ struct PlanEditorView: View {
             if showsPlan {
                 planArea(analysis)
             }
+            if let notice {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "info.circle").foregroundStyle(Theme.textSecondary)
+                    Text(notice).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button { self.notice = nil } label: { Image(systemName: "xmark").font(.fsCaption) }
+                        .accessibilityLabel("Dismiss")
+                }
+                .padding(.horizontal).padding(.vertical, 8)
+                .background(Theme.surfaceRaised)
+            }
             bottomPanel(analysis)
         }
         .fsScreen()
@@ -221,7 +274,7 @@ struct PlanEditorView: View {
                         onAlign: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openAlignment() } })
         }
         .sheet(isPresented: $showExposure) {
-            ExposureSheet(exposure: Binding(get: { exposure }, set: { v in store.updateLocation(ref) { $0.exposureSettings = v } }))
+            ExposureSheet(exposure: Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } }))
         }
         .sheet(isPresented: $showAlignment) {
             AlignmentSheet(model: scene3D, alignment: Binding(get: { scan?.alignmentValue ?? .identity }, set: { setAlignment($0) }))
@@ -392,7 +445,7 @@ struct PlanEditorView: View {
 
     private func setAlignment(_ a: ScanAlignment) {
         guard let id = scan?.id else { return }
-        store.updateLocation(ref) { loc in
+        edit { loc in
             if let i = loc.scans.firstIndex(where: { $0.id == id }) { loc.scans[i].alignment = a.isIdentity ? nil : a }
         }
     }
@@ -562,7 +615,7 @@ struct PlanEditorView: View {
                 case .item(let item):
                     move(item, to: world)
                 case .subject(let id):
-                    store.updateLocation(ref) { loc in
+                    edit { loc in
                         if let i = loc.shots.firstIndex(where: { $0.id == id }) { loc.shots[i].subject = world }
                     }
                 default:
@@ -816,7 +869,7 @@ struct PlanEditorView: View {
         rig.pan = PlanGeometry.bearing(from: point, to: defaultAim(from: point))
         let name = "Camera \(Character(UnicodeScalar(65 + min(25, location.cameraPositions.count))!))"
         let cam = CameraPosition(name: name, rig: rig, scanID: scan?.id)
-        store.updateLocation(ref) { $0.cameraPositions.append(cam) }
+        edit { $0.cameraPositions.append(cam) }
         selection = .camera(cam.id)
     }
 
@@ -835,7 +888,7 @@ struct PlanEditorView: View {
             light.beamAngle = last.beamAngle
             light.modifierID = last.modifierID
         }
-        store.updateLocation(ref) { $0.lightFixtures.append(light) }
+        edit { $0.lightFixtures.append(light) }
         selection = .light(light.id)
     }
 
@@ -849,7 +902,7 @@ struct PlanEditorView: View {
             board.height = last.height
             board.boardHeight = last.boardHeight
         }
-        store.updateLocation(ref) { $0.lightFixtures.append(board) }
+        edit { $0.lightFixtures.append(board) }
         selection = .light(board.id)
     }
 
@@ -864,20 +917,20 @@ struct PlanEditorView: View {
         if let last = location.previsCharacters.last(where: { $0.type == type }) {
             person.skinTone = last.skinTone
         }
-        store.updateLocation(ref) { $0.previsCharacters.append(person) }
+        edit { $0.previsCharacters.append(person) }
         selection = .character(person.id)
     }
 
     private func addMeter(at point: PlanPoint) {
         guard let location else { return }
         let meter = LightMeter(name: "Meter \(location.lightMeters.count + 1)", position: point, scanID: scan?.id)
-        store.updateLocation(ref) { $0.lightMeters.append(meter) }
+        edit { $0.lightMeters.append(meter) }
         selection = .meter(meter.id)
     }
 
     private func setSubject(at point: PlanPoint) {
         guard case .shot(let id) = selection else { return }
-        store.updateLocation(ref) { loc in
+        edit { loc in
             if let i = loc.shots.firstIndex(where: { $0.id == id }) {
                 loc.shots[i].subject = point
                 loc.shots[i].rig.pan = PlanGeometry.bearing(from: loc.shots[i].rig.position, to: point)
@@ -902,8 +955,38 @@ struct PlanEditorView: View {
         }
     }
 
+    /// Every change made in the editor goes through here so it can be undone.
+    private func edit(_ mutate: (inout Location) -> Void) {
+        if let location { history.willEdit(location) }
+        store.updateLocation(ref, mutate)
+    }
+
+    private func undo() {
+        guard let current = location, let previous = history.undo(from: current) else { return }
+        store.updateLocation(ref) { $0 = previous }
+        notice = nil
+    }
+
+    private func redo() {
+        guard let current = location, let next = history.redo(from: current) else { return }
+        store.updateLocation(ref) { $0 = next }
+    }
+
+    /// Places a lighting setup round a person, set for the camera's exposure.
+    private func light(_ person: PrevisCharacter, with setup: LightingSetup) {
+        guard let location else { return }
+        let camera = MeterGeometry.camera(seeing: person.position, from: location.meterCameras)?.position
+        let result = setup.build(for: person, camera: camera, exposure: exposure, plan: plan.isEmpty ? nil : plan,
+                                 windowTransmission: display.windowTransmissionValue)
+        guard !result.lights.isEmpty else { return }
+        edit { $0.lightFixtures.append(contentsOf: result.lights) }
+        selection = .light(result.lights[0].id)
+        notice = "\(setup.label) for \(person.name)\(camera == nil ? " (no camera yet: lit from where they face)" : ""). "
+            + result.notes.joined(separator: " · ") + ". Undo removes it."
+    }
+
     private func updateLight(_ id: UUID, _ mutate: @escaping (inout LightFixture) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             var lights = loc.lightFixtures
             if let i = lights.firstIndex(where: { $0.id == id }) {
                 mutate(&lights[i])
@@ -913,7 +996,7 @@ struct PlanEditorView: View {
     }
 
     private func updateCharacter(_ id: UUID, _ mutate: @escaping (inout PrevisCharacter) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             var list = loc.previsCharacters
             if let i = list.firstIndex(where: { $0.id == id }) {
                 mutate(&list[i])
@@ -923,7 +1006,7 @@ struct PlanEditorView: View {
     }
 
     private func updateMeter(_ id: UUID, _ mutate: @escaping (inout LightMeter) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             var list = loc.lightMeters
             if let i = list.firstIndex(where: { $0.id == id }) {
                 mutate(&list[i])
@@ -933,11 +1016,11 @@ struct PlanEditorView: View {
     }
 
     private var displayBinding: Binding<SceneDisplay> {
-        Binding(get: { display }, set: { v in store.updateLocation(ref) { $0.displaySettings = v } })
+        Binding(get: { display }, set: { v in edit { $0.displaySettings = v } })
     }
 
     private func updateDisplay(_ mutate: @escaping (inout SceneDisplay) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             var d = loc.displaySettings
             mutate(&d)
             loc.displaySettings = d
@@ -965,14 +1048,14 @@ struct PlanEditorView: View {
         guard measurePoints.count == 2, let d = measureDistance else { return }
         let m = DistanceMeasurement(kind: measurementKind, label: measurementLabel, value: d, horizontal: d,
                                     source: .plan, planA: measurePoints[0], planB: measurePoints[1], scanID: scan?.id)
-        store.updateLocation(ref) { $0.measurements.append(m) }
+        edit { $0.measurements.append(m) }
         measurePoints = []
     }
 
     private func createShot(from camera: CameraPosition) {
         guard let location else { return }
         let shot = Shot(number: location.nextShotNumber, rig: camera.rig, cameraPositionID: camera.id, scanID: camera.scanID)
-        store.updateLocation(ref) { $0.shots.append(shot) }
+        edit { $0.shots.append(shot) }
         selection = .shot(shot.id)
     }
 
@@ -1082,6 +1165,15 @@ struct PlanEditorView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarLeading) {
+            Button(action: undo) { Image(systemName: "arrow.uturn.backward") }
+                .disabled(!history.canUndo)
+                .accessibilityLabel("Undo")
+            if history.canRedo {
+                Button(action: redo) { Image(systemName: "arrow.uturn.forward") }
+                    .accessibilityLabel("Redo")
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showLayers = true } label: {
                 Image(systemName: display.hiddenCount > 0 ? "eye.slash" : "square.3.layers.3d")
@@ -1127,7 +1219,7 @@ struct PlanEditorView: View {
                                        Button { createShot(from: cam) } label: { Label("Make Shot", systemImage: "film") }
                                        Spacer()
                                        Button(role: .destructive) {
-                                           store.updateLocation(ref) { $0.cameraPositions.removeAll { $0.id == id } }
+                                           edit { $0.cameraPositions.removeAll { $0.id == id } }
                                            self.selection = nil
                                        } label: { Label("Delete", systemImage: "trash") }
                                    }))
@@ -1140,7 +1232,7 @@ struct PlanEditorView: View {
                                        Button { tool = .subject } label: { Label(shot.subject == nil ? "Set subject" : "Move subject", systemImage: "figure.stand") }
                                        Spacer()
                                        Button(role: .destructive) {
-                                           store.updateLocation(ref) { $0.shots.removeAll { $0.id == id } }
+                                           edit { $0.shots.removeAll { $0.id == id } }
                                            self.selection = nil
                                        } label: { Label("Delete", systemImage: "trash") }
                                    }))
@@ -1154,11 +1246,11 @@ struct PlanEditorView: View {
                                    copy.id = UUID()
                                    copy.name = light.name + "′"
                                    copy.position = light.position + PlanPoint(x: 0.5, z: 0.5)
-                                   store.updateLocation(ref) { $0.lightFixtures.append(copy) }
+                                   edit { $0.lightFixtures.append(copy) }
                                    self.selection = .light(copy.id)
                                },
                                onDelete: {
-                                   store.updateLocation(ref) { $0.lightFixtures.removeAll { $0.id == id } }
+                                   edit { $0.lightFixtures.removeAll { $0.id == id } }
                                    self.selection = nil
                                })
                 }
@@ -1175,13 +1267,14 @@ struct PlanEditorView: View {
                                        copy.id = UUID()
                                        copy.name = person.name + "′"
                                        copy.position = person.position + PlanPoint(x: 0.6, z: 0)
-                                       store.updateLocation(ref) { $0.previsCharacters.append(copy) }
+                                       edit { $0.previsCharacters.append(copy) }
                                        self.selection = .character(copy.id)
                                    },
                                    onDelete: {
-                                       store.updateLocation(ref) { $0.previsCharacters.removeAll { $0.id == id } }
+                                       edit { $0.previsCharacters.removeAll { $0.id == id } }
                                        self.selection = nil
-                                   })
+                                   },
+                                   onLight: { setup in light(person, with: setup) })
                 }
             case .meter(let id):
                 if let meter = location.lightMeters.first(where: { $0.id == id }) {
@@ -1189,7 +1282,7 @@ struct PlanEditorView: View {
                                lightName: { lid in location.lightFixtures.first { $0.id == lid }?.name ?? "Unit" },
                                update: { mutate in updateMeter(id, mutate) },
                                onDelete: {
-                                   store.updateLocation(ref) { $0.lightMeters.removeAll { $0.id == id } }
+                                   edit { $0.lightMeters.removeAll { $0.id == id } }
                                    self.selection = nil
                                })
                 }
@@ -1203,9 +1296,45 @@ struct PlanEditorView: View {
         }
     }
 
+    /// Nothing placed yet on this scan.
+    private var isBlank: Bool {
+        guard let location else { return false }
+        return location.cameraPositions.filter { inScan($0.scanID) }.isEmpty && location.shots.filter { inScan($0.scanID) }.isEmpty
+            && sceneLights.isEmpty && location.previsCharacters.filter { inScan($0.scanID) }.isEmpty
+    }
+
+    /// Three steps to a first lighting plan, each one tap away.
+    private var firstSteps: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("START HERE").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
+            stepButton(1, "Place a person", "figure.stand") { addItem = .person(.woman); tool = .add }
+            stepButton(2, "Place the camera", "video") { addItem = .camera; tool = .add }
+            Text("3  Select the person, then Light this person for a starting setup.")
+                .font(.fsCaption).foregroundStyle(Theme.textTertiary)
+        }
+    }
+
+    private func stepButton(_ n: Int, _ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text("\(n)").font(.fsMono).foregroundStyle(Theme.textTertiary)
+                Image(systemName: symbol)
+                Text(title).font(.fsBody)
+                Spacer()
+                Image(systemName: "chevron.right").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func overviewPanel(_ analysis: LightingAnalysis) -> some View {
         // Room size gets its own row: four across truncates it on a phone.
         VStack(alignment: .leading, spacing: 12) {
+            if isBlank { firstSteps }
             HStack(spacing: 16) {
                 StatView(label: "Cameras", value: "\((location?.cameraPositions.count ?? 0) + (location?.shots.count ?? 0))")
                 StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
@@ -1363,13 +1492,13 @@ struct PlanEditorView: View {
     }
 
     private func updateCamera(_ id: UUID, _ mutate: @escaping (inout CameraPosition) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             if let i = loc.cameraPositions.firstIndex(where: { $0.id == id }) { mutate(&loc.cameraPositions[i]) }
         }
     }
 
     private func updateShot(_ id: UUID, _ mutate: @escaping (inout Shot) -> Void) {
-        store.updateLocation(ref) { loc in
+        edit { loc in
             if let i = loc.shots.firstIndex(where: { $0.id == id }) { mutate(&loc.shots[i]) }
         }
     }

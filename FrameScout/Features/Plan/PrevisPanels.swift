@@ -9,6 +9,8 @@ struct CharacterPanel: View {
     var onAim: () -> Void
     var onDuplicate: () -> Void
     var onDelete: () -> Void
+    /// Places a lighting setup round this person.
+    var onLight: ((LightingSetup) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -28,6 +30,18 @@ struct CharacterPanel: View {
                     ProvenanceBadge(provenance: .estimated)
                 }
                 .accessibilityElement(children: .combine)
+            }
+            if let onLight {
+                Menu {
+                    ForEach(LightingSetup.allCases) { setup in
+                        Button { onLight(setup) } label: { Text("\(setup.label) — \(setup.summary)") }
+                    }
+                } label: {
+                    Label("Light this person…", systemImage: "lightbulb.2")
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+                }
+                .accessibilityHint("Places a starting lighting setup round this person, set for the camera's exposure")
             }
             HStack(spacing: 10) {
                 Button(action: onAim) { Label("Turn to face…", systemImage: "arrow.turn.up.right") }

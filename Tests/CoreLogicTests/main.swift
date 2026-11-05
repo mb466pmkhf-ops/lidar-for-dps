@@ -426,5 +426,27 @@ if let floor = planScene.floorEstimate() {
     check(floor.normal.y > 0.999 && abs(floor.height - -1.2) < 0.03, "floor estimate is level at the plan floor")
 } else { check(false, "floor estimate found") }
 
+// MARK: Lighting setups
+do {
+    var person = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1), facing: 0)
+    person.scanID = nil
+    var exp = ExposureSettings(); exp.iso = 800; exp.tStop = 2.8
+    let setup = LightingSetup.threePoint.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(setup.lights.count == 3 && setup.notes.count == 3, "three-point builds key, fill and back")
+    let inside = setup.lights.allSatisfy { abs($0.position.x) < 3 && abs($0.position.z) < 2 }
+    check(inside, "setup units stay inside the room (\(setup.lights.map(\.position)))")
+    let scene = LightingCalculator.Scene(lights: setup.lights, plan: demoPlan)
+    let face = LightingCalculator.Point(person.position, height: person.eyeHeight - 0.03)
+    let toCam = LightingCalculator.direction(bearing: 180, tilt: 0)
+    let r = LightingCalculator.reading(at: face, normal: toCam, scene: scene)
+    let keyID = setup.lights[0].id, fillID = setup.lights[1].id
+    let keyLux = r.contributions.filter { $0.lightID == keyID }.reduce(0) { $0 + $1.lux }
+    let fillLux = r.contributions.filter { $0.lightID == fillID }.reduce(0) { $0 + $1.lux }
+    check(abs(log2(keyLux / exp.keyLux)) < 0.2, "key solved to the camera's key level (\(keyLux) vs \(exp.keyLux))")
+    check(fillLux > 0 && abs(log2(keyLux / fillLux) - 2) < 0.4, "fill about two stops under key (\(keyLux) / \(fillLux))")
+    let soft = LightingSetup.softSide.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(soft.lights.contains { $0.kind == .negative }, "soft side light adds a neg fill")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)
