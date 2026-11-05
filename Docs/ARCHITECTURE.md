@@ -110,3 +110,12 @@ See D-006 for the model's assumptions and limits.
 ## Concurrency
 
 Swift 5 language mode. UI state is `@MainActor`; heavy work (encoding, mesh extraction, exports) runs in detached tasks on value copies. RoomPlan/ARKit delegate callbacks hop to the main actor.
+
+## Web & desktop planner and sync (D-007)
+
+`web/` holds the planner for browsers and the desktop (Tauri wraps the same build). `web/src/model` ports the
+lighting core; `web/src/sync` stores projects in IndexedDB and syncs them with Supabase. On the phone,
+`Features/Sync/CloudSync.swift` listens to `ProjectStore.onProjectWritten` / `onProjectDeleted`, uploads
+`project.json` plus each scan's `plan.json`, and applies other devices' changes with `ProjectStore.applyRemote`
+after a three-way merge (`Core/Sync/SyncMerge.swift`). Sync state lives in `Documents/Sync/state.json`; the
+sign-in token in the Keychain.

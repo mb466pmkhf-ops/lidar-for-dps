@@ -53,3 +53,26 @@ Lux, stops and power draw come only from `Core/Models/Photometrics.swift`, `Expo
 - Hiding a unit changes only the view; switching it off changes the light.
 - Scan alignment is a stored correction (`ScanRecord.alignment`), applied to the whole 3D world (scan, cameras,
   lights, people) so positions stay consistent; the scan files and the 2D plan are not changed.
+
+## D-007 · Web and desktop planner, synced through Supabase — 2026-11-05
+The owner asked for a web app and a desktop app that continue the lighting plan from the iPhone, fully
+synced. Recommended on a decision card; built on this default while the owner confirms.
+- **Planner**: `web/` (React + TypeScript, Vite). The lighting maths is a line-for-line port of
+  `Photometrics.swift`, `LightingCalculator.swift` and `Exposure.swift`; CI runs the Swift calculator over a
+  web-written project (`web/tests/fixtures/parity-bundle.json`) and fails if any reading differs (> 1e-6
+  relative), which also proves the phone decodes web edits. The web edits project.json as raw JSON and
+  only touches fields it knows, so keys from newer iOS builds survive.
+- **Desktop**: the same web app in a Tauri 2 window (`web/src-tauri`), built by CI for macOS (universal dmg)
+  and Windows (msi/exe). Chosen over Mac Catalyst because the iOS app depends on ARKit/RoomPlan and Windows
+  users are covered too. Builds are unsigned.
+- **Sync transport**: Supabase (Postgres + Auth), owner's own free project, email + password accounts. Plain
+  REST from every client (URLSession on iOS), so no third-party SDK. CloudKit was the alternative but needs
+  the paid Apple Developer Program and an Apple ID on the web.
+- **What uploads**: `project.json` and each scan's `plan.json` (walls, openings, set pieces) — only after the
+  user turns sync on and signs in. Scan meshes, textures, USDZ and photos never leave the phone. Rows are
+  protected by row-level security (owner = signed-in user); setup SQL in `web/supabase/schema.sql`.
+- **Conflicts**: compare-and-swap on a per-project revision. When two devices edited the same project, a
+  three-way merge against the last-synced copy keeps both sides' changes item by item (lights, people,
+  meters, shots…); a field changed on both sides keeps the device that is saving. `SyncMerge.swift` and
+  `web/src/sync/merge.ts` implement the same rules and share test cases.
+- Polling every 5 s (web) / 10 s (phone) while open; no realtime socket yet.
