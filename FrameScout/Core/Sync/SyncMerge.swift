@@ -34,7 +34,7 @@ enum SyncMerge {
         case let (x as [String: Any], y as [String: Any]):
             return x.count == y.count && x.allSatisfy { k, v in y[k] != nil && equal(v, y[k]) }
         case let (x as [Any], y as [Any]):
-            return x.count == y.count && zip(x, y).allSatisfy { equal($0, $1) }
+            return x.count == y.count && Swift.zip(x, y).allSatisfy { equal($0, $1) }
         case let (x as String, y as String): return x == y
         case let (x as NSNumber, y as NSNumber):
             return abs(x.doubleValue - y.doubleValue) < 1e-9
