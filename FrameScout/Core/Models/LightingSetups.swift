@@ -107,7 +107,9 @@ enum LightingSetup: String, CaseIterable, Identifiable {
                 chosen = (light, solution)
                 if case .output(let o) = solution, o <= 0.8 { break }
             }
-            guard var (light, solution) = chosen else { continue }
+            guard let pick = chosen else { continue }
+            var light = pick.0
+            let solution = pick.1
             switch solution {
             case .output(let o):
                 light.dimmer = o

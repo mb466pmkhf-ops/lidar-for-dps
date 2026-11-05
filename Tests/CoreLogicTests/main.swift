@@ -437,7 +437,7 @@ do {
     check(inside, "setup units stay inside the room (\(setup.lights.map(\.position)))")
     let scene = LightingCalculator.Scene(lights: setup.lights, plan: demoPlan)
     let face = LightingCalculator.Point(person.position, height: person.eyeHeight - 0.03)
-    let toCam = LightingCalculator.direction(bearing: 180, tilt: 0)
+    let toCam = LightingCalculator.direction(bearing: 0, tilt: 0)
     let r = LightingCalculator.reading(at: face, normal: toCam, scene: scene)
     let keyID = setup.lights[0].id, fillID = setup.lights[1].id
     let keyLux = r.contributions.filter { $0.lightID == keyID }.reduce(0) { $0 + $1.lux }
