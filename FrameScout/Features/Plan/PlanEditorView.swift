@@ -51,7 +51,7 @@ enum PlanTool: String, CaseIterable, Identifiable {
     }
     var hint3D: String {
         switch self {
-        case .select: return "Tap to select · hold, then drag to move · twist to turn"
+        case .select: return "Drag to look round · two fingers to slide · double-tap to centre · hold an item to move it"
         case .add: return "Tap the floor where it goes"
         case .aim: return "Tap where the selected item should point"
         case .subject: return "Tap the actor's mark on the floor"
@@ -406,9 +406,18 @@ struct PlanEditorView: View {
                 VStack(spacing: 6) {
                     viewButton("arrow.counterclockwise", "Reset view") { scene3D.resetView() }
                     viewButton("square.dashed", "View from above") { scene3D.topView() }
+                    viewButton("figure.stand", "Eye level") { scene3D.eyeLevelView() }
+
                     if let selection, let p = position(of: selection) {
                         viewButton("scope", "Focus on selection") { scene3D.focus(on: p.point, height: p.height) }
                     }
+                }
+                .padding(8)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                HStack(spacing: 6) {
+                    viewButton("minus", "Zoom out") { scene3D.zoomBy(1 / 1.4, animated: true) }
+                    viewButton("plus", "Zoom in") { scene3D.zoomBy(1.4, animated: true) }
                 }
                 .padding(8)
             }

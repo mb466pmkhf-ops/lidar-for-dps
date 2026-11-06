@@ -503,5 +503,35 @@ do {
     check(false, "web-written project decodes in Swift: \(error)")
 }
 
+// MARK: Stands and beam clipping (same rules as web/src/model/rigging.ts)
+do {
+    var cob = LightFixture(name: "K", kind: .fresnel, position: .zero)
+    cob.profileID = "cob-600-d"
+    cob.height = 2
+    check(cob.supportValue == .cStand, "600 W COB at 2 m goes on a C-stand")
+    cob.height = 0.5
+    check(cob.supportValue == .turtleBase, "low unit goes on a turtle base")
+    cob.height = 2
+    cob.modifierID = "softbox-150"
+    check(cob.supportValue == .comboStand, "big softbox goes on a combo")
+    cob.support = .cStand
+    cob.height = 3.8
+    check(cob.supportWarning?.hasPrefix("Higher than a C-stand") == true, "warns above a C-stand's reach")
+    var hmi = LightFixture(name: "H", kind: .hmi, position: .zero)
+    hmi.profileID = "hmi-1800-par"
+    check(hmi.supportValue == .comboStand, "HMI goes on a combo")
+    check(CameraRig().supportValue == .tripod && CameraSupport.automatic(height: 0.3) == .highHat, "camera on a tripod, high hat when low")
+    var plan = FloorPlan()
+    plan.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 2.5, bottom: 0)]
+    check(abs(BeamClip.planReach(from: .zero, bearing: 0, limit: 6, plan: plan) - 2) < 1e-6, "beam stops at the wall")
+    check(abs(BeamClip.planReach(from: .zero, bearing: 180, limit: 6, plan: plan) - 6) < 1e-6, "beam away from walls keeps its reach")
+    // Older rigs without the field still decode.
+    let old = try JSONSerialization.data(withJSONObject: ["position": ["x": 0, "z": 0], "height": 1.5, "pan": 0, "tilt": 0, "focalLength": 32,
+                                                          "sensorID": "arri-minilf-og", "aspect": "sensor"])
+    check((try? JSONDecoder().decode(CameraRig.self, from: old))?.support == nil, "camera rig without a support decodes")
+} catch {
+    check(false, "stands: \(error)")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

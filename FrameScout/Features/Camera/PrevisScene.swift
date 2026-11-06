@@ -183,8 +183,8 @@ enum SceneKitBuilder {
 
     // MARK: Cameras
 
-    /// Cinema camera: body, lens whose length follows the focal length, matte box, a tripod to the
-    /// floor (reads the height), and the frame's field of view drawn out to `reach`.
+    /// Cinema camera on its support (O'Connor-style head on sticks by default), with the frame's
+    /// field of view drawn out to `reach`.
     static func cameraModel(rig: CameraRig, color: UIColor, label text: String?, reach: Double, selected: Bool) -> SCNNode {
         let root = SCNNode()
         let head = SCNNode()
@@ -195,68 +195,23 @@ enum SceneKitBuilder {
         head.simdPosition = SIMD3(0, Float(rig.height), 0)
         root.addChildNode(head)
 
-        let bodyM = material(UIColor(white: 0.16, alpha: 1), emission: selected ? color.withAlphaComponent(0.35) : nil, roughness: 0.5)
-        let accent = material(color, constant: true)
-        let body = SCNBox(width: 0.13, height: 0.15, length: 0.24, chamferRadius: 0.012)
-        body.materials = [bodyM]
-        let bodyNode = SCNNode(geometry: body)
-        bodyNode.simdPosition = SIMD3(0, 0, 0.08)
-        tilt.addChildNode(bodyNode)
-        // Top handle and an accent stripe so cameras are easy to tell from lights.
-        let handle = SCNBox(width: 0.03, height: 0.03, length: 0.18, chamferRadius: 0.008)
-        handle.materials = [accent]
-        let handleNode = SCNNode(geometry: handle)
-        handleNode.simdPosition = SIMD3(0, 0.1, 0.08)
-        tilt.addChildNode(handleNode)
-        // Lens: longer for longer focal lengths.
-        let lensLength = Float(min(0.32, 0.06 + rig.focalLength / 450))
-        let lens = SCNCylinder(radius: 0.045, height: CGFloat(lensLength))
-        lens.materials = [material(UIColor(white: 0.08, alpha: 1), roughness: 0.4)]
-        let lensNode = SCNNode(geometry: lens)
-        lensNode.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
-        lensNode.simdPosition = SIMD3(0, 0, -0.04 - lensLength / 2)
-        tilt.addChildNode(lensNode)
-        let ring = SCNTorus(ringRadius: 0.047, pipeRadius: 0.006)
-        ring.materials = [accent]
-        let ringNode = SCNNode(geometry: ring)
-        ringNode.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
-        ringNode.simdPosition = SIMD3(0, 0, -0.04 - lensLength)
-        tilt.addChildNode(ringNode)
-        // Matte box: a short open frustum in front of the lens, shaped to the frame.
-        let area = rig.imageArea
-        let mbW = Float(0.16), mbH = Float(0.16 * area.height / area.width)
-        let mbZ = -0.06 - lensLength
-        let corners: [SIMD3<Float>] = [SIMD3(-mbW / 2, -mbH / 2, mbZ), SIMD3(mbW / 2, -mbH / 2, mbZ),
-                                       SIMD3(mbW / 2, mbH / 2, mbZ), SIMD3(-mbW / 2, mbH / 2, mbZ)]
-        tilt.addChildNode(lines((0..<4).map { (corners[$0], corners[($0 + 1) % 4]) }, color: UIColor(white: 0.6, alpha: 1)))
+        let (body, lensFront) = RigModels.cameraBody(rig: rig, accent: color, selected: selected)
+        tilt.addChildNode(body)
+        RigModels.cameraSupport(rig.supportValue, height: rig.height, to: head)
 
         // Field of view: frame rectangle at `reach`, joined to the lens.
         let hx = Float(tan(rig.horizontalFOV * .pi / 360) * reach)
         let hy = Float(tan(rig.verticalFOV * .pi / 360) * reach)
         let z = Float(-reach)
-        let apex = SIMD3<Float>(0, 0, -0.04 - lensLength)
+        let apex = SIMD3<Float>(0, 0, lensFront)
         let frame: [SIMD3<Float>] = [SIMD3(-hx, -hy, z), SIMD3(hx, -hy, z), SIMD3(hx, hy, z), SIMD3(-hx, hy, z)]
         var pairs = (0..<4).map { (frame[$0], frame[($0 + 1) % 4]) }
         pairs += frame.map { (apex, $0) }
-        tilt.addChildNode(lines(pairs, color: color.withAlphaComponent(selected ? 0.9 : 0.5)))
+        tilt.addChildNode(lines(pairs, color: color.withAlphaComponent(selected ? 0.9 : 0.45)))
 
-        // Tripod: three legs from the head to the floor.
-        let legM = material(UIColor(white: 0.25, alpha: 1))
-        let h = Float(max(rig.height - 0.08, 0.1))
-        for i in 0..<3 {
-            let a = Float(i) * 2 * .pi / 3 + Float(-rig.pan * .pi / 180)
-            let foot = SIMD3<Float>(sin(a) * h * 0.38, -h, cos(a) * h * 0.38)
-            let len = simd_length(foot)
-            let leg = SCNCylinder(radius: 0.008, height: CGFloat(len))
-            leg.materials = [legM]
-            let legNode = SCNNode(geometry: leg)
-            legNode.simdPosition = SIMD3(0, Float(rig.height) - 0.08, 0) + foot / 2
-            legNode.simdOrientation = simd_quatf(from: SIMD3(0, 1, 0), to: simd_normalize(-foot))
-            root.addChildNode(legNode)
-        }
         if let text {
             let l = label(text, color: color)
-            l.simdPosition = SIMD3(0, Float(rig.height) + 0.2, 0)
+            l.simdPosition = SIMD3(0, Float(rig.height) + 0.25, 0)
             root.addChildNode(l)
         }
         root.simdPosition = SIMD3(Float(rig.position.x), 0, Float(rig.position.z))
@@ -264,96 +219,6 @@ enum SceneKitBuilder {
     }
 
     // MARK: Lights
-
-    /// Head for a lighting unit, shaped by its type and modifier, facing −Z.
-    static func lightHead(_ l: LightFixture, pm: ResolvedPhotometrics, color: UIColor, selected: Bool) -> SCNNode {
-        let node = SCNNode()
-        let on = l.isOn
-        let glow = material(on ? color : UIColor(white: 0.3, alpha: 1), emission: on ? color : nil, constant: on)
-        let housing = material(UIColor(white: 0.14, alpha: 1), emission: selected ? UIColor(white: 0.35, alpha: 1) : nil, roughness: 0.5)
-        let size = pm.modifier?.size
-        switch (pm.modifier?.distribution ?? pm.profile.distribution, pm.profile.category) {
-        case (.omni, _):
-            let r = CGFloat((size ?? max(pm.profile.emitterWidth, 0.08)) / 2)
-            let g = SCNSphere(radius: r)
-            g.materials = [glow]
-            node.addChildNode(SCNNode(geometry: g))
-        case (_, .tube):
-            let g = SCNCylinder(radius: 0.02, height: CGFloat(pm.profile.emitterWidth))
-            g.materials = [glow]
-            let n = SCNNode(geometry: g)
-            n.simdEulerAngles = SIMD3(0, 0, Float.pi / 2)
-            node.addChildNode(n)
-        case (_, .panel), (_, .soft):
-            let w = CGFloat(size ?? pm.profile.emitterWidth), h = CGFloat(size ?? pm.profile.emitterHeight)
-            let box = SCNBox(width: w + 0.02, height: h + 0.02, length: 0.05, chamferRadius: 0.005)
-            box.materials = [housing]
-            node.addChildNode(SCNNode(geometry: box))
-            let face = SCNPlane(width: w, height: h)
-            face.materials = [glow]
-            let f = SCNNode(geometry: face)
-            f.simdPosition = SIMD3(0, 0, -0.026)
-            f.simdEulerAngles = SIMD3(0, Float.pi, 0)
-            node.addChildNode(f)
-        default:
-            if let size {
-                // Softbox: pyramid with its base facing forward.
-                let depth = CGFloat(size * 0.6)
-                let pyr = SCNPyramid(width: CGFloat(size), height: depth, length: CGFloat(size))
-                pyr.materials = [housing]
-                let p = SCNNode(geometry: pyr)
-                p.simdEulerAngles = SIMD3(-Float.pi / 2, 0, 0)
-                p.simdPosition = SIMD3(0, 0, Float(depth))
-                node.addChildNode(p)
-                let face = SCNPlane(width: CGFloat(size), height: CGFloat(size))
-                face.materials = [glow]
-                let f = SCNNode(geometry: face)
-                f.simdEulerAngles = SIMD3(0, Float.pi, 0)
-                f.simdPosition = SIMD3(0, 0, -0.005)
-                node.addChildNode(f)
-            } else {
-                let body = SCNBox(width: 0.22, height: 0.24, length: 0.3, chamferRadius: 0.02)
-                body.materials = [housing]
-                let b = SCNNode(geometry: body)
-                b.simdPosition = SIMD3(0, 0, 0.15)
-                node.addChildNode(b)
-                let lens = SCNCylinder(radius: 0.095, height: 0.02)
-                lens.materials = [glow]
-                let ln = SCNNode(geometry: lens)
-                ln.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
-                ln.simdPosition = SIMD3(0, 0, -0.01)
-                node.addChildNode(ln)
-            }
-        }
-        // Barn doors: four leaves hinged at the front, angled to their cut.
-        if pm.barnDoorsAvailable, l.barnDoors != nil {
-            let d = l.barnDoorSettings
-            let leafM = material(UIColor(white: 0.1, alpha: 1))
-            let half: Float = 0.12
-            let leaves: [(Double, SIMD3<Float>, SIMD3<Float>)] = [
-                (d.top, SIMD3(0, half, 0), SIMD3(1, 0, 0)),
-                (d.bottom, SIMD3(0, -half, 0), SIMD3(-1, 0, 0)),
-                (d.left, SIMD3(-half, 0, 0), SIMD3(0, 1, 0)),
-                (d.right, SIMD3(half, 0, 0), SIMD3(0, -1, 0)),
-            ]
-            leafM.isDoubleSided = true
-            for (angle, hinge, axis) in leaves {
-                let isVertical = abs(axis.y) > 0.5
-                // Leaf starts pointing straight forward from its hinge, then opens outwards.
-                let leaf = isVertical ? SCNPlane(width: 0.16, height: 0.24) : SCNPlane(width: 0.24, height: 0.16)
-                leaf.materials = [leafM]
-                let n = SCNNode(geometry: leaf)
-                let pivot = SCNNode()
-                pivot.simdPosition = hinge + SIMD3(0, 0, -0.02)
-                n.simdPosition = SIMD3(0, 0, -0.08)
-                n.simdEulerAngles = isVertical ? SIMD3(0, Float.pi / 2, 0) : SIMD3(Float.pi / 2, 0, 0)
-                pivot.addChildNode(n)
-                pivot.simdOrientation = simd_quatf(angle: Float(min(angle, 90) * .pi / 180), axis: axis)
-                node.addChildNode(pivot)
-            }
-        }
-        return node
-    }
 
     /// Black mask the spot light projects to show barn-door cuts (white passes).
     static func barnDoorGobo(_ doors: BarnDoors, outerAngle: Double) -> UIImage {
@@ -374,26 +239,66 @@ enum SceneKitBuilder {
         }
     }
 
-    /// Faint volume showing where the beam goes: a cone, or a four-sided frustum cut by barn doors.
-    static func beamVolume(pm: ResolvedPhotometrics, doors: BarnDoors, color: UIColor, length: Double) -> SCNNode? {
+    /// Beam rays from the unit's front, each stopped where it first meets the room (scan surfaces or
+    /// the floor). Rays that meet nothing leave the location and aren't drawn, so beams never spill
+    /// out of the room. `hit` returns the distance to the first surface along a direction in the
+    /// light's own space, or nil. Drawing only; lux comes from `LightingCalculator`.
+    static func clippedBeam(pm: ResolvedPhotometrics, doors: BarnDoors, color: UIColor, rays: Int = 28,
+                            hit: (SIMD3<Float>) -> Float?) -> SCNNode? {
         guard pm.distribution == .beam || pm.distribution == .lambertian else { return nil }
         let half = min(pm.distribution == .beam ? pm.beamAngle * 0.68 : 60, 75)
-        func t(_ limit: Double) -> Float { Float(tan(min(half, pm.barnDoorsAvailable ? limit : 90) * .pi / 180) * length) }
+        let th = Float(tan(half * .pi / 180))
+        func t(_ limit: Double) -> Float { Float(tan(min(half, pm.barnDoorsAvailable ? limit : 90) * .pi / 180)) }
         let l = t(doors.left), r = t(doors.right), u = t(doors.top), d = t(doors.bottom)
-        let z = Float(-length)
-        let far: [SIMD3<Float>] = [SIMD3(-l, -d, z), SIMD3(r, -d, z), SIMD3(r, u, z), SIMD3(-l, u, z)]
+        var ends: [SIMD3<Float>?] = []
+        for k in 0..<rays {
+            let a = Float(k) / Float(rays) * 2 * .pi
+            let x = min(max(cos(a) * th, -l), r), y = min(max(sin(a) * th, -d), u)
+            let dir = simd_normalize(SIMD3<Float>(x, y, -1))
+            ends.append(hit(dir).map { dir * $0 })
+        }
+        let axisDir = SIMD3<Float>(0, 0, -1)
+        let centre = hit(axisDir).map { axisDir * $0 }
+        guard ends.contains(where: { $0 != nil }) || centre != nil else { return nil }
         var vertices: [SCNVector3] = [SCNVector3(0, 0, 0)]
-        vertices += far.map { SCNVector3($0.x, $0.y, $0.z) }
-        let indices: [Int32] = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]
-        let g = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices)],
+        var colors: [Float] = []
+        var cr: CGFloat = 1, cg: CGFloat = 1, cb: CGFloat = 1, ca: CGFloat = 1
+        color.getRed(&cr, green: &cg, blue: &cb, alpha: &ca)
+        let rgba = (cr, cg, cb, ca)
+        func push(_ p: SIMD3<Float>, strength: Float) {
+            vertices.append(SCNVector3(p.x, p.y, p.z))
+            colors += [Float(rgba.0) * strength, Float(rgba.1) * strength, Float(rgba.2) * strength, 1]
+        }
+        colors += [Float(rgba.0) * 0.16, Float(rgba.1) * 0.16, Float(rgba.2) * 0.16, 1]
+        func fade(_ p: SIMD3<Float>) -> Float { 0.09 / (1 + simd_length(p) * 0.35) }
+        var index: [Int32?] = []
+        for e in ends {
+            if let e { index.append(Int32(vertices.count)); push(e, strength: fade(e)) } else { index.append(nil) }
+        }
+        var centreIndex: Int32?
+        if let c = centre { centreIndex = Int32(vertices.count); push(c, strength: fade(c)) }
+        var indices: [Int32] = []
+        for k in 0..<rays {
+            guard let i0 = index[k], let i1 = index[(k + 1) % rays] else { continue }
+            indices += [0, i0, i1]
+            // The far end, closed towards the centre ray, so the beam reads as a solid cone.
+            if let c = centreIndex { indices += [c, i1, i0] }
+        }
+        guard !indices.isEmpty else { return nil }
+        let colorData = colors.withUnsafeBufferPointer { Data(buffer: $0) }
+        let colorSource = SCNGeometrySource(data: colorData, semantic: .color, vectorCount: vertices.count, usesFloatComponents: true,
+                                            componentsPerVector: 4, bytesPerComponent: MemoryLayout<Float>.size, dataOffset: 0,
+                                            dataStride: MemoryLayout<Float>.size * 4)
+        let g = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices), colorSource],
                             elements: [SCNGeometryElement(indices: indices, primitiveType: .triangles)])
-        let m = material(color.withAlphaComponent(0.07), constant: true)
+        let m = material(.white, constant: true)
         m.isDoubleSided = true
         m.writesToDepthBuffer = false
         m.blendMode = .add
         g.materials = [m]
         let node = SCNNode(geometry: g)
         node.castsShadow = false
+        node.renderingOrder = 5
         return node
     }
 
@@ -520,6 +425,21 @@ final class VirtualSceneModel: ObservableObject {
     private var alignment = ScanAlignment.identity
     private weak var orbitView: SCNView?
     let wallFader = WallFader()
+    /// Built nodes per item with the hash of what they were built from; unchanged items are reused.
+    private var lightCache: [UUID: (key: Int, node: SCNNode)] = [:]
+    private var markerCache: [UUID: (key: Int, node: SCNNode)] = [:]
+    private let subjectMarks = SCNNode()
+    /// Bumped when the scan geometry changes, so beams are traced again against the new room.
+    private var sceneGeneration = 0
+    /// The scan's footprint (x/z) in world-node space; floor outside it doesn't stop a beam.
+    private var roomFootprint: (lo: SIMD2<Float>, hi: SIMD2<Float>)?
+
+    // Orbit view: the camera circles `orbitTarget` at `orbitDistance`, `orbitYaw` round from +Z and
+    // `orbitPitch` above the horizon. All moves go through here on the main thread.
+    private(set) var orbitTarget = SIMD3<Float>(0, 1, 0)
+    private var orbitYaw: Float = 0
+    private var orbitPitch: Float = 0.8
+    private var orbitDistance: Float = 6
 
     init() {
         cameraNode.camera = SCNCamera()
@@ -551,7 +471,7 @@ final class VirtualSceneModel: ObservableObject {
 
         scene.rootNode.addChildNode(grid)
         scene.rootNode.addChildNode(world)
-        for n in [scanHolder, markers, lightRig, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
+        for n in [scanHolder, markers, subjectMarks, lightRig, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
         let ring = SCNTorus(ringRadius: 0.4, pipeRadius: 0.012)
         ring.firstMaterial = SceneKitBuilder.material(.white, constant: true)
         selectionRing.geometry = ring
@@ -585,10 +505,13 @@ final class VirtualSceneModel: ObservableObject {
                 let cutaway: Set<SceneGroup> = [.walls, .windows, .doors]
                 wallFader.configure(walls: items.filter { group(for: $0.category).map(cutaway.contains) ?? false }.map(\.node), world: world,
                                     centre: SIMD3(roomCentreLocal(node).x, Float(floorY) + 1, roomCentreLocal(node).z))
+                scanHolder.childNodes.forEach { $0.removeFromParentNode() }
                 scanHolder.addChildNode(node)
                 let (lo, hi) = node.boundingBox
                 roomCentre = SIMD3(Float(lo.x + hi.x) / 2, Float(floorY) + 1, Float(lo.z + hi.z) / 2)
                 roomSpan = max(Float(hi.x - lo.x), Float(hi.z - lo.z), 3)
+                roomFootprint = (SIMD2(Float(lo.x) - 0.05, Float(lo.z) - 0.05), SIMD2(Float(hi.x) + 0.05, Float(hi.z) + 0.05))
+                sceneGeneration += 1
                 applyAlignment(alignment)
                 resetView()
                 loaded = true
@@ -642,6 +565,7 @@ final class VirtualSceneModel: ObservableObject {
         wallFader.syncUserHidden()
         if let orbitView { wallFader.update(camera: orbitView.pointOfView?.presentation.simdWorldPosition ?? orbitCameraNode.simdWorldPosition) }
         markers.isHidden = d.isHidden(group: .cameras)
+        subjectMarks.isHidden = d.isHidden(group: .cameras)
         people.isHidden = d.isHidden(group: .people)
         meterNodes.isHidden = d.isHidden(group: .meters)
     }
@@ -682,36 +606,90 @@ final class VirtualSceneModel: ObservableObject {
 
     /// Three-quarter view over the whole room.
     func resetView() {
-        let c = worldPoint(roomCentre)
-        moveOrbit(to: c + SIMD3(0, roomSpan * 1.0, roomSpan * 0.85), target: c)
+        setOrbit(target: worldPoint(roomCentre), yaw: 0.6, pitch: 0.75, distance: roomSpan * 1.35, animated: true)
     }
 
     /// Straight down, like the plan.
     func topView() {
+        setOrbit(target: worldPoint(roomCentre), yaw: 0, pitch: 1.55, distance: roomSpan * 1.6, animated: true)
+    }
+
+    /// Standing in the room at eye height, looking across it.
+    func eyeLevelView() {
         let c = worldPoint(roomCentre)
-        moveOrbit(to: c + SIMD3(0, roomSpan * 1.6, 0.01), target: c)
+        setOrbit(target: SIMD3(c.x, Float(floorY) + 1.4, c.z), yaw: orbitYaw, pitch: 0.12, distance: max(roomSpan * 0.45, 1.5), animated: true)
     }
 
     /// Frames a point (plan x/z, height above floor) from the current viewing direction.
     func focus(on p: PlanPoint, height: Double, distance: Float = 3) {
         let target = worldPoint(SIMD3(Float(p.x), Float(floorY + height), Float(p.z)))
-        var dir = orbitCameraNode.simdWorldPosition - target
-        if simd_length(dir) < 0.01 { dir = SIMD3(0, 1, 1) }
-        dir = simd_normalize(dir)
-        if dir.y < 0.25 { dir = simd_normalize(SIMD3(dir.x, 0.35, dir.z)) }
-        moveOrbit(to: target + dir * distance, target: target)
+        setOrbit(target: target, yaw: orbitYaw, pitch: max(orbitPitch, 0.3), distance: distance, animated: true)
+    }
+
+    /// Recentres the orbit on a world point (e.g. a double-tapped surface) without changing the angle.
+    func centre(onWorld p: SIMD3<Float>) {
+        setOrbit(target: p, yaw: orbitYaw, pitch: orbitPitch, distance: min(orbitDistance, max(2.5, roomSpan * 0.6)), animated: true)
+    }
+
+    /// One-finger drag: turn round the target. `dx`/`dy` in points.
+    func orbitBy(dx: CGFloat, dy: CGFloat) {
+        setOrbit(target: orbitTarget, yaw: orbitYaw - Float(dx) * 0.008, pitch: orbitPitch + Float(dy) * 0.006, distance: orbitDistance, animated: false)
+    }
+
+    /// Two-finger drag: slide the target over the floor, map-style.
+    func panBy(dx: CGFloat, dy: CGFloat, viewHeight: CGFloat) {
+        let scale = orbitDistance * 1.2 / Float(max(viewHeight, 1))
+        let right = SIMD3<Float>(cos(orbitYaw), 0, -sin(orbitYaw))
+        let forward = SIMD3<Float>(-sin(orbitYaw), 0, -cos(orbitYaw))
+        let t = orbitTarget - right * Float(dx) * scale + forward * Float(dy) * scale
+        setOrbit(target: t, yaw: orbitYaw, pitch: orbitPitch, distance: orbitDistance, animated: false)
+    }
+
+    /// Pinch: `factor` > 1 moves in.
+    func zoomBy(_ factor: CGFloat, animated: Bool = false) {
+        setOrbit(target: orbitTarget, yaw: orbitYaw, pitch: orbitPitch, distance: orbitDistance / Float(max(factor, 0.01)), animated: animated)
+    }
+
+    /// Two-finger twist on empty space: turn the view.
+    func turnBy(radians: CGFloat) {
+        setOrbit(target: orbitTarget, yaw: orbitYaw - Float(radians), pitch: orbitPitch, distance: orbitDistance, animated: false)
     }
 
     private func worldPoint(_ local: SIMD3<Float>) -> SIMD3<Float> { world.simdConvertPosition(local, to: nil) }
 
-    private func moveOrbit(to position: SIMD3<Float>, target: SIMD3<Float>) {
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.45
+    /// The only place the orbit camera moves. Keeps it above the floor, out of the target, and near
+    /// the room, then cuts away the walls in front of it (on the main thread, never mid-render).
+    private func setOrbit(target: SIMD3<Float>, yaw: Float, pitch: Float, distance: Float, animated: Bool) {
+        let c = worldPoint(roomCentre)
+        let limit = max(roomSpan, 3)
+        var t = target
+        t.x = min(max(t.x, c.x - limit), c.x + limit)
+        t.z = min(max(t.z, c.z - limit), c.z + limit)
+        t.y = min(max(t.y, Float(floorY)), Float(floorY) + 3)
+        orbitTarget = t
+        orbitYaw = yaw
+        orbitPitch = min(max(pitch, 0.03), 1.55)
+        orbitDistance = min(max(distance, 0.6), max(roomSpan * 4, 10))
+        let dir = SIMD3<Float>(sin(orbitYaw) * cos(orbitPitch), sin(orbitPitch), cos(orbitYaw) * cos(orbitPitch))
+        var position = orbitTarget + dir * orbitDistance
+        position.y = max(position.y, Float(floorY) + 0.25)
+        if animated {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.4
+        }
         orbitCameraNode.simdPosition = position
-        orbitCameraNode.simdLook(at: target)
-        SCNTransaction.commit()
-        orbitView?.defaultCameraController.target = SCNVector3(target.x, target.y, target.z)
+        orbitCameraNode.simdLook(at: orbitTarget, up: SIMD3(0, 1, 0), localFront: SIMD3(0, 0, -1))
+        if animated { SCNTransaction.commit() }
         wallFader.update(camera: position)
+    }
+
+    /// World point under a screen point on the scan or the floor.
+    func surfacePoint(at screen: CGPoint, in view: SCNView) -> SIMD3<Float>? {
+        let hits = view.hitTest(screen, options: [SCNHitTestOption.searchMode: SCNHitTestSearchMode.closest.rawValue,
+                                                  SCNHitTestOption.ignoreHiddenNodes: true])
+        if let h = hits.first { return h.simdWorldCoordinates }
+        guard let p = planPoint(at: screen, in: view, height: 0) else { return nil }
+        return worldPoint(SIMD3(Float(p.x), Float(floorY), Float(p.z)))
     }
 
     /// Plan point under a screen point, on the horizontal plane at `height` above the floor.
@@ -743,25 +721,40 @@ final class VirtualSceneModel: ObservableObject {
     /// Cameras (with their field of view), and the subject marks of shots that have no person on them.
     /// `hideSelected` leaves out the camera you're looking through (walkthrough).
     func setMarkers(viewpoints: [VirtualViewpoint], selected: UUID?, showLabels: Bool = true, hideSelected: Bool = false, hiddenSubjects: Bool = false) {
-        markers.childNodes.forEach { $0.removeFromParentNode() }
+        var keep = Set<UUID>()
+        for vp in viewpoints where !(hideSelected && vp.id == selected) {
+            let reach = vp.subject.map { max(1.5, vp.rig.position.distance(to: $0)) } ?? 2.5
+            var h = Hasher()
+            h.combine(vp)
+            h.combine(vp.id == selected)
+            h.combine(showLabels)
+            h.combine(floorY)
+            let key = h.finalize()
+            keep.insert(vp.id)
+            if let cached = markerCache[vp.id], cached.key == key { continue }
+            markerCache[vp.id]?.node.removeFromParentNode()
+            let color = vp.kind == .shot ? UIColor(red: 0.56, green: 0.65, blue: 0.74, alpha: 1) : UIColor.white
+            let m = SceneKitBuilder.cameraModel(rig: vp.rig, color: color, label: showLabels ? "\(vp.label) · \(Optics.formatFocal(vp.rig.focalLength))" : nil,
+                                                reach: reach, selected: vp.id == selected)
+            m.name = "sel:\(vp.kind == .shot ? "shot" : "camera"):\(vp.id.uuidString)"
+            m.simdPosition.y = Float(floorY)
+            markers.addChildNode(m)
+            markerCache[vp.id] = (key, m)
+        }
+        for (id, cached) in markerCache where !keep.contains(id) {
+            cached.node.removeFromParentNode()
+            markerCache[id] = nil
+        }
+        subjectMarks.childNodes.forEach { $0.removeFromParentNode() }
+        guard !hiddenSubjects else { return }
         for vp in viewpoints {
-            if !(hideSelected && vp.id == selected) {
-                let color = vp.kind == .shot ? UIColor(red: 0.56, green: 0.65, blue: 0.74, alpha: 1) : UIColor.white
-                let reach = vp.subject.map { max(1.5, vp.rig.position.distance(to: $0)) } ?? 2.5
-                let m = SceneKitBuilder.cameraModel(rig: vp.rig, color: color, label: showLabels ? "\(vp.label) · \(Optics.formatFocal(vp.rig.focalLength))" : nil,
-                                                    reach: reach, selected: vp.id == selected)
-                m.name = "sel:\(vp.kind == .shot ? "shot" : "camera"):\(vp.id.uuidString)"
-                m.simdPosition.y = Float(floorY)
-                markers.addChildNode(m)
-            }
-            if let s = vp.subject, !hiddenSubjects {
-                let mark = SCNCylinder(radius: 0.18, height: 0.01)
-                mark.firstMaterial = SceneKitBuilder.material(UIColor(red: 0.86, green: 0.4, blue: 0.37, alpha: 0.8), constant: true)
-                let node = SCNNode(geometry: mark)
-                node.simdPosition = SIMD3(Float(s.x), Float(floorY) + 0.006, Float(s.z))
-                node.castsShadow = false
-                markers.addChildNode(node)
-            }
+            guard let s = vp.subject else { continue }
+            let mark = SCNCylinder(radius: 0.18, height: 0.01)
+            mark.firstMaterial = SceneKitBuilder.material(UIColor(red: 0.86, green: 0.4, blue: 0.37, alpha: 0.8), constant: true)
+            let node = SCNNode(geometry: mark)
+            node.simdPosition = SIMD3(Float(s.x), Float(floorY) + 0.006, Float(s.z))
+            node.castsShadow = false
+            subjectMarks.addChildNode(node)
         }
     }
 
@@ -805,105 +798,176 @@ final class VirtualSceneModel: ObservableObject {
         }
     }
 
-    /// Lighting units: a head shaped by type and modifier, a SceneKit light set from the unit's
-    /// colour and (compressed) output, barn doors as leaves and a projected mask, and a faint beam.
-    /// Viewport brightness is a visual guide only; lux comes from `LightingCalculator`.
+    /// Lighting units: a head shaped by type and modifier on its yoke and stand, a SceneKit light set
+    /// from the unit's colour and (compressed) output, barn doors as leaves and a projected mask, and
+    /// beam rays that stop at the room. Viewport brightness is a visual guide only; lux comes from
+    /// `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
+    /// doesn't rebuild (and re-shadow) the whole rig every frame.
     func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false) {
-        lightRig.childNodes.forEach { $0.removeFromParentNode() }
         var anyOn = false
         var shadowCount = 0
+        var keep = Set<UUID>()
         for l in lights {
             if hideGrip && !l.kind.emits { continue }
-            let pan = SCNNode()
-            pan.name = "sel:light:\(l.id.uuidString)"
-            pan.simdPosition = SIMD3(Float(l.position.x), Float(floorY + l.height), Float(l.position.z))
-            pan.simdEulerAngles = SIMD3(0, Float(-l.pan * .pi / 180), 0)
-            let tilt = SCNNode()
-            tilt.simdEulerAngles = SIMD3(Float(l.tilt * .pi / 180), 0, 0)
-            pan.addChildNode(tilt)
+            let wantsShadow = l.kind.emits && l.isOn && shadowCount < 4 && l.photometrics.distribution != .omni && l.photometrics.distribution != .tube
+            if wantsShadow { shadowCount += 1 }
+            if l.kind.emits && l.isOn { anyOn = true }
+            var h = Hasher()
+            h.combine(l)
+            h.combine(l.id == selected)
+            h.combine(showLabels)
+            h.combine(showBeams)
+            h.combine(wantsShadow)
+            h.combine(floorY)
+            h.combine(sceneGeneration)
+            let key = h.finalize()
+            keep.insert(l.id)
+            if let cached = lightCache[l.id], cached.key == key { continue }
+            lightCache[l.id]?.node.removeFromParentNode()
+            let node = buildLight(l, selected: l.id == selected, showLabels: showLabels, showBeams: showBeams, shadow: wantsShadow)
+            lightRig.addChildNode(node)
+            lightCache[l.id] = (key, node)
+        }
+        for (id, cached) in lightCache where !keep.contains(id) {
+            cached.node.removeFromParentNode()
+            lightCache[id] = nil
+        }
+        ambientNode.light?.intensity = anyOn ? 160 : 450
+    }
 
-            if l.kind.emits {
-                let pm = l.photometrics
-                let color = SceneKitBuilder.uiColor(pm.color)
-                tilt.addChildNode(SceneKitBuilder.lightHead(l, pm: pm, color: color, selected: l.id == selected))
-                if l.isOn && pm.flux > 0 {
-                    anyOn = true
-                    let light = SCNLight()
-                    switch pm.distribution {
-                    case .omni, .tube:
-                        light.type = .omni
-                    case .lambertian:
-                        light.type = .spot
-                        light.spotInnerAngle = 60
-                        light.spotOuterAngle = 170
-                    case .beam:
-                        light.type = .spot
-                        light.spotInnerAngle = CGFloat(min(pm.beamAngle * 0.6, 170))
-                        light.spotOuterAngle = CGFloat(min(pm.beamAngle * 1.35, 175))
+    private func buildLight(_ l: LightFixture, selected: Bool, showLabels: Bool, showBeams: Bool, shadow: Bool) -> SCNNode {
+        let pan = SCNNode()
+        pan.name = "sel:light:\(l.id.uuidString)"
+        pan.simdPosition = SIMD3(Float(l.position.x), Float(floorY + l.height), Float(l.position.z))
+        pan.simdEulerAngles = SIMD3(0, Float(-l.pan * .pi / 180), 0)
+        let tilt = SCNNode()
+        tilt.simdEulerAngles = SIMD3(Float(l.tilt * .pi / 180), 0, 0)
+        pan.addChildNode(tilt)
+        let support = l.supportValue
+
+        if l.kind.emits {
+            let pm = l.photometrics
+            let color = SceneKitBuilder.uiColor(pm.color)
+            tilt.addChildNode(RigModels.lightHead(l, pm: pm, color: color, selected: selected))
+            if pm.profile.category == .practical {
+                // A practical is its own lamp: a slim pole and base to the floor.
+                RigModels.bar(SIMD3(0, -0.05, 0), SIMD3(0, Float(-l.height) + 0.02, 0), radius: 0.008, RigModels.darkMetal, to: pan, segments: 8)
+                RigModels.add(SCNCylinder(radius: 0.11, height: 0.025), RigModels.blackMetal, to: pan, at: SIMD3(0, Float(-l.height) + 0.012, 0))
+            } else if support != .none {
+                let hanging = support == .overhead || support == .megaBoom
+                let stud = RigModels.yoke(RigModels.headSize(l, pm: pm), hanging: hanging, to: pan)
+                RigModels.stand(support, headHeight: l.height, studY: stud, to: pan)
+            }
+            if l.isOn && pm.flux > 0 {
+                let light = SCNLight()
+                switch pm.distribution {
+                case .omni, .tube:
+                    light.type = .omni
+                case .lambertian:
+                    light.type = .spot
+                    light.spotInnerAngle = 60
+                    light.spotOuterAngle = 170
+                case .beam:
+                    light.type = .spot
+                    light.spotInnerAngle = CGFloat(min(pm.beamAngle * 0.6, 170))
+                    light.spotOuterAngle = CGFloat(min(pm.beamAngle * 1.35, 175))
+                }
+                if l.usesRGB {
+                    light.color = color
+                } else {
+                    light.color = UIColor.white
+                    light.temperature = CGFloat(pm.kelvin)
+                }
+                light.intensity = SceneKitBuilder.viewportIntensity(flux: pm.flux)
+                light.attenuationStartDistance = 0.3
+                light.attenuationEndDistance = 14
+                light.attenuationFalloffExponent = 2
+                if light.type == .spot {
+                    if pm.barnDoorsAvailable && !l.barnDoorSettings.isOpen {
+                        light.gobo?.contents = SceneKitBuilder.barnDoorGobo(l.barnDoorSettings, outerAngle: Double(light.spotOuterAngle))
                     }
-                    if l.usesRGB {
-                        light.color = color
-                    } else {
-                        light.color = UIColor.white
-                        light.temperature = CGFloat(pm.kelvin)
+                    if shadow {
+                        light.castsShadow = true
+                        light.shadowMode = .deferred
+                        light.shadowColor = UIColor.black.withAlphaComponent(0.55)
                     }
-                    light.intensity = SceneKitBuilder.viewportIntensity(flux: pm.flux)
-                    light.attenuationStartDistance = 0.3
-                    light.attenuationEndDistance = 14
-                    light.attenuationFalloffExponent = 2
-                    if light.type == .spot {
-                        if pm.barnDoorsAvailable && !l.barnDoorSettings.isOpen {
-                            light.gobo?.contents = SceneKitBuilder.barnDoorGobo(l.barnDoorSettings, outerAngle: Double(light.spotOuterAngle))
-                        }
-                        // Shadows only for the first few units; they are the expensive part.
-                        if shadowCount < 4 {
-                            light.castsShadow = true
-                            light.shadowMode = .deferred
-                            light.shadowColor = UIColor.black.withAlphaComponent(0.55)
-                            shadowCount += 1
-                        }
-                    }
-                    let lightNode = SCNNode()
-                    lightNode.light = light
-                    // Just in front of the head so the unit doesn't shadow itself.
-                    lightNode.simdPosition = SIMD3(0, 0, -0.14)
-                    tilt.addChildNode(lightNode)
-                    if showBeams, let beam = SceneKitBuilder.beamVolume(pm: pm, doors: l.barnDoorSettings, color: color,
-                                                                        length: min(6, max(1.2, (pm.distance(forLux: 50) ?? 3)))) {
-                        beam.simdPosition = SIMD3(0, 0, -0.1)
+                }
+                let lightNode = SCNNode()
+                lightNode.light = light
+                // Just in front of the head so the unit doesn't shadow itself.
+                lightNode.simdPosition = SIMD3(0, 0, -0.14)
+                tilt.addChildNode(lightNode)
+                if showBeams {
+                    let origin = SIMD3<Float>(0, 0, -0.1)
+                    let q = pan.simdOrientation * tilt.simdOrientation
+                    let start = pan.simdPosition + q.act(origin)
+                    if let beam = SceneKitBuilder.clippedBeam(pm: pm, doors: l.barnDoorSettings, color: color,
+                                                              hit: { [weak self] dir in self?.surfaceDistance(from: start, direction: q.act(dir)) }) {
+                        beam.simdPosition = origin
                         tilt.addChildNode(beam)
                     }
                 }
-            } else {
-                let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
-                let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
-                let m = SCNMaterial()
-                switch l.kind {
-                case .bounce: m.diffuse.contents = UIColor.white
-                case .negative: m.diffuse.contents = UIColor(white: 0.04, alpha: 1)
-                case .diffusion: m.diffuse.contents = UIColor(white: 1, alpha: 0.55)
-                default: m.diffuse.contents = UIColor(white: 0.25, alpha: 1)
-                }
-                m.isDoubleSided = true
-                if l.id == selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
-                board.materials = [m]
-                tilt.addChildNode(SCNNode(geometry: board))
-                // Stand to the floor.
-                let stand = SCNCylinder(radius: 0.01, height: CGFloat(max(l.height - h / 2, 0.05)))
-                stand.firstMaterial = SceneKitBuilder.material(UIColor(white: 0.3, alpha: 1))
-                let s = SCNNode(geometry: stand)
-                s.simdPosition = SIMD3(0, -Float(h / 2) - Float(max(l.height - h / 2, 0.05)) / 2, 0)
-                pan.addChildNode(s)
             }
-            if showLabels {
-                let text = l.kind.emits ? "\(l.name) · \(l.isOn ? "\(Int((l.dimmer * 100).rounded())) %" : "off")" : l.name
-                let label = SceneKitBuilder.label(text, color: UIColor(white: 0.95, alpha: 1), size: 0.08)
-                label.simdPosition = SIMD3(0, 0.3, 0)
-                pan.addChildNode(label)
+        } else {
+            let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
+            let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
+            let m = SCNMaterial()
+            switch l.kind {
+            case .bounce: m.diffuse.contents = UIColor.white
+            case .negative: m.diffuse.contents = UIColor(white: 0.04, alpha: 1)
+            case .diffusion: m.diffuse.contents = UIColor(white: 1, alpha: 0.55)
+            default: m.diffuse.contents = UIColor(white: 0.25, alpha: 1)
             }
-            lightRig.addChildNode(pan)
+            m.isDoubleSided = true
+            if selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
+            board.materials = [m]
+            tilt.addChildNode(SCNNode(geometry: board))
+            // Frame round the board, then a grip head down to its stand.
+            let hw = Float(l.width / 2), hh = Float(h / 2)
+            let corners: [SIMD3<Float>] = [SIMD3(-hw, -hh, 0), SIMD3(hw, -hh, 0), SIMD3(hw, hh, 0), SIMD3(-hw, hh, 0)]
+            for i in 0..<4 { RigModels.bar(corners[i], corners[(i + 1) % 4], radius: 0.01, RigModels.steel, to: tilt, segments: 8) }
+            let support = l.supportValue
+            if support != .none {
+                let stud = -Float(h / 2) - 0.03
+                RigModels.bar(SIMD3(0, -Float(h / 2), 0), SIMD3(0, stud, 0), radius: 0.008, RigModels.steel, to: pan, segments: 8)
+                RigModels.add(SCNCylinder(radius: 0.03, height: 0.02), RigModels.darkMetal, to: pan, at: SIMD3(0, stud, 0), euler: SIMD3(0, 0, .pi / 2))
+                RigModels.stand(support, headHeight: l.height, studY: stud - 0.02, to: pan)
+            }
         }
-        ambientNode.light?.intensity = anyOn ? 160 : 450
+        if showLabels {
+            let text = l.kind.emits ? "\(l.name) · \(l.isOn ? "\(Int((l.dimmer * 100).rounded())) %" : "off")" : l.name
+            let label = SceneKitBuilder.label(text, color: UIColor(white: 0.95, alpha: 1), size: 0.08)
+            label.simdPosition = SIMD3(0, 0.35, 0)
+            pan.addChildNode(label)
+        }
+        return pan
+    }
+
+    /// Distance from `start` (world node space) along `direction` to the first scan surface or the
+    /// floor, within 12 m. nil when the ray leaves the room without meeting anything.
+    private func surfaceDistance(from start: SIMD3<Float>, direction: SIMD3<Float>) -> Float? {
+        let maxLength: Float = 12
+        let d = simd_normalize(direction)
+        var best: Float?
+        if d.y < -1e-4 {
+            let t = (Float(floorY) - start.y) / d.y
+            if t > 0, t < maxLength {
+                // Only floor inside the room's footprint counts.
+                let p = start + d * t
+                if roomFootprint.map({ p.x >= $0.lo.x && p.x <= $0.hi.x && p.z >= $0.lo.y && p.z <= $0.hi.y }) ?? true { best = t }
+            }
+        }
+        let end = start + d * (best ?? maxLength)
+        let results = scanHolder.hitTestWithSegment(from: SCNVector3(start.x, start.y, start.z), to: SCNVector3(end.x, end.y, end.z),
+                                                    options: [SCNHitTestOption.searchMode.rawValue: SCNHitTestSearchMode.closest.rawValue,
+                                                              SCNHitTestOption.backFaceCulling.rawValue: false,
+                                                              SCNHitTestOption.ignoreHiddenNodes.rawValue: false])
+        if let r = results.first {
+            let p = scanHolder.simdConvertPosition(r.simdWorldCoordinates, from: nil)
+            let t = simd_length(p - start)
+            if t > 0.05 { best = min(best ?? t, t) }
+        }
+        return best
     }
 
     /// White ring on the floor under the selected item.
@@ -961,8 +1025,9 @@ final class VirtualSceneModel: ObservableObject {
     }
 }
 
-/// SceneKit view. In orbit mode: drag to orbit, two fingers to pan, pinch to zoom; tap selects,
-/// press-and-hold then drag moves the item, two-finger twist turns it.
+/// SceneKit view. In orbit mode: drag to orbit, two fingers to slide over the floor, pinch to zoom,
+/// twist to turn the view, double-tap to centre on a spot; tap selects, press-and-hold then drag
+/// moves the item, two-finger twist on an item turns it. The camera only moves on the main thread.
 struct SceneKitContainer: UIViewRepresentable {
     let model: VirtualSceneModel
     var orbit: Bool
@@ -985,21 +1050,30 @@ struct SceneKitContainer: UIViewRepresentable {
         view.antialiasingMode = .multisampling4X
         view.autoenablesDefaultLighting = false
         view.pointOfView = orbit ? model.orbitCameraNode : model.cameraNode
-        view.allowsCameraControl = orbit
-        if orbit {
-            view.defaultCameraController.interactionMode = .orbitTurntable
-            view.defaultCameraController.inertiaEnabled = true
-            view.defaultCameraController.maximumVerticalAngle = 89
-            model.attach(view)
-        }
+        view.allowsCameraControl = false
+        if orbit { model.attach(view) }
         let c = context.coordinator
         c.view = view
-        c.fader = model.wallFader
-        c.fades = orbit
-        view.delegate = c
         if !orbit { model.wallFader.restore() }
         let tap = UITapGestureRecognizer(target: c, action: #selector(Coordinator.tap(_:)))
         view.addGestureRecognizer(tap)
+        if orbit {
+            let double = UITapGestureRecognizer(target: c, action: #selector(Coordinator.doubleTap(_:)))
+            double.numberOfTapsRequired = 2
+            view.addGestureRecognizer(double)
+            tap.require(toFail: double)
+            let drag = UIPanGestureRecognizer(target: c, action: #selector(Coordinator.orbitDrag(_:)))
+            drag.maximumNumberOfTouches = 1
+            drag.delegate = c
+            view.addGestureRecognizer(drag)
+            let slide = UIPanGestureRecognizer(target: c, action: #selector(Coordinator.slide(_:)))
+            slide.minimumNumberOfTouches = 2
+            slide.delegate = c
+            view.addGestureRecognizer(slide)
+            let pinch = UIPinchGestureRecognizer(target: c, action: #selector(Coordinator.pinch(_:)))
+            pinch.delegate = c
+            view.addGestureRecognizer(pinch)
+        }
         let press = UILongPressGestureRecognizer(target: c, action: #selector(Coordinator.press(_:)))
         press.minimumPressDuration = 0.3
         press.delegate = c
@@ -1014,20 +1088,23 @@ struct SceneKitContainer: UIViewRepresentable {
         context.coordinator.parent = self
         let pov = orbit ? model.orbitCameraNode : model.cameraNode
         if view.pointOfView !== pov { view.pointOfView = pov }
-        if !context.coordinator.dragging { view.allowsCameraControl = orbit }
         // Re-claim the shared orbit camera after another view (e.g. the alignment sheet) used it.
         if orbit { model.attach(view) }
     }
 
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate, SCNSceneRendererDelegate {
-        var fader: WallFader?
-        var fades = false
+    static func dismantleUIView(_ view: SCNView, coordinator: Coordinator) {
+        view.delegate = nil
+        view.gestureRecognizers?.forEach(view.removeGestureRecognizer)
+        coordinator.parent = nil
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: SceneKitContainer?
         weak var view: SCNView?
-        var dragging = false
         private var dragItem: PlanSelection?
         private var rotateItem: PlanSelection?
         private var lastRotation: CGFloat = 0
+        private var lastScale: CGFloat = 1
 
         @MainActor @objc func tap(_ g: UITapGestureRecognizer) {
             guard let parent, let view else { return }
@@ -1040,14 +1117,42 @@ struct SceneKitContainer: UIViewRepresentable {
             }
         }
 
+        @MainActor @objc func doubleTap(_ g: UITapGestureRecognizer) {
+            guard let parent, let view, let p = parent.model.surfacePoint(at: g.location(in: view), in: view) else { return }
+            parent.model.centre(onWorld: p)
+        }
+
+        @MainActor @objc func orbitDrag(_ g: UIPanGestureRecognizer) {
+            guard let parent, let view, dragItem == nil else { return }
+            let t = g.translation(in: view)
+            parent.model.orbitBy(dx: t.x, dy: t.y)
+            g.setTranslation(.zero, in: view)
+        }
+
+        @MainActor @objc func slide(_ g: UIPanGestureRecognizer) {
+            guard let parent, let view, dragItem == nil else { return }
+            let t = g.translation(in: view)
+            parent.model.panBy(dx: t.x, dy: t.y, viewHeight: view.bounds.height)
+            g.setTranslation(.zero, in: view)
+        }
+
+        @MainActor @objc func pinch(_ g: UIPinchGestureRecognizer) {
+            guard let parent else { return }
+            switch g.state {
+            case .began: lastScale = 1
+            case .changed:
+                parent.model.zoomBy(g.scale / lastScale)
+                lastScale = g.scale
+            default: break
+            }
+        }
+
         @MainActor @objc func press(_ g: UILongPressGestureRecognizer) {
             guard let parent, let view, parent.onMove != nil else { return }
             switch g.state {
             case .began:
                 guard let item = parent.model.hit(at: g.location(in: view), in: view), item.isMovable else { return }
                 dragItem = item
-                dragging = true
-                view.allowsCameraControl = false
                 parent.onSelect?(item)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             case .changed:
@@ -1056,37 +1161,32 @@ struct SceneKitContainer: UIViewRepresentable {
                 if let p = parent.model.planPoint(at: g.location(in: view), in: view, height: h) { parent.onMove?(item, p) }
             default:
                 dragItem = nil
-                dragging = false
-                view.allowsCameraControl = parent.orbit
             }
         }
 
         @MainActor @objc func rotate(_ g: UIRotationGestureRecognizer) {
-            guard let parent, let view, parent.onRotate != nil else { return }
+            guard let parent, let view else { return }
             switch g.state {
             case .began:
-                rotateItem = parent.model.hit(at: g.location(in: view), in: view)
+                rotateItem = parent.onRotate == nil ? nil : parent.model.hit(at: g.location(in: view), in: view)
                 lastRotation = 0
-                if rotateItem != nil { view.allowsCameraControl = false }
             case .changed:
-                guard let item = rotateItem else { return }
                 let delta = g.rotation - lastRotation
                 lastRotation = g.rotation
-                parent.onRotate?(item, Double(delta) * 180 / .pi)
+                if let item = rotateItem {
+                    parent.onRotate?(item, Double(delta) * 180 / .pi)
+                } else if parent.orbit {
+                    parent.model.turnBy(radians: delta)
+                }
             default:
                 rotateItem = nil
-                view.allowsCameraControl = parent.orbit
             }
         }
 
-        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-            guard fades, let pov = renderer.pointOfView else { return }
-            fader?.update(camera: pov.presentation.simdWorldPosition)
-        }
-
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            // The twist runs alongside the camera's own pinch; press-and-hold doesn't.
-            g is UIRotationGestureRecognizer
+            // Pinch, twist and two-finger slide work together; holding to move an item doesn't mix.
+            let together: (UIGestureRecognizer) -> Bool = { $0 is UIPinchGestureRecognizer || $0 is UIRotationGestureRecognizer || ($0 as? UIPanGestureRecognizer)?.minimumNumberOfTouches == 2 }
+            return together(g) && together(other)
         }
     }
 }

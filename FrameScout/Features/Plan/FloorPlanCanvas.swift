@@ -446,15 +446,19 @@ struct PlanRenderer {
                 // Beam: wedge whose reach follows the dimmer, fading out.
                 if on {
                     // Reach and spread come from the photometric model and barn doors when known.
-                    let reach = px(marker.reach ?? (1.5 + 3 * light.dimmer))
+                    let reachM = marker.reach ?? (1.5 + 3 * light.dimmer)
+                    let reach = px(reachM)
                     let half = min(light.beamAngle, 170) / 2
                     let left = marker.leftHalf ?? half, right = marker.rightHalf ?? half
+                    let walls: FloorPlan? = plan.isEmpty ? nil : plan
                     var beam = Path()
                     beam.move(to: CGPoint(x: origin.x + side.dx * halfWidth * 0.6, y: origin.y + side.dy * halfWidth * 0.6))
-                    for i in 0...16 {
-                        let b = light.pan - left + Double(i) / 16 * (left + right)
+                    // Each ray stops at the first wall, window or closed door: no beams outside the room.
+                    for i in 0...24 {
+                        let b = light.pan - left + Double(i) / 24 * (left + right)
                         let v = PlanViewport.direction(b)
-                        beam.addLine(to: CGPoint(x: origin.x + v.dx * reach, y: origin.y + v.dy * reach))
+                        let r = px(BeamClip.planReach(from: light.position, bearing: b, limit: reachM, plan: walls))
+                        beam.addLine(to: CGPoint(x: origin.x + v.dx * r, y: origin.y + v.dy * r))
                     }
                     beam.addLine(to: CGPoint(x: origin.x - side.dx * halfWidth * 0.6, y: origin.y - side.dy * halfWidth * 0.6))
                     beam.closeSubpath()

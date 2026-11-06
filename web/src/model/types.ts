@@ -41,6 +41,8 @@ export interface LightFixture {
   profileID?: string; modifierID?: string; filterIDs?: string[]; barnDoors?: BarnDoors;
   colorMode?: 'cct' | 'rgb'; hue?: number; saturation?: number;
   photometricOverride?: PhotometricReference; boardHeight?: number;
+  /** Stand or rigging (see model/rigging.ts); absent picks one automatically. */
+  support?: string;
   [key: string]: unknown;
 }
 
@@ -68,6 +70,8 @@ export type FrameAspect = 'sensor' | 'r239' | 'r200' | 'r185' | 'r178' | 'r143';
 export interface CameraRig {
   position: PlanPoint; height: number; pan: number; tilt: number; focalLength: number;
   sensorID: string; customSensor?: SensorFormat; aspect: FrameAspect;
+  /** Tripod, dolly… (see model/rigging.ts); absent picks one from the lens height. */
+  support?: string;
   [key: string]: unknown;
 }
 export interface CameraPosition {

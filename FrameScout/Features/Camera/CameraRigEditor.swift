@@ -188,6 +188,13 @@ struct CameraRigForm: View {
             }
             SliderRow(title: "Pan", value: $rig.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
             SliderRow(title: "Tilt", value: $rig.tilt, range: -60...60, step: 1, format: { String(format: "%+.0f°", $0) })
+            Picker("Support", selection: $rig.support) {
+                Text("Automatic · \(CameraSupport.automatic(height: rig.height).label)").tag(CameraSupport?.none)
+                ForEach(CameraSupport.allCases) { Text($0.label).tag(CameraSupport?.some($0)) }
+            }
+            if let w = rig.supportWarning {
+                Text(w).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+            }
             if let ceilingHeight, rig.height > ceilingHeight - 0.25 {
                 Label("Less than 25 cm to the ceiling", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Theme.accent)

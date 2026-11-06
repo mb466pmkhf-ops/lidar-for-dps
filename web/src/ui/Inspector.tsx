@@ -1,5 +1,6 @@
 // Right-hand panel. Simple things first (output, colour, where it's aimed, what it gives at each
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
+import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PrevisCharacter, CharacterType } from '../model/types';
 import {
@@ -119,6 +120,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
+          <StandField light={l} replace={replace} />
           <p className="note">{l.kind === 'bounce' ? 'Re-emits light that lands on it (one bounce, 80 % white board).' : l.kind === 'diffusion' ? 'Passes half the light that goes through it.' : 'Blocks light that goes through it.'}</p>
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
@@ -185,10 +187,6 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
             </div>
           </>
         ) : <p className="note">{profile.color.minKelvin} K fixed{filterIDs.length ? ` · gelled to ${Math.round(pm.kelvin)} K` : ''}</p>}
-        <div className="readout" style={{ marginTop: 14 }}>
-          <div><div className="label">Draw</div><div className="v">≈ {watts(pm.drawWatts)}</div></div>
-          <div><div className="label">At 3 m on axis</div><div className="v">≈ {fmtLux(illuminanceOnAxis(pm, 3))}</div></div>
-        </div>
       </Panel>
 
       <Panel title="At meters and faces">
@@ -206,9 +204,10 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
         <Slider label="Pan" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
         <Slider label="Tilt" value={l.tilt} min={-90} max={45} step={1} format={signedDeg} onChange={v => set({ tilt: v }, false)} />
+        <StandField light={l} replace={replace} />
       </Panel>
 
-      <Panel title="Beam and shaping" collapsible open={false}>
+      <Panel title="Advanced · beam and shaping" collapsible open={false}>
         <label className="field"><span>Modifier</span>
           <select value={l.modifierID ?? currentMod?.id ?? 'none'} onChange={e => set({ modifierID: e.target.value })} aria-label="Modifier">
             {profile.defaultModifierID === undefined && <option value="none">None</option>}
@@ -238,7 +237,11 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         )}
       </Panel>
 
-      <Panel title="Throw and photometric data" collapsible open={false}>
+      <Panel title="Advanced · throw and photometric data" collapsible open={false}>
+        <div className="readout" style={{ marginBottom: 14 }}>
+          <div><div className="label">Draw</div><div className="v">≈ {watts(pm.drawWatts)}</div></div>
+          <div><div className="label">At 3 m on axis</div><div className="v">≈ {fmtLux(illuminanceOnAxis(pm, 3))}</div></div>
+        </div>
         <ThrowTable light={l} exposure={p.exposure} />
         <OverrideEditor light={l} replace={replace} />
         {pm.notes.map((n, i) => <p key={i} className="note">{n}</p>)}
@@ -246,6 +249,22 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
 
       <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
     </div>
+  );
+}
+
+function StandField({ light, replace }: { light: LightFixture; replace(l: LightFixture): void }) {
+  const warning = lightSupportWarning(light);
+  return (
+    <>
+      <label className="field"><span>Stand</span>
+        <select value={(light.support as string | undefined) ?? ''} aria-label="Stand"
+          onChange={e => { const n = { ...light }; if (e.target.value) n.support = e.target.value; else delete n.support; replace(n); }}>
+          <option value="">Automatic · {lightSupportInfo(automaticLightSupport(light)).label}</option>
+          {LIGHT_SUPPORTS.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </select><span />
+      </label>
+      {warning && <p className="note">{warning}</p>}
+    </>
   );
 }
 
@@ -393,6 +412,13 @@ function CameraInspector(p: InspectorProps) {
         <Slider label="Focal length" value={rig.focalLength} min={10} max={200} step={1} format={v => `${Math.round(v)}mm`} onChange={v => setRig({ focalLength: v }, false)} />
         <Slider label="Lens height" value={rig.height} min={0.1} max={4} step={0.05} format={metres} onChange={v => setRig({ height: v }, false)} />
         <Slider label="Pan" value={((rig.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => setRig({ pan: v }, false)} />
+        <label className="field"><span>Support</span>
+          <select value={(rig.support as string | undefined) ?? ''} aria-label="Camera support" onChange={e => setRig({ support: e.target.value || undefined })}>
+            <option value="">Automatic · {cameraSupportInfo(automaticCameraSupport(rig.height)).label}</option>
+            {CAMERA_SUPPORTS.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+          </select><span />
+        </label>
+        {cameraSupportWarning(rig) && <p className="note">{cameraSupportWarning(rig)}</p>}
         <label className="field"><span>Sensor</span>
           <select value={rig.sensorID} onChange={e => setRig({ sensorID: e.target.value })}>
             {sensorPresets.map(x => <option key={x.id} value={x.id}>{x.manufacturer ? x.manufacturer + ' ' : ''}{x.name}</option>)}

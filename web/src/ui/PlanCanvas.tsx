@@ -7,6 +7,7 @@ import { bearingFrom, planDist, unitBearing, type Scene, grid, meterNormal, mete
 import { horizontalFOV } from '../model/camera';
 import { keyLux, stopsForLux } from '../model/exposure';
 import { cssRGB } from '../model/kelvin';
+import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
 import { lux as fmtLux, stopColor, stopLegend } from './format';
 import { stopsDelta } from '../model/exposure';
@@ -259,10 +260,12 @@ export function PlanCanvas(props: Props) {
         if (spread >= 300) {
           g.push(<circle key="beam" cx={cx} cy={cy} r={throwM * v.scale} fill={cssRGB(pm.color, 0.07)} stroke={cssRGB(pm.color, 0.35)} strokeDasharray="4 4" pointerEvents="none" />);
         } else {
-          const steps = 18, pts = [pt(l.position)];
+          // Each ray stops at the first wall, window or closed door, so beams stay in the room.
+          const steps = 24, pts = [pt(l.position)];
           for (let i = 0; i <= steps; i++) {
             const bb = l.pan - spread / 2 + (spread * i) / steps;
-            pts.push(pt({ x: l.position.x + unitBearing(bb).x * throwM, z: l.position.z + unitBearing(bb).z * throwM }));
+            const r = planReach(l.position, bb, throwM, plan);
+            pts.push(pt({ x: l.position.x + unitBearing(bb).x * r, z: l.position.z + unitBearing(bb).z * r }));
           }
           g.push(<polygon key="beam" points={pts.join(' ')} fill={cssRGB(pm.color, 0.10)} stroke={cssRGB(pm.color, 0.45)} strokeWidth={1} pointerEvents="none" />);
         }
