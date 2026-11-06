@@ -58,7 +58,7 @@ jobs:
       matrix:
         include:
           - name: macOS
-            os: macos-14
+            os: macos-15
             args: --target universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
             bundle: web/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
