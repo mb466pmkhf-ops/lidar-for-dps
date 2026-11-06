@@ -395,7 +395,9 @@ struct PlanRenderer {
             for i in 0...steps {
                 let b = cam.rig.pan - half + Double(i) / Double(steps) * 2 * half
                 let d = PlanViewport.direction(b)
-                wedge.addLine(to: CGPoint(x: origin.x + d.dx * px(cam.reach), y: origin.y + d.dy * px(cam.reach)))
+                // The view stops at the walls too, so frames don't spill outside the room.
+                let r = px(BeamClip.planReach(from: cam.rig.position, bearing: b, limit: cam.reach, plan: plan.isEmpty ? nil : plan))
+                wedge.addLine(to: CGPoint(x: origin.x + d.dx * r, y: origin.y + d.dy * r))
             }
             wedge.closeSubpath()
             ctx.fill(wedge, with: .color(color.opacity(cam.selected ? 0.28 : 0.12)))

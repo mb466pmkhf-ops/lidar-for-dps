@@ -229,12 +229,17 @@ export function PlanCanvas(props: Props) {
     const sel = sameSel(selection, s);
     const fov = horizontalFOV(rig);
     const reach = 3.2;
-    const a = { x: rig.position.x + unitBearing(rig.pan - fov / 2).x * reach, z: rig.position.z + unitBearing(rig.pan - fov / 2).z * reach };
-    const b = { x: rig.position.x + unitBearing(rig.pan + fov / 2).x * reach, z: rig.position.z + unitBearing(rig.pan + fov / 2).z * reach };
+    // The view stops at the walls, like the beams, so frames don't spill outside the room.
+    const wedge = [pt(rig.position)];
+    for (let i = 0; i <= 16; i++) {
+      const bb = rig.pan - fov / 2 + (fov * i) / 16;
+      const r = planReach(rig.position, bb, reach, plan);
+      wedge.push(pt({ x: rig.position.x + unitBearing(bb).x * r, z: rig.position.z + unitBearing(bb).z * r }));
+    }
     const body = 10;
     return (
       <g key={s.kind + s.id}>
-        <polygon points={`${pt(rig.position)} ${pt(a)} ${pt(b)}`} fill="rgba(143,166,189,.10)" stroke="rgba(143,166,189,.55)" strokeWidth={1} pointerEvents="none" />
+        <polygon points={wedge.join(' ')} fill="rgba(143,166,189,.10)" stroke="rgba(143,166,189,.55)" strokeWidth={1} pointerEvents="none" />
         <g transform={`translate(${sx(rig.position.x)},${sy(rig.position.z)}) rotate(${rig.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
           <rect x={-body} y={-body * 0.7} width={body * 2} height={body * 1.4} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
           <polygon points={`-6,${-body * 0.7} 6,${-body * 0.7} 9,${-body * 1.5} -9,${-body * 1.5}`} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
