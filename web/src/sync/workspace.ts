@@ -18,6 +18,14 @@ type Entry = StoredProject & { version: number };
 
 const CONFIG_KEY = 'framescan.sync.config';
 const SESSION_KEY = 'framescan.sync.session';
+const OFF_KEY = 'framescan.sync.off';
+
+/// FrameScan's own sync server. The anon key is public by design: row-level security limits every
+/// row to the account that owns it (web/supabase/schema.sql). Same values as CloudSync.builtIn on iOS.
+export const BUILT_IN_SERVER: SyncConfig = {
+  url: 'https://nuprvuipspqmhsczdqrk.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51cHJ2dWlwc3BxbWhzY3pkcXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTYzNDIsImV4cCI6MjEwOTQ5MjM0Mn0.tNQo2XqWI1krE3KMfzuRFzqXSz55eWdgnjgJQFK-jcY',
+};
 const DEVICE = typeof navigator !== 'undefined' && '__TAURI_INTERNALS__' in window ? 'desktop' : 'web';
 
 function readJSON<T>(key: string): T | undefined {
@@ -27,11 +35,13 @@ function writeJSON(key: string, v: unknown) {
   try { if (v === undefined) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode */ }
 }
 
-/// Build-time defaults (set VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY when building), overridable in Settings.
+/// Default server: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY when set at build time, otherwise the
+/// built-in one. Overridable under Sync → Server…, and absent once the user turns sync off.
 export function defaultConfig(): SyncConfig | undefined {
+  if (readJSON<boolean>(OFF_KEY)) return undefined;
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  return url && anonKey ? { url, anonKey } : undefined;
+  return url && anonKey ? { url, anonKey } : BUILT_IN_SERVER;
 }
 
 export class Workspace {
@@ -113,6 +123,7 @@ export class Workspace {
 
   connect(config: SyncConfig, session?: Session) {
     writeJSON(CONFIG_KEY, config);
+    writeJSON(OFF_KEY, undefined);
     this.client = new SupabaseClient(config, session, s => { writeJSON(SESSION_KEY, s); if (!s) this.setState({ kind: 'signedOut' }); });
     this.setState(session ? { kind: 'syncing' } : { kind: 'signedOut' });
     clearInterval(this.syncTimer);
@@ -128,6 +139,7 @@ export class Workspace {
     this.client = undefined;
     writeJSON(CONFIG_KEY, undefined);
     writeJSON(SESSION_KEY, undefined);
+    writeJSON(OFF_KEY, true);
     this.setState({ kind: 'local' });
   }
 

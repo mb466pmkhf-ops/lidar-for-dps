@@ -23,7 +23,7 @@ drop policy if exists "own rows: insert" on public.framescan_projects;
 drop policy if exists "own rows: update" on public.framescan_projects;
 drop policy if exists "own rows: delete" on public.framescan_projects;
 
-create policy "own rows: read"   on public.framescan_projects for select using (owner = auth.uid());
-create policy "own rows: insert" on public.framescan_projects for insert with check (owner = auth.uid());
-create policy "own rows: update" on public.framescan_projects for update using (owner = auth.uid()) with check (owner = auth.uid());
-create policy "own rows: delete" on public.framescan_projects for delete using (owner = auth.uid());
+create policy "own rows: read"   on public.framescan_projects for select using (owner = (select auth.uid()));
+create policy "own rows: insert" on public.framescan_projects for insert with check (owner = (select auth.uid()));
+create policy "own rows: update" on public.framescan_projects for update using (owner = (select auth.uid())) with check (owner = (select auth.uid()));
+create policy "own rows: delete" on public.framescan_projects for delete using (owner = (select auth.uid()));

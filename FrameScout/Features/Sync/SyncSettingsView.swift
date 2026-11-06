@@ -33,13 +33,19 @@ struct SyncSettingsView: View {
                             editingServer = false
                         }
                         .disabled(url.isEmpty || anonKey.isEmpty)
+                        if sync.config != CloudSync.builtIn {
+                            Button("Use the FrameScan server") {
+                                sync.configure(url: CloudSync.builtIn.url, anonKey: CloudSync.builtIn.anonKey)
+                                editingServer = false
+                            }
+                        }
                         if sync.config != nil {
                             Button("Turn sync off", role: .destructive) { sync.turnOff(); editingServer = false }
                         }
                     } header: {
                         Text("Server")
                     } footer: {
-                        Text("Use the Project URL and anon key from your Supabase project (Project Settings → API), the same two values as in the web planner's Sync settings. Setup steps are in the repository under web/README.md.")
+                        Text("The FrameScan server is set up already. Only enter a URL and anon key if you run your own Supabase project (steps in web/README.md).")
                     }
                 } else if let signedIn = sync.email {
                     Section {

@@ -67,7 +67,9 @@ synced. Recommended on a decision card; built on this default while the owner co
   users are covered too. Builds are unsigned.
 - **Sync transport**: Supabase (Postgres + Auth), owner's own free project, email + password accounts. Plain
   REST from every client (URLSession on iOS), so no third-party SDK. CloudKit was the alternative but needs
-  the paid Apple Developer Program and an Apple ID on the web.
+  the paid Apple Developer Program and an Apple ID on the web. Confirmed by the owner 2026-11-06; project
+  `framescan` (`nuprvuipspqmhsczdqrk`, eu-west-2) is built in as the default server on every client, and
+  nothing uploads until the user signs in.
 - **What uploads**: `project.json` and each scan's `plan.json` (walls, openings, set pieces) — only after the
   user turns sync on and signs in. Scan meshes, textures, USDZ and photos never leave the phone. Rows are
   protected by row-level security (owner = signed-in user); setup SQL in `web/supabase/schema.sql`.

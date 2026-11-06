@@ -13,19 +13,20 @@ stops. Everything syncs back to the phone. See `Docs/DECISIONS.md` D-007 for wha
 - Without sync it works on its own (projects are kept in the browser / app). *Open file* reads a project
   backup ZIP exported from the phone.
 
-## Turn on sync (once, about five minutes)
+## Sync
 
-1. Create a free project at <https://supabase.com>.
-2. In its **SQL editor**, paste and run [`supabase/schema.sql`](supabase/schema.sql).
-3. Optional: in **Authentication → Providers → Email**, turn off *Confirm email* so a new account can sign in
-   straight away (otherwise click the link in the confirmation email first).
-4. From **Project Settings → API**, copy the *Project URL* and the *anon public* key.
-5. Enter both on each device: web/desktop → *Sync* (top right) → *Server…*; iPhone → Home → ⋯ →
-   *Sync with web & desktop…* → *Server…*. Then create an account on one device and sign in on the others.
+Sync is preset to FrameScan's own Supabase project (`nuprvuipspqmhsczdqrk`, region eu-west-2, schema from
+[`supabase/schema.sql`](supabase/schema.sql)). Create an account on one device and sign in with it on the
+others: web/desktop → *Sync* (top right); iPhone → Home → ⋯ → *Sync with web & desktop…*.
 
-To bake the server into the hosted web app and desktop builds, add repository variables `SUPABASE_URL` and
-`SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions → Variables). The anon key is public by
-design; the data is protected by the row-level security in `schema.sql`.
+The URL and anon key are in `src/sync/workspace.ts` (`BUILT_IN_SERVER`) and `CloudSync.builtIn` on iOS. The
+anon key is public by design; the data is protected by the row-level security in `schema.sql`. Build-time
+variables `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (repository variables `SUPABASE_URL` /
+`SUPABASE_ANON_KEY` in CI) override it.
+
+To use your own server instead: create a free project at <https://supabase.com>, run `schema.sql` in its SQL
+editor, optionally turn off *Confirm email* (Authentication → Providers → Email), then enter the Project URL
+and anon key under *Sync → Server…* on each device.
 
 ## Develop
 

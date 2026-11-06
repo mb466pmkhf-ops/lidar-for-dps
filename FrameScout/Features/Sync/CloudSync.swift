@@ -31,6 +31,11 @@ final class CloudSync: ObservableObject {
     }
 
     struct Config: Codable, Equatable { var url: String; var anonKey: String }
+
+    /// FrameScan's own sync server, used until the user picks another or turns sync off. The anon key
+    /// is public by design: row-level security limits every row to its owner (web/supabase/schema.sql).
+    static let builtIn = Config(url: "https://nuprvuipspqmhsczdqrk.supabase.co",
+                                anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51cHJ2dWlwc3BxbWhzY3pkcXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTYzNDIsImV4cCI6MjEwOTQ5MjM0Mn0.tNQo2XqWI1krE3KMfzuRFzqXSz55eWdgnjgJQFK-jcY")
     struct Session: Codable { var accessToken: String; var refreshToken: String; var expiresAt: Date; var userID: String; var email: String }
 
     @Published private(set) var status: Status = .off
@@ -59,6 +64,7 @@ final class CloudSync: ObservableObject {
 
     private init() {
         config = (UserDefaults.standard.data(forKey: "sync.config")).flatMap { try? JSONDecoder().decode(Config.self, from: $0) }
+            ?? (UserDefaults.standard.bool(forKey: "sync.off") ? nil : Self.builtIn)
         session = Keychain.read("sync.session").flatMap { try? JSONDecoder().decode(Session.self, from: $0) }
         email = session?.email
         meta = (try? Data(contentsOf: Self.metaURL)).flatMap { try? JSONDecoder().decode([UUID: Meta].self, from: $0) } ?? [:]
@@ -126,6 +132,7 @@ final class CloudSync: ObservableObject {
                        anonKey: anonKey.trimmingCharacters(in: .whitespacesAndNewlines))
         config = c
         UserDefaults.standard.set(try? JSONEncoder().encode(c), forKey: "sync.config")
+        UserDefaults.standard.removeObject(forKey: "sync.off")
         status = session == nil ? .signedOut : .syncing
     }
 
@@ -133,6 +140,7 @@ final class CloudSync: ObservableObject {
         signOut()
         config = nil
         UserDefaults.standard.removeObject(forKey: "sync.config")
+        UserDefaults.standard.set(true, forKey: "sync.off")
         status = .off
     }
 

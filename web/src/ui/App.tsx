@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { workspace, type SyncState } from '../sync/workspace';
+import { BUILT_IN_SERVER, workspace, type SyncState } from '../sync/workspace';
 import { readBackupZip } from '../sync/zip';
 import { demoBundle } from '../model/demo';
 import { newLocation, newProject, uuid } from '../model/factory';
@@ -199,7 +199,7 @@ function SyncDialog({ onClose }: { onClose(): void }) {
         ) : editServer ? (
           <>
             <ol>
-              <li>Create a free project at supabase.com.</li>
+              <li>Only needed for your own server. Create a free project at supabase.com.</li>
               <li>In its SQL editor, run <span className="mono">web/supabase/schema.sql</span> from the repository.</li>
               <li>Paste the Project URL and the anon (public) key from Project Settings → API. Use the same two values on the phone.</li>
             </ol>
@@ -209,6 +209,7 @@ function SyncDialog({ onClose }: { onClose(): void }) {
             </div>
             <div className="actions">
               <button className="btn primary" disabled={!url || !key} onClick={() => { workspace.connect({ url: url.trim(), anonKey: key.trim() }); setEditServer(false); }}>Save</button>
+              <button className="btn" onClick={() => { workspace.connect(BUILT_IN_SERVER); setUrl(BUILT_IN_SERVER.url); setKey(BUILT_IN_SERVER.anonKey); setEditServer(false); }}>Use FrameScan server</button>
               {client && <button className="btn danger" onClick={() => { workspace.disconnect(); }}>Stop syncing</button>}
             </div>
           </>
@@ -224,7 +225,7 @@ function SyncDialog({ onClose }: { onClose(): void }) {
               <button className="btn" disabled={busy || !email || password.length < 6} onClick={() => run(() => workspace.signIn(email, password, true))}>Create account</button>
               <button className="btn ghost" onClick={() => setEditServer(true)}>Server…</button>
             </div>
-            <p className="note">Use the same account in the FrameScan app (Settings → Sync).</p>
+            <p className="note">Use the same account in the iPhone app (Home → ⋯ → Sync with web &amp; desktop…).</p>
           </>
         )}
         {error && <p className="error">{error}</p>}
