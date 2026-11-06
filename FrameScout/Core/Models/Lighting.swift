@@ -139,6 +139,8 @@ struct LightFixture: Identifiable, Codable, Hashable {
     var photometricOverride: PhotometricReference? = nil
     /// Board height for grip (m); nil uses the width (square frame).
     var boardHeight: Double? = nil
+    /// Stand or rigging; nil picks one from the unit and its height (`LightSupport.automatic`).
+    var support: LightSupport? = nil
 
     init(name: String, kind: LightKind, position: PlanPoint, pan: Double = 0, scanID: UUID? = nil) {
         self.name = name

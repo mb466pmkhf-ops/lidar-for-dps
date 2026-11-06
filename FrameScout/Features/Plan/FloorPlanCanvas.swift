@@ -151,6 +151,10 @@ struct PlanOverlay {
     var showLightLabels = true
     var showPeopleLabels = true
     var showMeterLabels = true
+    /// Beams of every unit; off draws only the selected unit's beam.
+    var showAllBeams = true
+    /// Fields of view of every camera and shot; off draws only the selected one's.
+    var showAllCameraViews = true
     var selectedObject: UUID?
 }
 
@@ -395,11 +399,15 @@ struct PlanRenderer {
             for i in 0...steps {
                 let b = cam.rig.pan - half + Double(i) / Double(steps) * 2 * half
                 let d = PlanViewport.direction(b)
-                wedge.addLine(to: CGPoint(x: origin.x + d.dx * px(cam.reach), y: origin.y + d.dy * px(cam.reach)))
+                // The view stops at the walls too, so frames don't spill outside the room.
+                let r = px(BeamClip.planReach(from: cam.rig.position, bearing: b, limit: cam.reach, plan: plan.isEmpty ? nil : plan))
+                wedge.addLine(to: CGPoint(x: origin.x + d.dx * r, y: origin.y + d.dy * r))
             }
             wedge.closeSubpath()
-            ctx.fill(wedge, with: .color(color.opacity(cam.selected ? 0.28 : 0.12)))
-            ctx.stroke(wedge, with: .color(color.opacity(cam.selected ? 0.95 : 0.55)), lineWidth: cam.selected ? 1.5 : 1)
+            if overlay.showAllCameraViews || cam.selected {
+                ctx.fill(wedge, with: .color(color.opacity(cam.selected ? 0.28 : 0.12)))
+                ctx.stroke(wedge, with: .color(color.opacity(cam.selected ? 0.95 : 0.55)), lineWidth: cam.selected ? 1.5 : 1)
+            }
 
             // Camera body: rectangle rotated to the pan direction.
             let d = PlanViewport.direction(cam.rig.pan)
@@ -444,17 +452,21 @@ struct PlanRenderer {
 
             if light.kind.emits {
                 // Beam: wedge whose reach follows the dimmer, fading out.
-                if on {
+                if on && (overlay.showAllBeams || marker.selected) {
                     // Reach and spread come from the photometric model and barn doors when known.
-                    let reach = px(marker.reach ?? (1.5 + 3 * light.dimmer))
+                    let reachM = marker.reach ?? (1.5 + 3 * light.dimmer)
+                    let reach = px(reachM)
                     let half = min(light.beamAngle, 170) / 2
                     let left = marker.leftHalf ?? half, right = marker.rightHalf ?? half
+                    let walls: FloorPlan? = plan.isEmpty ? nil : plan
                     var beam = Path()
                     beam.move(to: CGPoint(x: origin.x + side.dx * halfWidth * 0.6, y: origin.y + side.dy * halfWidth * 0.6))
-                    for i in 0...16 {
-                        let b = light.pan - left + Double(i) / 16 * (left + right)
+                    // Each ray stops at the first wall, window or closed door: no beams outside the room.
+                    for i in 0...24 {
+                        let b = light.pan - left + Double(i) / 24 * (left + right)
                         let v = PlanViewport.direction(b)
-                        beam.addLine(to: CGPoint(x: origin.x + v.dx * reach, y: origin.y + v.dy * reach))
+                        let r = px(BeamClip.planReach(from: light.position, bearing: b, limit: reachM, plan: walls))
+                        beam.addLine(to: CGPoint(x: origin.x + v.dx * r, y: origin.y + v.dy * r))
                     }
                     beam.addLine(to: CGPoint(x: origin.x - side.dx * halfWidth * 0.6, y: origin.y - side.dy * halfWidth * 0.6))
                     beam.closeSubpath()
@@ -594,7 +606,7 @@ struct PlanRenderer {
                 ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)), with: .color(.white), lineWidth: 1.5)
             }
             guard overlay.showMeterLabels else { continue }
-            labels.append(PlanLabel(text: Text("\(m.name) · \(m.reading)").font(.poppins(.medium, 10))
+            labels.append(PlanLabel(text: Text(m.reading.isEmpty ? m.name : "\(m.name) · \(m.reading)").font(.poppins(.medium, 10))
                                         .foregroundColor(m.onKey ? Color(red: 0.45, green: 0.85, blue: 0.55) : .white),
                                     anchor: CGPoint(x: c.x, y: c.y + 18), priority: .subject))
         }

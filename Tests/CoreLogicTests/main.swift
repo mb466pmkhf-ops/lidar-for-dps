@@ -448,5 +448,90 @@ do {
     check(soft.lights.contains { $0.kind == .negative }, "soft side light adds a neg fill")
 }
 
+// MARK: Sync merge (same cases as web/tests/merge.test.ts)
+do {
+    func j(_ s: String) -> Any { try! JSONSerialization.jsonObject(with: Data(s.utf8)) }
+    let base = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":1},{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let phone = j(#"{"id":"P","name":"Phone","modifiedAt":"2026-11-02T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":0.7},{"id":"B","name":"Fill","dimmer":0.5},{"id":"C","dimmer":1}]}]}"#)
+    let web = j(#"{"id":"P","name":"Web","modifiedAt":"2026-11-01T12:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":1},{"id":"D","dimmer":1},{"id":"B","name":"Fill (bounce)","dimmer":0.5}]}]}"#)
+    let m = SyncMerge.merge(base: base, local: web, remote: phone) as! [String: Any]
+    let lights = ((m["locations"] as! [[String: Any]])[0]["lights"] as! [[String: Any]])
+    check(lights.map { $0["id"] as! String } == ["A", "D", "B", "C"], "sync merge keeps lights added on both sides, in place")
+    check((lights[0]["dimmer"] as! Double) == 0.7 && (lights[2]["name"] as! String) == "Fill (bounce)", "sync merge keeps edits to different lights")
+    check((m["name"] as! String) == "Web" && (m["modifiedAt"] as! String) == "2026-11-02T10:00:00Z", "sync merge: local wins a clash, modifiedAt takes the later")
+    let deleted = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let changedA = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":0.2},{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let kept = SyncMerge.merge(base: base, local: changedA, remote: deleted) as! [String: Any]
+    let keptIDs = (((kept["locations"] as! [[String: Any]])[0]["lights"] as! [[String: Any]])).map { $0["id"] as! String }
+    check(keptIDs == ["A", "B"], "sync merge keeps an item deleted on one side but changed on the other")
+    let p = try SyncMerge.project(from: SyncMerge.jsonObject(Project(name: "Round trip")))
+    check(p.name == "Round trip", "project survives the JSON round trip used by sync")
+} catch {
+    check(false, "sync merge: \(error)")
+}
+
+// MARK: Web parity
+// web/tests/fixtures/parity-bundle.json is a project written by the web planner. Decoding it proves
+// the phone can read web edits; the readings are compared with the TypeScript port by
+// web/tests/parity.test.ts (CI passes this file to it as PARITY_READINGS).
+struct WebBundle: Decodable { var project: Project; var plans: [String: FloorPlan] }
+do {
+    let data = try Data(contentsOf: URL(fileURLWithPath: "web/tests/fixtures/parity-bundle.json"))
+    let bundle = try JSONCoding.decoder.decode(WebBundle.self, from: data)
+    check(true, "web-written project decodes in Swift")
+    let loc = bundle.project.locations[0]
+    let scanID = loc.primaryScanID
+    let plan = scanID.flatMap { bundle.plans[$0.uuidString] }
+    let lights = loc.lightFixtures.filter { $0.scanID == nil || $0.scanID == scanID }
+    let scene = LightingCalculator.Scene(lights: lights, plan: plan, windowTransmission: loc.displaySettings.windowTransmissionValue)
+    var readings: [String: Double] = [:]
+    for m in loc.meterPoints(scanID: scanID) {
+        let key: String
+        switch m.source {
+        case .meter(let id): key = "m:" + id.uuidString
+        case .character(let id): key = "c:" + id.uuidString
+        }
+        readings[key] = LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene).lux
+    }
+    let gridValues = LightingCalculator.grid(bounds: plan?.bounds ?? .unit, columns: 12, rows: 10, height: 1.5, scene: scene) { _ in
+        LightingCalculator.Point(x: 0, y: 1, z: 0)
+    }
+    check(readings.count >= 3 && plan != nil, "parity fixture has a plan and meter points")
+    let json = try JSONSerialization.data(withJSONObject: ["readings": readings, "grid": gridValues])
+    try json.write(to: outDir.appendingPathComponent("parity-readings.json"))
+} catch {
+    check(false, "web-written project decodes in Swift: \(error)")
+}
+
+// MARK: Stands and beam clipping (same rules as web/src/model/rigging.ts)
+do {
+    var cob = LightFixture(name: "K", kind: .fresnel, position: .zero)
+    cob.profileID = "cob-600-d"
+    cob.height = 2
+    check(cob.supportValue == .cStand, "600 W COB at 2 m goes on a C-stand")
+    cob.height = 0.5
+    check(cob.supportValue == .turtleBase, "low unit goes on a turtle base")
+    cob.height = 2
+    cob.modifierID = "softbox-150"
+    check(cob.supportValue == .comboStand, "big softbox goes on a combo")
+    cob.support = .cStand
+    cob.height = 3.8
+    check(cob.supportWarning?.hasPrefix("Higher than a C-stand") == true, "warns above a C-stand's reach")
+    var hmi = LightFixture(name: "H", kind: .hmi, position: .zero)
+    hmi.profileID = "hmi-1800-par"
+    check(hmi.supportValue == .comboStand, "HMI goes on a combo")
+    check(CameraRig().supportValue == .tripod && CameraSupport.automatic(height: 0.3) == .highHat, "camera on a tripod, high hat when low")
+    var plan = FloorPlan()
+    plan.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 2.5, bottom: 0)]
+    check(abs(BeamClip.planReach(from: .zero, bearing: 0, limit: 6, plan: plan) - 2) < 1e-6, "beam stops at the wall")
+    check(abs(BeamClip.planReach(from: .zero, bearing: 180, limit: 6, plan: plan) - 6) < 1e-6, "beam away from walls keeps its reach")
+    // Older rigs without the field still decode.
+    let old = try JSONSerialization.data(withJSONObject: ["position": ["x": 0, "z": 0], "height": 1.5, "pan": 0, "tilt": 0, "focalLength": 32,
+                                                          "sensorID": "arri-minilf-og", "aspect": "sensor"])
+    check((try? JSONDecoder().decode(CameraRig.self, from: old))?.support == nil, "camera rig without a support decodes")
+} catch {
+    check(false, "stands: \(error)")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

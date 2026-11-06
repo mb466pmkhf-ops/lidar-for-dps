@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var showNewProject = false
     @State private var newProjectName = ""
     @State private var showImporter = false
+    @State private var showSync = false
     @State private var importMessage: String?
 
     var body: some View {
@@ -85,6 +86,7 @@ struct HomeView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showImporter = true } label: { Label("Import Project Backup…", systemImage: "square.and.arrow.down") }
+                    Button { showSync = true } label: { Label("Sync with web & desktop…", systemImage: "arrow.triangle.2.circlepath") }
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
                 } label: {
                     Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(HomeStyle.accent)
@@ -101,6 +103,7 @@ struct HomeView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .sheet(isPresented: $showSync) { SyncSettingsView() }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.zip]) { result in
             importProject(result)
         }

@@ -32,9 +32,10 @@ struct FrameScoutApp: App {
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
                 .font(.fsBody)
+                .task { CloudSync.shared.attach(store) }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { store.flush() }
+            if phase != .active { store.flush() } else { CloudSync.shared.appBecameActive() }
         }
     }
 }
