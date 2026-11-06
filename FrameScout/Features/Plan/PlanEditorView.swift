@@ -60,6 +60,23 @@ enum PlanTool: String, CaseIterable, Identifiable {
     }
 }
 
+/// Extra information on the 2D plan, added on top of the essentials (room, units, people, cameras).
+/// The selected item always shows its own beam or view. Stored per device.
+enum PlanInfoLayer: String, CaseIterable, Identifiable {
+    case beams, views, readings, dimensions, names
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .beams: return "Beams"
+        case .views: return "Camera views"
+        case .readings: return "Readings"
+        case .dimensions: return "Dimensions"
+        case .names: return "Set-piece names"
+        }
+    }
+}
+
 /// Plan only, plan with the 3D view above it, or the 3D view on its own.
 enum PlanLayout: String, CaseIterable, Identifiable {
     case plan, split, scene
@@ -193,6 +210,9 @@ struct PlanEditorView: View {
     /// Bounds the view is fitted to. Frozen once shown so dragging a camera past the plan edge
     /// doesn't refit (and shift) the whole plan under the user's finger.
     @State private var fittedBounds: PlanRect?
+    /// Information layers switched on above the essentials ("beams,readings"…).
+    @AppStorage("plan.infoLayers") private var infoLayersRaw = ""
+    @State private var showInfoBar = false
 
     private enum DragTarget: Equatable {
         case item(PlanSelection), subject(UUID), canvas
@@ -524,7 +544,8 @@ struct PlanEditorView: View {
                     .contentShape(Rectangle())
                     .gesture(dragGesture(viewport: viewport))
                     .simultaneousGesture(pinchGesture)
-                if layout == .plan || !shows3D {
+                infoBar
+                if (layout == .plan || !shows3D) && tool != .select {
                 Text(tool.hint)
                     .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)
@@ -532,8 +553,8 @@ struct PlanEditorView: View {
                     .minimumScaleFactor(0.8)
                     .padding(8)
                     .background(Color.black.opacity(0.6), in: Rectangle())
-                    // Clear of the north arrow in the top-right corner, and never blocks a tap.
-                    .padding(.top, 8)
+                    // Below the Show bar, clear of the north arrow, and never blocks a tap.
+                    .padding(.top, 52)
                     .padding(.horizontal, 44)
                     .allowsHitTesting(false)
                 }
@@ -546,6 +567,57 @@ struct PlanEditorView: View {
             }
             .clipped()
         }
+    }
+
+    /// "Show" bar: the plan starts with the essentials; each chip adds one layer of information.
+    private var infoBar: some View {
+        HStack(spacing: 6) {
+            Button { withAnimation(.snappy) { showInfoBar.toggle() } } label: {
+                HStack(spacing: 4) {
+                    Text("SHOW").font(.fsLabel).tracking(Theme.tracking)
+                    let count = infoLayers.count + (display.luxMapOn ? 1 : 0)
+                    if count > 0 && !showInfoBar { Text("+\(count)").font(.fsLabel) }
+                    Image(systemName: showInfoBar ? "chevron.left" : "chevron.right").font(.fsMicro)
+                }
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 10).frame(minHeight: 32)
+                .background(Color.black.opacity(0.65), in: Rectangle())
+                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showInfoBar ? "Hide information layers" : "Show more information on the plan")
+            if showInfoBar {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(PlanInfoLayer.allCases) { layer in
+                            infoChip(layer.label, on: infoLayers.contains(layer)) { toggle(layer) }
+                        }
+                        if !sceneLights.isEmpty {
+                            infoChip("Exposure map", on: display.luxMapOn) {
+                                let v = !display.luxMapOn
+                                updateDisplay { $0.showLuxMap = v ? true : nil }
+                            }
+                        }
+                    }
+                }
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            Spacer(minLength: 44)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+    }
+
+    private func infoChip(_ text: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(.fsLabel).tracking(Theme.tracking)
+                .foregroundStyle(on ? Color.black : Theme.textPrimary)
+                .padding(.horizontal, 10).frame(minHeight: 32)
+                .background(on ? Theme.accent : Color.black.opacity(0.65), in: Rectangle())
+                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     /// The plan without the set pieces that are hidden.
@@ -710,11 +782,25 @@ struct PlanEditorView: View {
 
     // MARK: Overlay
 
+    private var infoLayers: Set<PlanInfoLayer> {
+        Set(infoLayersRaw.split(separator: ",").compactMap { PlanInfoLayer(rawValue: String($0)) })
+    }
+
+    private func toggle(_ layer: PlanInfoLayer) {
+        var set = infoLayers
+        if set.contains(layer) { set.remove(layer) } else { set.insert(layer) }
+        infoLayersRaw = PlanInfoLayer.allCases.filter(set.contains).map(\.rawValue).joined(separator: ",")
+    }
+
     private func overlay(_ analysis: LightingAnalysis) -> PlanOverlay {
         var o = PlanOverlay()
         let d = display
-        o.showDimensions = d.showsLabels(.dimensions)
-        o.showObjectLabels = d.showsLabels(.objects)
+        let info = infoLayers
+        let readings = info.contains(.readings)
+        o.showAllBeams = info.contains(.beams)
+        o.showAllCameraViews = info.contains(.views)
+        o.showDimensions = d.showsLabels(.dimensions) && info.contains(.dimensions)
+        o.showObjectLabels = d.showsLabels(.objects) && info.contains(.names)
         o.showCameraLabels = d.showsLabels(.cameras)
         o.showLightLabels = d.showsLabels(.lights)
         o.showPeopleLabels = d.showsLabels(.people)
@@ -736,7 +822,7 @@ struct PlanEditorView: View {
                 marker.leftHalf = min(half, doors.left)
                 marker.rightHalf = min(half, doors.right)
                 marker.tint = pm.color
-                marker.label = light.isOn ? "\(light.name) · \(Int((light.dimmer * 100).rounded())) %" : "\(light.name) · off"
+                marker.label = !light.isOn ? "\(light.name) · off" : readings ? "\(light.name) · \(Int((light.dimmer * 100).rounded())) %" : light.name
             }
             o.lights.append(marker)
         }
@@ -745,7 +831,7 @@ struct PlanEditorView: View {
                 let p = c.proportions
                 o.people.append(PlanPersonMarker(id: c.id, name: c.name, position: c.position, facing: c.facing,
                                                  shoulderWidth: p.shoulderWidth, depth: p.chestDepth, headRadius: p.headWidth / 2,
-                                                 skin: c.skinTone.rgb, reading: readingText(analysis.reading(.character(c.id))),
+                                                 skin: c.skinTone.rgb, reading: readings || selection == .character(c.id) ? readingText(analysis.reading(.character(c.id))) : nil,
                                                  selected: selection == .character(c.id)))
             }
         }
@@ -754,7 +840,7 @@ struct PlanEditorView: View {
                 let r = analysis.reading(.meter(m.id))
                 let stops = r.map { log2(max($0.lux, 1e-6) / (m.targetLux ?? key)) }
                 o.meters.append(PlanMeterMarker(id: m.id, name: m.name, position: m.position,
-                                                reading: readingText(r) ?? "—",
+                                                reading: readings || selection == .meter(m.id) ? readingText(r) ?? "—" : "",
                                                 onKey: stops.map { abs($0) <= 1.0 / 3 } ?? false,
                                                 selected: selection == .meter(m.id)))
             }

@@ -32,6 +32,8 @@ interface Props {
   exposure: ExposureSettings;
   selection?: Selection;
   showLuxMap: boolean;
+  /** Information layers on top of the essentials: beams, views, readings, dimensions, names. */
+  layers: Set<string>;
   placing: boolean;
   hint: string;
   onSelect(s?: Selection): void;
@@ -61,7 +63,7 @@ function contentBounds(location: Location, plan: FloorPlan | undefined, lights: 
 const sameSel = (a?: Selection, b?: Selection) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 
 export function PlanCanvas(props: Props) {
-  const { location, plan, lights, scene, readings, exposure, selection, showLuxMap, scanID } = props;
+  const { location, plan, lights, scene, readings, exposure, selection, showLuxMap, scanID, layers } = props;
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View | null>(null);
@@ -239,7 +241,7 @@ export function PlanCanvas(props: Props) {
     const body = 10;
     return (
       <g key={s.kind + s.id}>
-        <polygon points={wedge.join(' ')} fill="rgba(143,166,189,.10)" stroke="rgba(143,166,189,.55)" strokeWidth={1} pointerEvents="none" />
+        {(layers.has('views') || sel) && <polygon points={wedge.join(' ')} fill="rgba(143,166,189,.10)" stroke="rgba(143,166,189,.55)" strokeWidth={1} pointerEvents="none" />}
         <g transform={`translate(${sx(rig.position.x)},${sy(rig.position.z)}) rotate(${rig.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
           <rect x={-body} y={-body * 0.7} width={body * 2} height={body * 1.4} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
           <polygon points={`-6,${-body * 0.7} 6,${-body * 0.7} 9,${-body * 1.5} -9,${-body * 1.5}`} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
@@ -259,7 +261,7 @@ export function PlanCanvas(props: Props) {
     if (info.emits) {
       const pm = photometrics(l);
       const col = cssRGB(pm.color, 1);
-      if (l.isOn && pm.peakIntensity > 0) {
+      if (l.isOn && pm.peakIntensity > 0 && (layers.has('beams') || sel)) {
         const throwM = Math.min(9, Math.max(0.8, distanceForLux(pm, key / 2) ?? 0.8));
         const spread = Math.min(pm.distribution === 'beam' ? pm.beamAngle : 150, 340);
         if (spread >= 300) {
@@ -313,7 +315,7 @@ export function PlanCanvas(props: Props) {
           <polygon points={`-5,${-r * 0.55} 5,${-r * 0.55} 0,${-r * 0.55 - 9}`} fill={sel ? '#fff' : '#d9d9d9'} />
         </g>
         {labelFor(c.name, c.position, -r - 6, sel)}
-        {reading !== undefined && lights.length > 0 && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, c.position, r + 18, true)}
+        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, c.position, r + 18, true)}
         {sel && rotateHandle(s, c.position, c.facing, 0.9)}
       </g>
     );
@@ -330,7 +332,7 @@ export function PlanCanvas(props: Props) {
           <circle r={14} fill="transparent" />
         </g>
         {labelFor(m.name, m.position, -14, sel)}
-        {reading !== undefined && lights.length > 0 && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, m.position, 24, true)}
+        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, m.position, 24, true)}
       </g>
     );
   };
@@ -367,11 +369,11 @@ export function PlanCanvas(props: Props) {
             </g>
           );
         })}
-        {plan && !hidden.has('furniture') && plan.objects.map(o => <g key={'ol' + o.id}>{labelFor(o.category, o.center, 4)}</g>)}
+        {plan && !hidden.has('furniture') && layers.has('names') && plan.objects.map(o => <g key={'ol' + o.id}>{labelFor(o.category, o.center, 4)}</g>)}
         {plan && !hidden.has('walls') && plan.walls.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="#ebebeb" strokeWidth={Math.max(3, 0.1 * v.scale)} strokeLinecap="square" pointerEvents="none" />)}
         {plan && !hidden.has('windows') && plan.windows.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--window)" strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
         {plan && !hidden.has('doors') && [...plan.doors, ...plan.openings].map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke={w.kind === 'door' ? 'var(--door)' : '#070707'} strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
-        {plan && plan.walls.length > 0 && plan.walls.map(w => {
+        {plan && layers.has('dimensions') && plan.walls.map(w => {
           const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
           if (len < 1 || v.scale < 40) return null;
           const mid = { x: (w.a.x + w.b.x) / 2, z: (w.a.z + w.b.z) / 2 };

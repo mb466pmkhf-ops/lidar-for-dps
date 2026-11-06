@@ -34,6 +34,19 @@ const gripItems: { label: string; kind: LightKind }[] = [
 
 const snap = (v: number) => Math.round(v * 20) / 20;
 
+const PLAN_LAYERS = [
+  { id: 'beams', label: 'Beams' },
+  { id: 'views', label: 'Camera views' },
+  { id: 'readings', label: 'Readings' },
+  { id: 'dimensions', label: 'Dimensions' },
+  { id: 'names', label: 'Set-piece names' },
+];
+
+function menuAnchor(el: HTMLElement) {
+  const r = el.getBoundingClientRect();
+  return { top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 308)) };
+}
+
 export function Planner({ project, location, plans, commit }: { project: Project; location: Location; plans: Record<string, FloorPlan>; commit(p: Project): void }) {
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
@@ -191,6 +204,18 @@ export function Planner({ project, location, plans, commit }: { project: Project
   });
 
   const showLuxMap = location.display?.showLuxMap ?? false;
+  const [layers, setLayers] = useState<Set<string>>(() => {
+    try { return new Set((localStorage.getItem('framescan.plan.layers') ?? '').split(',').filter(Boolean)); } catch { return new Set(); }
+  });
+  const [showMenu, setShowMenu] = useState(false);
+  // Menus open below their button, outside the toolbar (which scrolls sideways and would clip them).
+  const [anchor, setAnchor] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const toggleLayer = (id: string) => setLayers(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    try { localStorage.setItem('framescan.plan.layers', [...next].join(',')); } catch { /* private mode */ }
+    return next;
+  });
   const toggleLuxMap = () => edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), showLuxMap: !showLuxMap } }));
 
   const hint = tool.kind === 'light' ? 'Click the plan to place the unit. It starts aimed at the nearest person. Esc cancels.'
@@ -208,9 +233,9 @@ export function Planner({ project, location, plans, commit }: { project: Project
         <div className="toolbar" role="toolbar" aria-label="Plan tools">
           <button className={'tool' + (isOn('select') ? ' on' : '')} onClick={() => setTool({ kind: 'select' })} title="Select and move (Esc)"><Icon name="select" /><span className="txt">Select</span></button>
           <div style={{ position: 'relative' }}>
-            <button className={'tool' + (isOn('light') ? ' on' : '')} onClick={() => setLightMenu(!lightMenu)} aria-expanded={lightMenu} title="Add a light or grip (L)"><Icon name="light" /><span className="txt">+ Light</span></button>
+            <button className={'tool' + (isOn('light') ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setLightMenu(!lightMenu); }} aria-expanded={lightMenu} title="Add a light or grip (L)"><Icon name="light" /><span className="txt">+ Light</span></button>
             {lightMenu && (
-              <div className="dialog" style={{ position: 'absolute', top: 44, left: 0, width: 300, padding: 12, zIndex: 5 }} onMouseLeave={() => setLightMenu(false)}>
+              <div className="dialog" style={{ position: 'fixed', ...anchor, width: 300, padding: 12, zIndex: 20 }} onMouseLeave={() => setLightMenu(false)}>
                 <div className="label" style={{ marginBottom: 8 }}>Lights</div>
                 <div className="chips">{quickLights.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, profile: q.profile }); setLightMenu(false); }}>{q.label}</button>)}</div>
                 <div className="label" style={{ margin: '12px 0 8px' }}>Grip</div>
@@ -222,14 +247,28 @@ export function Planner({ project, location, plans, commit }: { project: Project
           <button className={'tool' + (isOn('person') ? ' on' : '')} onClick={() => setTool({ kind: 'person' })} title="Add a person (P)"><Icon name="person" /><span className="txt">+ Person</span></button>
           <button className={'tool' + (isOn('meter') ? ' on' : '')} onClick={() => setTool({ kind: 'meter' })} title="Add a light meter (M)"><Icon name="meter" /><span className="txt">+ Meter</span></button>
           <span className="sep" />
-          <button className={'tool' + (showLuxMap ? ' on' : '')} onClick={toggleLuxMap} title="Show stops across the room"><Icon name="map" /><span className="txt">Exposure map</span></button>
+          <div style={{ position: 'relative' }}>
+            <button className={'tool' + (showMenu ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setShowMenu(!showMenu); }} aria-expanded={showMenu} title="Add information to the plan, one layer at a time">
+              <Icon name="map" /><span className="txt">Show{layers.size + (showLuxMap ? 1 : 0) ? ` +${layers.size + (showLuxMap ? 1 : 0)}` : ''}</span>
+            </button>
+            {showMenu && (
+              <div className="dialog" style={{ position: 'fixed', ...anchor, width: 260, padding: 12, zIndex: 20 }} onMouseLeave={() => setShowMenu(false)}>
+                <div className="label" style={{ marginBottom: 8 }}>On the plan</div>
+                <div className="chips">
+                  {PLAN_LAYERS.map(l => <button key={l.id} className={'chip' + (layers.has(l.id) ? ' on' : '')} aria-pressed={layers.has(l.id)} onClick={() => toggleLayer(l.id)}>{l.label}</button>)}
+                  <button className={'chip' + (showLuxMap ? ' on' : '')} aria-pressed={showLuxMap} onClick={toggleLuxMap}>Exposure map</button>
+                </div>
+                <p className="note">The plan starts with the room, units, people and cameras. The selected item always shows its beam, view and reading.</p>
+              </div>
+            )}
+          </div>
           <span className="spacer" />
           <button className="tool" onClick={undo} disabled={!history.current.past.length} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" /></button>
           <button className="tool" onClick={redo} disabled={!history.current.future.length} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" /></button>
         </div>
         <PlanCanvas
           location={location} plan={plan} scanID={scanID} lights={lights} scene={scene} readings={readings} exposure={exposure}
-          selection={selection} showLuxMap={showLuxMap} placing={tool.kind !== 'select'} hint={hint}
+          selection={selection} showLuxMap={showLuxMap} layers={layers} placing={tool.kind !== 'select'} hint={hint}
           onSelect={s => setSelection(s)} onPlace={place}
           onDragStart={() => { dragPending.current = true; }} onDrag={drag} onDragEnd={() => { dragPending.current = false; }}
         />

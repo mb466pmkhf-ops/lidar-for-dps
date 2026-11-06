@@ -64,7 +64,7 @@ export function demoBundle(): ProjectBundle {
     characters: [maya, leo],
     meters: [meter],
     exposure: { iso: 800, frameRate: 24, shutterAngle: 180, tStop: 5.6, lensTransmission: 0.85, ndStops: 0 },
-    display: { showLuxMap: true },
+    display: {},
   };
   const project = { ...newProject('Sample Commercial (web)'), client: 'Demo', locations: [location] };
   return { project, plans: { [scanID]: plan } };

@@ -158,7 +158,6 @@ enum DemoContent {
         exposure.iso = 800; exposure.tStop = 5.6
         location.exposureSettings = exposure
         var display = SceneDisplay()
-        display.showLuxMap = true
         location.displaySettings = display
         var project = Project(name: "Sample Commercial")
         project.id = projectID
