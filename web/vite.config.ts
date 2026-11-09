@@ -6,5 +6,5 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   server: { port: 5173, strictPort: true },
-  build: { outDir: 'dist', target: 'es2022' },
+  build: { outDir: 'dist', target: 'es2022', chunkSizeWarningLimit: 600 }, // three.js loads on its own, only for the 3D view
 });

@@ -1,6 +1,6 @@
 // The lighting planner for one location: toolbar, plan and inspector. Edits go straight into the
 // project (and so to the phone); undo/redo covers this session.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FloorPlan, LightKind, Location, PlanPoint, Project } from '../model/types';
 import { KIND_INFO, applyProfile, profileByID } from '../model/photometrics';
 import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISSION, planDist } from '../model/calculator';
@@ -10,6 +10,9 @@ import { newCharacter, newLight, newMeter } from '../model/factory';
 import { PlanCanvas, type DragTarget, type Selection } from './PlanCanvas';
 import { Inspector } from './Inspector';
 import { Icon } from './icons';
+
+// three.js only loads when someone opens the 3D view.
+const Scene3D = lazy(() => import('./Scene3D').then(m => ({ default: m.Scene3D })));
 
 type Tool =
   | { kind: 'select' }
@@ -208,6 +211,8 @@ export function Planner({ project, location, plans, commit }: { project: Project
     try { return new Set((localStorage.getItem('framescan.plan.layers') ?? '').split(',').filter(Boolean)); } catch { return new Set(); }
   });
   const [showMenu, setShowMenu] = useState(false);
+  const [view3D, setView3D] = useState(() => { try { return localStorage.getItem('framescan.plan.view') === '3d'; } catch { return false; } });
+  const setView = (on: boolean) => { setView3D(on); try { localStorage.setItem('framescan.plan.view', on ? '3d' : 'plan'); } catch { /* private mode */ } if (on) setTool({ kind: 'select' }); };
   // Menus open below their button, outside the toolbar (which scrolls sideways and would clip them).
   const [anchor, setAnchor] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const toggleLayer = (id: string) => setLayers(prev => {
@@ -226,11 +231,18 @@ export function Planner({ project, location, plans, commit }: { project: Project
     : '';
 
   const isOn = (k: Tool['kind']) => tool.kind === k;
+  // Placing happens on the plan, so picking a placing tool goes back to it.
+  useEffect(() => { if (view3D && tool.kind !== 'select') setView(false); });
 
   return (
     <>
       <div className="stage">
         <div className="toolbar" role="toolbar" aria-label="Plan tools">
+          <div className="seg" role="group" aria-label="View">
+            <button className={'tool' + (!view3D ? ' on' : '')} aria-pressed={!view3D} onClick={() => setView(false)} title="2D lighting plan">Plan</button>
+            <button className={'tool' + (view3D ? ' on' : '')} aria-pressed={view3D} onClick={() => setView(true)} title="Walk around the set in 3D">3D</button>
+          </div>
+          <span className="sep" />
           <button className={'tool' + (isOn('select') ? ' on' : '')} onClick={() => setTool({ kind: 'select' })} title="Select and move (Esc)"><Icon name="select" /><span className="txt">Select</span></button>
           <div style={{ position: 'relative' }}>
             <button className={'tool' + (isOn('light') ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setLightMenu(!lightMenu); }} aria-expanded={lightMenu} title="Add a light or grip (L)"><Icon name="light" /><span className="txt">+ Light</span></button>
@@ -266,12 +278,18 @@ export function Planner({ project, location, plans, commit }: { project: Project
           <button className="tool" onClick={undo} disabled={!history.current.past.length} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" /></button>
           <button className="tool" onClick={redo} disabled={!history.current.future.length} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" /></button>
         </div>
-        <PlanCanvas
-          location={location} plan={plan} scanID={scanID} lights={lights} scene={scene} readings={readings} exposure={exposure}
-          selection={selection} showLuxMap={showLuxMap} layers={layers} placing={tool.kind !== 'select'} hint={hint}
-          onSelect={s => setSelection(s)} onPlace={place}
-          onDragStart={() => { dragPending.current = true; }} onDrag={drag} onDragEnd={() => { dragPending.current = false; }}
-        />
+        {view3D ? (
+          <Suspense fallback={<div className="scene3d"><div className="scene3d-hint">Loading 3D…</div></div>}>
+            <Scene3D location={location} plan={plan} scanID={scanID} lights={lights} selection={selection} beams={layers.has('beams')} onSelect={s => setSelection(s)} />
+          </Suspense>
+        ) : (
+          <PlanCanvas
+            location={location} plan={plan} scanID={scanID} lights={lights} scene={scene} readings={readings} exposure={exposure}
+            selection={selection} showLuxMap={showLuxMap} layers={layers} placing={tool.kind !== 'select'} hint={hint}
+            onSelect={s => setSelection(s)} onPlace={place}
+            onDragStart={() => { dragPending.current = true; }} onDrag={drag} onDragEnd={() => { dragPending.current = false; }}
+          />
+        )}
       </div>
       <aside className="inspector" aria-label="Details">
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}

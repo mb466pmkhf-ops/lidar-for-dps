@@ -135,3 +135,12 @@ input[type=range] { width: 100%; accent-color: #fff; }
 
 .meter-row .stack2 { display: grid; gap: 2px; min-width: 0; }
 .meter-row .stack2 .mono { font-size: 12px; }
+
+/* 3D view */
+.toolbar .seg { display: inline-flex; gap: 2px; }
+.scene3d { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #0d0d0d; touch-action: none; }
+.scene3d canvas { display: block; width: 100%; height: 100%; }
+.scene3d-hint { position: absolute; left: 12px; bottom: 12px; max-width: 460px; padding: 8px 12px; background: rgba(13,13,13,.92); border: 1px solid var(--hair); font-size: 13px; color: var(--text2); pointer-events: none; }
+.scene3d-buttons { position: absolute; right: 12px; top: 12px; display: flex; gap: 4px; }
+.scene3d-buttons .tool { background: rgba(13,13,13,.92); border-color: var(--hair2); }
+@media (max-width: 720px) { .scene3d-hint { display: none; } }
