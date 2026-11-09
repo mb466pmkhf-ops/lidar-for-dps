@@ -30,6 +30,7 @@ struct LocationDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 ScreenHeading(title: location.name)
                 header(location)
+                nextStep(location)
                 toolGrid(location)
                 keyFigures(location)
                 planCard(location)
@@ -141,18 +142,67 @@ struct LocationDetailView: View {
             SmallTool(title: "Viewfinder", symbol: "camera.viewfinder", disabled: !DeviceCapabilities.hasCamera) {
                 router.start(.viewfinder(CaptureTarget(ref)))
             }
-            SmallTool(title: "Plan", symbol: "map") { router.open(.plan(ref)) }
+            // One way into the plan: cameras, people and lights all live there.
+            SmallTool(title: "Lighting plan", symbol: "lightbulb") { router.open(.lighting(ref)) }
             SmallTool(title: "Shots", symbol: "film") { router.open(.shots(ref)) }
-            SmallTool(title: "Lighting", symbol: "lightbulb") { router.open(.lighting(ref)) }
-            SmallTool(title: "Sun", symbol: "sun.max") { router.open(.sun(ref)) }
             SmallTool(title: "3D View", symbol: "cube", disabled: location.primaryScan == nil) {
                 router.start(.virtualCamera(ref, cameraID: nil))
             }
+            SmallTool(title: "Sun", symbol: "sun.max") { router.open(.sun(ref)) }
             SmallTool(title: "Notes", symbol: "note.text") { router.open(.notes(ref)) }
             SmallTool(title: "Export", symbol: "square.and.arrow.up") {
                 router.open(.export(projectID: ref.projectID, location: ref))
             }
         }
+    }
+
+    /// The one obvious thing to do next on this location: scan it, start the plan, or carry on with it.
+    private func nextStep(_ location: Location) -> some View {
+        let hasScan = location.primaryScan != nil
+        let lights = location.lightFixtures.count
+        let cameras = location.cameraPositions.count + location.shots.count
+        let people = location.previsCharacters.count
+        let started = lights + cameras + people > 0
+        let canScan = DeviceCapabilities.hasLiDAR
+        let title: String
+        let detail: String
+        let button: String
+        if !hasScan && !started {
+            title = canScan ? "Scan the room first" : "Start a plan"
+            detail = canScan
+                ? "Walk the room slowly with the phone. The plan, the 3D view and the light readings all build on the scan."
+                : "This device has no LiDAR, so you can't scan here. You can still lay out a plan by hand."
+            button = canScan ? "Scan this room" : "Open the plan"
+        } else if !started {
+            title = "Plan the lighting"
+            detail = "Place a person, then the camera, then pick a starting setup. It's all one screen, in 2D and 3D."
+            button = "Start the lighting plan"
+        } else {
+            title = "Lighting plan"
+            detail = [people > 0 ? "\(people) \(people == 1 ? "person" : "people")" : nil,
+                      cameras > 0 ? "\(cameras) camera\(cameras == 1 ? "" : "s")" : nil,
+                      lights > 0 ? "\(lights) light\(lights == 1 ? "" : "s")" : nil]
+                .compactMap { $0 }.joined(separator: "  ·  ")
+            button = "Continue"
+        }
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(started ? "IN PROGRESS" : "NEXT STEP").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+            Text(title).font(.fsHeadline)
+            Text(detail).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button(button) {
+                    if !hasScan && !started && canScan { router.start(.scan(CaptureTarget(ref))) } else { router.open(.lighting(ref)) }
+                }
+                .buttonStyle(HairlineButtonStyle(prominent: true))
+                if !hasScan && !started && canScan {
+                    Button("Plan without a scan") { router.open(.lighting(ref)) }
+                        .buttonStyle(HairlineButtonStyle())
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 
     @ViewBuilder
@@ -193,8 +243,8 @@ struct LocationDetailView: View {
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
                     .background(Theme.background, in: Rectangle())
-                    .onTapGesture { router.open(.plan(ref)) }
-                Text("Tap to place cameras, shots and measure on the plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                    .onTapGesture { router.open(.lighting(ref)) }
+                Text("Tap to open the lighting plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
             .card()
         }
@@ -296,7 +346,7 @@ struct LocationDetailView: View {
                 }
             }
             if location.lightFixtures.isEmpty {
-                Text("Open the lighting diagram and tap “+ Light” to place units on the plan and see them in the 3D scan.")
+                Text("Open the lighting plan, place a person and choose “Light this person”, or add units one by one with Add.")
                     .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
@@ -305,7 +355,7 @@ struct LocationDetailView: View {
 
     private func camerasCard(_ location: Location) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.plan(ref)) }, actionLabel: "Plan")
+            SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.lighting(ref)) }, actionLabel: "Plan")
             ForEach(location.cameraPositions) { c in
                 HStack {
                     Image(systemName: "video.fill").font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
@@ -325,7 +375,7 @@ struct LocationDetailView: View {
                 }
             }
             if location.cameraPositions.isEmpty && location.shots.isEmpty {
-                Text("Open the plan and tap “+ Camera” to place a camera position.")
+                Text("Open the lighting plan and use Add → Camera to place a camera position.")
                     .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
