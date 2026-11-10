@@ -5,12 +5,11 @@ import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, 
 import { KIND_INFO, distanceForLux, photometrics } from '../model/photometrics';
 import { bearingFrom, planDist, unitBearing, type Scene, grid, meterNormal, meterCameras, vec } from '../model/calculator';
 import { horizontalFOV } from '../model/camera';
-import { keyLux, stopsForLux } from '../model/exposure';
+import { keyLux } from '../model/exposure';
 import { cssRGB } from '../model/kelvin';
 import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
-import { lux as fmtLux, stopColor, stopLegend } from './format';
-import { stopsDelta } from '../model/exposure';
+import { readingShort, stopColor, stopLegend } from './format';
 
 export type Selection =
   | { kind: 'light'; id: string }
@@ -350,7 +349,7 @@ export function PlanCanvas(props: Props) {
           <polygon points={`-5,${-r * 0.55} 5,${-r * 0.55} 0,${-r * 0.55 - 9}`} fill={sel ? 'var(--accent)' : 'var(--ink2)'} />
         </g>
         {labelFor(c.name, c.position, -r - 6, sel)}
-        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, c.position, r + 18, true)}
+        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(readingShort(reading, exposure), c.position, r + 18, true)}
         {sel && rotateHandle(s, c.position, c.facing, 0.9)}
       </g>
     );
@@ -367,7 +366,7 @@ export function PlanCanvas(props: Props) {
           <circle r={14} fill="transparent" />
         </g>
         {labelFor(m.name, m.position, -14, sel)}
-        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, m.position, 24, true)}
+        {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(readingShort(reading, exposure), m.position, 24, true)}
       </g>
     );
   };

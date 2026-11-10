@@ -84,7 +84,7 @@ The owner compared three mockups (guided steps, big buttons in daylight, plan fi
 then asked for it to be built with a night switch for dark sets. This replaces D-005's dark hairline look.
 - **Day (default)**: light page (#F3F4F1), white cards, near-black text, one blue accent (#1F5FD1), Poppins at
   regular/medium weights, rounded controls at least 44 px tall. No yellow or amber accent.
-- **Night**: near-black page, dimmed warm-grey text and a soft red accent, so the screen puts as little light
+- **Night**: near-black page, dimmed warm-grey text and a dim green-teal accent, so the screen puts as little light
   as possible into a dark set. A switch in the top bar; remembered per device.
 - **Home**: a few big labelled tiles (continue, draw a room, open a file, sync), then recent locations.
 - **Draw a room**: a starting shape (box or L) plus typed sizes becomes the same `FloorPlan` a scan makes
