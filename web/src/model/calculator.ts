@@ -188,6 +188,7 @@ export function grid(bounds: PlanRect, columns: number, rows: number, height: nu
 export type IntensitySolution =
   | { kind: 'output'; output: number }
   | { kind: 'tooDim'; maxLux: number; suggestedDistance?: number }
+  | { kind: 'atMinimum'; output: number; lux: number }
   | { kind: 'othersTooBright'; othersLux: number }
   | { kind: 'noContribution' };
 
@@ -205,7 +206,9 @@ export function solveOutput(light: LightFixture, target: number, point: Vec, nor
     const d = len(sub(point, at(light.position, light.height)));
     return { kind: 'tooDim', maxLux: fullReading.lux, suggestedDistance: d * Math.sqrt(mine / need) };
   }
-  return { kind: 'output', output: Math.max(fixtureProfile(light).minOutput, Math.min(1, output)) };
+  const minOutput = fixtureProfile(light).minOutput;
+  if (output < minOutput - 1e-9) return { kind: 'atMinimum', output: minOutput, lux: othersLux + mine * minOutput };
+  return { kind: 'output', output: Math.min(1, output) };
 }
 
 // MARK: Meter points (Location.meterPoints)

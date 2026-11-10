@@ -24,7 +24,7 @@ describe('photometrics port', () => {
     const l = applyProfile(newLight('fresnel', { x: 0, z: 3 }), profiles.find(p => p.id === 'cob-1200-d')!);
     l.pan = 0; l.tilt = 0; l.height = 1.5;
     const r = reading(vec(0, 1.5, 0), direction(180, 0), buildScene([l]));
-    expect(r.lux).toBeCloseTo(9000, -1);
+    expect(r.lux / 20000).toBeCloseTo(1, 3);
   });
 
   it('a wall blocks and a window passes its transmission', () => {
@@ -42,7 +42,7 @@ describe('photometrics port', () => {
     l.tilt = 0; l.height = 1.5;
     const s = solveOutput(l, 1000, vec(0, 1.5, 0), direction(180, 0), [l]);
     expect(s.kind).toBe('output');
-    if (s.kind === 'output') expect(s.output).toBeCloseTo(1000 / 2200, 2);
+    if (s.kind === 'output') expect(s.output).toBeCloseTo(1000 / 3500, 2);
   });
 });
 

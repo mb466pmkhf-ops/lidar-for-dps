@@ -254,6 +254,9 @@ enum LightingCalculator {
         case output(Double)
         /// Even at full the unit gives too little here: what it reaches, and how close it would need to be.
         case tooDim(maxLux: Double, suggestedDistance: Double?)
+        /// Even at its lowest output (HMIs don't dim below about half) the unit overshoots the
+        /// target: that output, and the total it gives here.
+        case atMinimum(output: Double, lux: Double)
         /// Other units alone already exceed the target.
         case othersTooBright(othersLux: Double)
         /// The unit doesn't reach this point (blocked, aimed away, or switched off).
@@ -281,7 +284,8 @@ enum LightingCalculator {
             let d = (point - Point(light.position, height: light.height)).length
             return .tooDim(maxLux: fullReading.lux, suggestedDistance: d * (mine / need).squareRoot())
         }
-        return .output(max(minOutput, min(1, output)))
+        if output < minOutput - 1e-9 { return .atMinimum(output: minOutput, lux: othersLux + mine * minOutput) }
+        return .output(min(1, output))
     }
 
     // MARK: Geometry helpers
