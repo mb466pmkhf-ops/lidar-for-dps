@@ -4,7 +4,7 @@ import SwiftUI
 struct CharacterPanel: View {
     @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
 
-    private func faceText(_ reading: LightingCalculator.Reading) -> String {
+    private func faceText(_ reading: (lux: Double, stops: Double)) -> String {
         let value = readingUnit.text(lux: reading.lux, exposure: exposure)
         switch readingUnit {
         case .tStop: return "≈ \(value)"
