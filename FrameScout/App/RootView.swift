@@ -83,6 +83,9 @@ struct CaptureFlowView: View {
             ObjectCaptureFlowView(projectID: projectID)
         case .virtualCamera(let ref, let cameraID):
             VirtualCameraView(ref: ref, initialCameraID: cameraID)
+                // A black 3D viewport: keep the night colours so its labels stay readable in day mode.
+                .environment(\.colorScheme, .dark)
+                .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }
