@@ -324,10 +324,13 @@ final class ProjectStore: ObservableObject {
 
         let destination = StoragePaths.projectDir(project.id)
         StoragePaths.ensureDirectory(destination)
+        let root = destination.standardizedFileURL.path + "/"
         for entry in archive.entries where entry.path.hasPrefix(rootPrefix) && !entry.isDirectory {
             let relative = String(entry.path.dropFirst(rootPrefix.count))
-            guard !relative.isEmpty, !relative.contains(".."), relative != StoragePaths.projectFileName else { continue }
-            let target = destination.appendingPathComponent(relative)
+            guard !relative.isEmpty, !relative.contains(".."),
+                  relative != StoragePaths.projectFileName else { continue }
+            let target = destination.appendingPathComponent(relative).standardizedFileURL
+            guard target.path.hasPrefix(root) else { continue }
             StoragePaths.ensureDirectory(target.deletingLastPathComponent())
             try archive.data(for: entry).write(to: target, options: .atomic)
         }

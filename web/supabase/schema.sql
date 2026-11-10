@@ -14,7 +14,7 @@ create table if not exists public.framescan_projects (
   updated_by  text
 );
 
-create index if not exists framescan_projects_owner on public.framescan_projects (owner);
+
 
 alter table public.framescan_projects enable row level security;
 
@@ -27,3 +27,20 @@ create policy "own rows: read"   on public.framescan_projects for select using (
 create policy "own rows: insert" on public.framescan_projects for insert with check (owner = (select auth.uid()));
 create policy "own rows: update" on public.framescan_projects for update using (owner = (select auth.uid())) with check (owner = (select auth.uid()));
 create policy "own rows: delete" on public.framescan_projects for delete using (owner = (select auth.uid()));
+
+-- Hardening (2026-11). Safe to run again on an existing install.
+-- 1. Project ids are unique per account, not across the whole server: another account can't block
+--    yours by taking an id first, and the same backup can be opened in two accounts.
+alter table public.framescan_projects drop constraint if exists framescan_projects_pkey;
+alter table public.framescan_projects add constraint framescan_projects_pkey primary key (owner, id);
+drop index if exists public.framescan_projects_owner;  -- covered by the primary key
+
+-- 2. Signed-out visitors get nothing; signed-in users get plain row access (RLS still applies).
+revoke all on public.framescan_projects from anon;
+revoke all on public.framescan_projects from authenticated;
+grant select, insert, update, delete on public.framescan_projects to authenticated;
+
+-- 3. Size limits, so one account can't fill the database. Real projects are a few hundred KB at most.
+alter table public.framescan_projects drop constraint if exists framescan_projects_size;
+alter table public.framescan_projects add constraint framescan_projects_size
+  check (pg_column_size(doc) < 5000000 and pg_column_size(plans) < 20000000 and length(name) <= 500);

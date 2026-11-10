@@ -264,6 +264,7 @@ final class ZipReader {
             let extraLen = Int(data.readLE16(p + 30))
             let commentLen = Int(data.readLE16(p + 32))
             let local = Int(data.readLE32(p + 42))
+            guard p + 46 + nameLen <= data.count else { throw ZipError.corrupt("bad central directory") }
             let nameData = data.subdata(in: (data.startIndex + p + 46)..<(data.startIndex + p + 46 + nameLen))
             let name = String(decoding: nameData, as: UTF8.self)
             entries.append(Entry(path: name, method: method, compressedSize: csize, size: size, localHeaderOffset: local))
@@ -287,9 +288,14 @@ final class ZipReader {
         }
     }
 
+    /// Largest single entry we will unpack. Scan meshes are well under this; a bigger claim is a
+    /// corrupt or hostile archive and would otherwise allocate it all up front.
+    static let maxEntrySize = 1 << 30
+
     static func inflate(_ payload: Data, size: Int) throws -> Data {
         #if canImport(Compression)
         if size == 0 { return Data() }
+        guard !payload.isEmpty, size <= maxEntrySize else { throw ZipError.corrupt("bad entry size") }
         var output = Data(count: size)
         let written = output.withUnsafeMutableBytes { (dst: UnsafeMutableRawBufferPointer) -> Int in
             payload.withUnsafeBytes { (src: UnsafeRawBufferPointer) -> Int in

@@ -37,12 +37,6 @@ export function stopsDelta(stops: number): string {
 
 export const speedLabel = (s: number) => (s >= 1 ? `${trim(s)} s` : `1/${Math.round(1 / s)}`);
 
-export function exposureSummary(e: ExposureSettings): string {
-  let s = `ISO ${Math.trunc(e.iso)} · ${e.shutterSeconds === undefined ? `${trim(e.shutterAngle)}° @ ${trim(e.frameRate)}` : speedLabel(exposureTime(e))} · ${stopLabel(e.tStop)}`;
-  if (e.ndStops > 0) s += ` · ND ${(e.ndStops * 0.3).toFixed(1)}`;
-  return s;
-}
-
 export const isoPresets = [100, 200, 400, 640, 800, 1280, 1600, 3200, 6400];
 export const frameRates = [23.976, 24, 25, 30, 48, 50, 60, 100, 120];
 export const shutterAngles = [45, 90, 144, 172.8, 180, 270, 360];

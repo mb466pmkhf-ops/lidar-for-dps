@@ -173,8 +173,6 @@ export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
   return { lux: total, contributions };
 }
 
-export const dominant = (r: Reading) => r.contributions.reduce<Contribution | undefined>((m, c) => (!m || c.lux > m.lux ? c : m), undefined);
-
 export function grid(bounds: PlanRect, columns: number, rows: number, height: number, scene: Scene, normal: (p: Vec) => Vec): number[] {
   const values: number[] = [];
   const cw = (bounds.maxX - bounds.minX) / columns, ch = (bounds.maxZ - bounds.minZ) / rows;

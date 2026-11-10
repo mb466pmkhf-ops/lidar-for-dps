@@ -36,6 +36,7 @@ function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<
     const req = run(t.objectStore(STORE));
     t.oncomplete = () => resolve(req.result);
     t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error ?? new Error('Storage transaction aborted'));
   }));
 }
 

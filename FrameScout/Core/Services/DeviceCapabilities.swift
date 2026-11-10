@@ -13,10 +13,6 @@ enum DeviceCapabilities {
     /// RoomPlan requires LiDAR + A12 or later.
     static var supportsRoomPlan: Bool { RoomCaptureSession.isSupported }
 
-    static var supportsMeshClassification: Bool {
-        ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification)
-    }
-
     /// AR world tracking (all ARKit devices). Used for the non-LiDAR measure fallback.
     static var supportsWorldTracking: Bool { ARWorldTrackingConfiguration.isSupported }
 

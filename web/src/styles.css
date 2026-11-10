@@ -1,9 +1,9 @@
 /* FrameScan look, "big buttons, daylight" (Docs/DECISIONS.md D-008): a light screen that reads in
    the sun, large rounded controls and one blue accent. Night mode (html[data-theme=night]) is a
    dim, near-black version with a dim green-teal accent so the screen doesn't light up a dark set. */
-@font-face { font-family: Poppins; font-weight: 300; src: url(./assets/fonts/Poppins-Light.ttf) format('truetype'); font-display: swap; }
-@font-face { font-family: Poppins; font-weight: 400; src: url(./assets/fonts/Poppins-Regular.ttf) format('truetype'); font-display: swap; }
-@font-face { font-family: Poppins; font-weight: 500; src: url(./assets/fonts/Poppins-Medium.ttf) format('truetype'); font-display: swap; }
+@font-face { font-family: Poppins; font-weight: 300; src: url(./assets/fonts/Poppins-Light.woff2) format('woff2'); font-display: swap; }
+@font-face { font-family: Poppins; font-weight: 400; src: url(./assets/fonts/Poppins-Regular.woff2) format('woff2'); font-display: swap; }
+@font-face { font-family: Poppins; font-weight: 500; src: url(./assets/fonts/Poppins-Medium.woff2) format('woff2'); font-display: swap; }
 
 :root {
   --bg: #f3f4f1; --surface: #fff; --raised: #f3f4f1; --raised2: #e9eef6;

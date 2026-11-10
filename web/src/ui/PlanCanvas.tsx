@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactElement } from "react";
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, Location, PlanPoint, PlanRect, PrevisCharacter } from '../model/types';
 import { KIND_INFO, distanceForLux, photometrics } from '../model/photometrics';
-import { bearingFrom, planDist, unitBearing, type Scene, grid, meterNormal, meterCameras, vec } from '../model/calculator';
+import { planDist, unitBearing, type Scene, grid, meterNormal, meterCameras, vec } from '../model/calculator';
 import { horizontalFOV } from '../model/camera';
 import { keyLux } from '../model/exposure';
 import { cssRGB } from '../model/kelvin';
@@ -451,5 +451,3 @@ export function PlanCanvas(props: Props) {
     </div>
   );
 }
-
-export const aimBearing = bearingFrom;
