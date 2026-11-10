@@ -92,7 +92,8 @@ struct ExposureSettings: Codable, Hashable {
             name = trim(fullStops[fullIndex])
         } else {
             let v = pow(2, Double(fullIndex) / 2)
-            name = v < 1 ? String(format: "%.2g", v) : String(Int(v.rounded()))
+            // Under T1: two decimals, rounded half up the same way as the web ("T0.13", not "T0.12").
+            name = v < 1 ? String(format: "%g", (v * 100).rounded() / 100) : String(Int(v.rounded()))
         }
         switch offset {
         case 1: return "\(prefix)\(name) +⅓"

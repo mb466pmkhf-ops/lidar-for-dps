@@ -129,6 +129,8 @@ describe('exposure maths, by hand (incident meter N²/t = E·S/C, C = 250)', () 
     expect(stopLabel(128)).toBe('T128');            // was "T1.3e+02" on the phone, "T130" on the web
     expect(stopLabel(Math.pow(2, 15 / 2))).toBe('T180');
     expect(stopLabel(0.7)).toBe('T0.71');
+    expect(stopLabel(0.125)).toBe('T0.13');         // Swift's %.2g gave "T0.12" here, the web "T0.13"
+    expect(stopLabel(0.25)).toBe('T0.25');
     expect(stopLabel(0)).toBe('—');
     expect(stopsDelta(0.05)).toBe('±0');
     expect(stopsDelta(-2.4)).toBe('−2⅓');

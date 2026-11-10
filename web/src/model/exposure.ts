@@ -23,7 +23,7 @@ export function stopLabel(n: number, prefix = 'T'): string {
   const fullIndex = Math.round(thirds / 3);
   const offset = thirds - fullIndex * 3;
   const v = Math.pow(2, fullIndex / 2);
-  const name = fullIndex >= 0 && fullIndex < fullStops.length ? trim(fullStops[fullIndex]) : v < 1 ? Number(v.toPrecision(2)).toString() : String(Math.round(v));
+  const name = fullIndex >= 0 && fullIndex < fullStops.length ? trim(fullStops[fullIndex]) : v < 1 ? String(Math.round(v * 100) / 100) : String(Math.round(v)); // same rounding as Swift
   return offset === 1 ? `${prefix}${name} +⅓` : offset === -1 ? `${prefix}${name} −⅓` : `${prefix}${name}`;
 }
 
