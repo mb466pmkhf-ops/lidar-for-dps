@@ -55,6 +55,10 @@ The simulator builds, but RoomPlan/ARKit scanning only works on a real LiDAR dev
 | — | Location package ZIP | ✅ | `ExportService` + dependency-free `ZipWriter` |
 | — | PDF scout report (plan with cameras/shots, key figures, photos, measurements, notes) | ✅ | `ScoutReport` (SwiftUI `ImageRenderer` → PDF), in packages and Location › ⋯ menu |
 
+### Measured, estimated or manual
+
+Every figure carries a provenance badge: **Measured** (LiDAR scan, AR tape), **Estimated** (derived by a heuristic or a less precise sensor, e.g. RoomPlan ceiling height, bounding-box sizes, compass north, plane-based AR without LiDAR) or **Manual** (typed or corrected). The PDF marks estimates with ≈ and manual values with ✎; `measurements.csv` has a `provenance` column. See `Docs/DECISIONS.md` (D-002).
+
 ### Devices without LiDAR
 
 The app tells the user plainly that 3D scanning needs LiDAR and keeps everything else working: projects, locations, photos, notes, tags, **AR measure** (plane-based, with an accuracy note), **lens viewfinder**, **sun tools**, camera/shot planning on a blank 1 m grid, comparison and export of non-scan data. Scans made on a LiDAR device can be moved over via *Export Project Backup* → *Import Project Backup*.

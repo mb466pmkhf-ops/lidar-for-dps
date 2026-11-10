@@ -7,15 +7,15 @@ struct CardModifier: ViewModifier {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
     }
 }
 
 extension View {
     func card(padding: CGFloat = 16) -> some View { modifier(CardModifier(padding: padding)) }
 
-    /// Standard dark screen background.
+    /// Standard screen background.
     func fsScreen() -> some View {
         background(Theme.background.ignoresSafeArea())
             .scrollContentBackground(.hidden)
@@ -23,6 +23,31 @@ extension View {
 
     /// The site's spaced small-caps-free label treatment.
     func fsTracked(_ amount: CGFloat = Theme.tracking) -> some View { tracking(amount) }
+
+    /// For screens named after something the user typed (projects, locations): the bar keeps the
+    /// title for the back button and VoiceOver but shows none, and `ScreenHeading` draws it in the
+    /// content where it can wrap instead of being cut off like a long large title.
+    func fsWrappingTitle(_ title: String) -> some View {
+        navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+            }
+    }
+}
+
+/// Screen title drawn in the content, wrapping onto as many lines as it needs.
+struct ScreenHeading: View {
+    var title: String
+
+    var body: some View {
+        Text(title)
+            .font(.fsTitle)
+            .foregroundStyle(Theme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 /// Lower-case wordmark in the spirit of the site's "norbert varjasi / cinematographer" lockup.
@@ -91,27 +116,27 @@ struct ActionTile: View {
                     Text(title)
                         .font(.poppins(.regular, 15))
                         .tracking(Theme.tracking)
-                        .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+                        .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
                     Image(systemName: systemImage)
                         .font(.system(size: 15, weight: .ultraLight))
-                        .foregroundStyle(prominent ? Color.black.opacity(0.7) : Theme.textTertiary)
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textTertiary)
                 }
                 Spacer(minLength: 0)
                 if let subtitle {
                     Text(subtitle)
                         .font(.fsCaption)
-                        .foregroundStyle(prominent ? Color.black.opacity(0.65) : Theme.textSecondary)
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-            .background(prominent ? Color.white : Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
             .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
@@ -190,6 +215,7 @@ struct StatView: View {
     var value: String
     var detail: String? = nil
     var highlight = false
+    var provenance: Provenance? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -197,6 +223,7 @@ struct StatView: View {
                 .font(.fsLabel)
                 .tracking(Theme.tracking)
                 .foregroundStyle(Theme.textTertiary)
+                .lineLimit(1)
             Text(value)
                 .font(.fsValue)
                 .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
@@ -205,8 +232,11 @@ struct StatView: View {
             if let detail {
                 Text(detail).font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
+            // Under the value, so a long label ("Floor area") never gets truncated by the badge.
+            if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -222,7 +252,7 @@ struct TagChip: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-            .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
         if let action {
             Button(action: action) { label }.buttonStyle(.plain)
         } else {
@@ -242,11 +272,11 @@ struct HairlineButtonStyle: ButtonStyle {
             .font(.fsLabel)
             .tracking(Theme.tracking)
             .labelStyle(.titleOnly)
-            .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+            .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .background(prominent ? Color.white : Color.clear, in: Rectangle())
-            .overlay(Rectangle().stroke(prominent ? Color.clear : Color.white.opacity(0.45), lineWidth: 0.5))
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairlineStrong, lineWidth: 0.5))
             .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
     }
 }
@@ -316,6 +346,63 @@ struct OverlayButton: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Says whether a figure was measured, estimated or entered by hand. Shape and word carry the
+/// meaning (not colour alone), so it reads in sunlight, in grayscale and with VoiceOver.
+struct ProvenanceBadge: View {
+    var provenance: Provenance
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
+            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+                                    style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(provenance.label) value")
+        .accessibilityHint(provenance.explanation)
+    }
+}
+
+/// A labelled figure with its provenance badge, for Forms and Lists.
+struct ProvenanceFigureRow: View {
+    var label: String
+    var value: String
+    var provenance: Provenance?
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                Text(value)
+                if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
+            }
+        } label: {
+            Text(label)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One-line key to the badges, shown under lists of figures.
+struct ProvenanceLegend: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Provenance.allCases) { p in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ProvenanceBadge(provenance: p).accessibilityHidden(true)
+                    Text(p.explanation).font(.fsMicro).foregroundStyle(Theme.textTertiary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(p.label): \(p.explanation)")
+            }
+        }
     }
 }
 

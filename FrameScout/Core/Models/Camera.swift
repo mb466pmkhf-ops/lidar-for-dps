@@ -99,6 +99,8 @@ struct CameraRig: Codable, Hashable {
     var sensorID: String = SensorLibrary.defaultID
     var customSensor: SensorFormat? = nil
     var aspect: FrameAspect = .sensor
+    /// Tripod, dolly…; nil picks one from the lens height (`CameraSupport.automatic`).
+    var support: CameraSupport? = nil
 
     var sensor: SensorFormat { SensorLibrary.format(id: sensorID, custom: customSensor) }
 

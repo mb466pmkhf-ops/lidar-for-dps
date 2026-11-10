@@ -55,6 +55,32 @@ check(abs(ViewfinderMath.attitude(gravityX: 0, gravityY: 0, gravityZ: -1).tilt +
 check(ViewfinderMath.steppedFocalLength(from: 32, by: 1) == 35 && ViewfinderMath.steppedFocalLength(from: 33, by: -1) == 32
       && ViewfinderMath.steppedFocalLength(from: 135, by: 1) == 135, "focal length stepping")
 
+// MARK: Provenance
+var provStats = ScanStats()
+check(provStats.provenance(of: .ceilingHeight, kind: .room) == .estimated, "RoomPlan ceiling (tallest wall) is estimated")
+check(provStats.provenance(of: .ceilingHeight, kind: .mesh) == .measured, "mesh ceiling (classified triangles) is measured")
+check(provStats.provenance(of: .roomSize, kind: .mesh) == .estimated, "mesh room size (bounding box) is estimated")
+check(provStats.provenance(of: .floorArea, kind: .room) == .measured, "floor polygon area is measured")
+provStats.floorAreaIsEstimate = true
+check(provStats.provenance(of: .floorArea, kind: .room) == .estimated, "bounding-box floor area is estimated")
+check(provStats.marked("2.74 m", .ceilingHeight, kind: .room) == "≈ 2.74 m"
+      && provStats.marked("2.74 m", .ceilingHeight, kind: .mesh) == "2.74 m"
+      && provStats.marked("—", .ceilingHeight, kind: .room) == "—", "plain-text estimate marker")
+var manualM = DistanceMeasurement(kind: .custom, label: "", value: 2, source: .manual)
+check(manualM.provenance == .manual, "manual entry is manual")
+manualM.source = .ar
+manualM.provenanceOverride = .estimated
+check(manualM.provenance == .estimated, "override wins (plane-based AR without LiDAR)")
+let legacyJSON = #"{"id":"6F9619FF-8B86-D011-B42D-00CF4FC964FF","kind":"door","label":"Door","value":0.9,"source":"scanAuto","notes":"","createdAt":0}"#
+let legacy = try JSONDecoder().decode(DistanceMeasurement.self, from: Data(legacyJSON.utf8))
+check(legacy.provenance == .measured && legacy.provenanceOverride == nil, "older project files without provenance still decode")
+var provScan = ScanRecord(name: "s", kind: .room, stats: ScanStats(), northOffset: 120, measuredNorthOffset: 120)
+check(provScan.northProvenance == .estimated, "compass north is estimated")
+provScan.northOffset = 131
+check(provScan.northProvenance == .manual, "calibrated north is manual")
+provScan.northOffset = nil
+check(provScan.northProvenance == nil, "no north, no provenance")
+
 // MARK: Sun (NOAA) — London midsummer: sunrise 04:43, sunset 21:21 BST
 let iso = ISO8601DateFormatter()
 let noon = iso.date(from: "2024-06-21T12:00:00Z")!
@@ -184,6 +210,431 @@ check(objOut.obj.contains("vt ") && objOut.mtl.contains("map_Kd Plush_Plush_Mat_
 let firstFace = objOut.obj.split(separator: "\n").first { $0.hasPrefix("f ") }!
 check(firstFace.split(separator: " ").dropFirst().allSatisfy { $0.split(separator: "/").count == 3 }, "OBJ faces carry v/vt/vn")
 check(objOut.obj.contains("centimetres"), "OBJ Unreal units header")
+
+// MARK: Lighting diagram
+let warm = Kelvin.rgb(2700), daylight = Kelvin.rgb(5600), cool = Kelvin.rgb(9000)
+check(warm.r == 1 && warm.b < 0.7 && daylight.b > warm.b && cool.b == 1 && cool.r < 1, "Kelvin colours run warm to cool")
+var lit = Location(name: "Lit room")
+check(lit.lights == nil && lit.lightFixtures.isEmpty, "no lights by default, nothing stored")
+var keyLight = LightFixture(name: "Key", kind: .fresnel, position: P(1, 2), pan: 90)
+keyLight.power = "1.2K"; keyLight.colorTemperature = 3200; keyLight.dimmer = 0.5
+lit.lightFixtures = [keyLight, LightFixture(name: "Neg", kind: .negative, position: P(0, 0))]
+let litData = try JSONEncoder().encode(lit)
+let litBack = try JSONDecoder().decode(Location.self, from: litData)
+check(litBack.lightFixtures == lit.lightFixtures, "lights survive a save/load round trip")
+check(keyLight.summary == "Fresnel 1.2K · 3200 K · 50 %", "light summary reads like a plot")
+check(!LightKind.negative.emits && LightKind.negative.defaultBeamAngle == 0 && LightKind.fresnel.emits, "grip doesn't emit")
+// A location saved before lights existed still loads.
+var litJSON = try JSONSerialization.jsonObject(with: litData) as! [String: Any]
+litJSON.removeValue(forKey: "lights")
+let oldLoc = try JSONDecoder().decode(Location.self, from: JSONSerialization.data(withJSONObject: litJSON))
+check(oldLoc.lightFixtures.isEmpty, "location without a lights key decodes")
+lit.lightFixtures = []
+check(lit.lights == nil, "removing all lights clears the stored list")
+
+
+// MARK: Photometrics
+check(abs(BeamDistribution.lambertian.solidAngleFactor(beamAngle: 0) - .pi) < 1e-12, "lambertian flux = π × peak")
+let omega55 = BeamDistribution.beam.solidAngleFactor(beamAngle: 55)
+check(omega55 > 0.6 && omega55 < 0.85, "55° beam solid angle ≈ 0.77 sr (\(omega55))")
+check(abs(BeamDistribution.beam.relativeIntensity(offAxis: 27.5, beamAngle: 55) - 0.5) < 1e-9, "beam angle is the 50 % point")
+check(abs(BeamDistribution.lambertian.relativeIntensity(offAxis: 60, beamAngle: 120) - 0.5) < 1e-9, "lambertian 50 % at 60° off axis")
+
+var cob = LightFixture(name: "Key", kind: .fresnel, position: P(0, 0), pan: 0)
+cob.profileID = "cob-300-d"
+cob.height = 1.5; cob.tilt = 0
+let cobPM = cob.photometrics
+check(abs(cobPM.illuminanceOnAxis(at: 3) - 3500) < 3500 * 0.001, "reference reading round-trips (\(cobPM.illuminanceOnAxis(at: 3)) lx at 3 m)")
+let ratio36 = cobPM.illuminanceOnAxis(at: 6) / cobPM.illuminanceOnAxis(at: 3)
+check(abs(ratio36 - 0.25) < 0.002, "point source follows inverse square (\(ratio36))")
+check(cobPM.provenance == .estimated, "library output is an estimate")
+var halfCob = cob; halfCob.dimmer = 0.5
+check(abs(halfCob.photometrics.illuminanceOnAxis(at: 3) / cobPM.illuminanceOnAxis(at: 3) - 0.5) < 1e-9, "50 % output gives half the lux")
+check(halfCob.photometrics.drawWatts < 300 && halfCob.photometrics.drawWatts > 150, "LED draw falls with output")
+var offCob = cob; offCob.isOn = false
+check(offCob.photometrics.illuminanceOnAxis(at: 3) == 0 && offCob.photometrics.drawWatts == 0, "switched off: no light, no draw")
+var soft = cob; soft.modifierID = "softbox-90"
+let softPM = soft.photometrics
+check(softPM.distribution == .lambertian && abs(softPM.flux / cobPM.flux - 0.5) < 1e-9, "softbox: diffuse, half the flux")
+check(softPM.illuminanceOnAxis(at: 3) < cobPM.illuminanceOnAxis(at: 3) / 3, "softbox is far dimmer on axis than the reflector")
+// A large soft source falls off slower than inverse square up close.
+check(softPM.illuminanceOnAxis(at: 0.5) / softPM.illuminanceOnAxis(at: 1) < 4, "soft source near field is gentler than 1/d²")
+var spot = LightFixture(name: "F", kind: .fresnel, position: P(0, 0)); spot.profileID = "fresnel-led-200-bi"
+spot.beamAngle = 15
+var flood = spot; flood.beamAngle = 50
+let spotGain = spot.photometrics.illuminanceOnAxis(at: 5) / flood.photometrics.illuminanceOnAxis(at: 5)
+check(spotGain > 3.5 && spotGain < 7, "spotting a fresnel gains about 5× on axis, like published fresnel tables (\(spotGain)×)")
+check(abs(spot.photometrics.flux / flood.photometrics.flux - pow(15.0 / 50, 0.85)) < 1e-9, "spotting a fresnel lens loses flux")
+var fresnel600 = LightFixture(name: "F6", kind: .fresnel, position: P(0, 0)); fresnel600.profileID = "fresnel-led-600-d"; fresnel600.beamAngle = 60
+var cob600 = LightFixture(name: "C6", kind: .fresnel, position: P(0, 0)); cob600.profileID = "cob-600-d"
+check(abs(fresnel600.photometrics.illuminanceOnAxis(at: 3) - cob600.photometrics.illuminanceOnAxis(at: 3)) > 500, "same watts, different output")
+var tung = LightFixture(name: "T", kind: .fresnel, position: P(0, 0)); tung.profileID = "tungsten-1k"; tung.dimmer = 0.5
+check(tung.photometrics.kelvin < 3000 && tung.photometrics.drawWatts > 650, "dimmed tungsten warms and still draws most of its power")
+var gelled = cob; gelled.filterIDs = ["cto-full"]
+check(gelled.photometrics.kelvin > 2900 && gelled.photometrics.kelvin < 3050
+      && abs(gelled.photometrics.flux / cobPM.flux - 0.55) < 1e-9, "full CTO: 5600 K → ≈2960 K, 55 % transmission")
+var rgbPanel = LightFixture(name: "R", kind: .ledPanel, position: P(0, 0)); rgbPanel.profileID = "panel-1x1-rgb"
+rgbPanel.colorMode = .rgb; rgbPanel.hue = 240; rgbPanel.saturation = 1
+var whitePanel = rgbPanel; whitePanel.colorMode = .cct
+check(rgbPanel.photometrics.flux < whitePanel.photometrics.flux * 0.15, "saturated blue is much dimmer than white")
+var custom = cob; custom.photometricOverride = PhotometricReference(lux: 3000, distance: 3, beamAngle: 55, provenance: .manual)
+check(abs(custom.photometrics.illuminanceOnAxis(at: 3) - 3000) < 3, "user data replaces the estimate")
+check(custom.photometrics.provenance == .manual, "user data is marked manual")
+let oldLightJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(LightFixture(name: "Old", kind: .ledPanel, position: P(0, 0)))) as! [String: Any]
+check(oldLightJSON["profileID"] == nil, "unset fixture fields aren't written")
+let oldLight = try JSONDecoder().decode(LightFixture.self, from: JSONSerialization.data(withJSONObject: oldLightJSON))
+check(oldLight.profile.id == "panel-1x1-bi", "lights saved before the library get a default type")
+
+// Library against published tables (see web/tests/photometry-audit.test.ts for the sources): within ⅓ stop.
+func stopsOff(_ model: Double, _ published: Double) -> Double { abs(log2(model / published)) }
+func fixtureUnit(_ id: String, beam: Double? = nil, modifier: String? = nil) -> ResolvedPhotometrics {
+    var l = LightFixture(name: id, kind: FixtureLibrary.profile(id: id)!.kind, position: P(0, 0))
+    l.apply(profile: FixtureLibrary.profile(id: id)!)
+    if let beam { l.beamAngle = beam }
+    l.modifierID = modifier
+    return l.photometrics
+}
+check(stopsOff(fixtureUnit("tungsten-650", beam: 55).illuminanceOnAxis(at: 3), 1194) < 1.0 / 3
+      && stopsOff(fixtureUnit("tungsten-650", beam: 30).illuminanceOnAxis(at: 3), 2528) < 1.0 / 3, "650 W fresnel vs published flood/medium")
+check(stopsOff(fixtureUnit("tungsten-1k", beam: 55).illuminanceOnAxis(at: 4), 1267) < 1.0 / 3
+      && stopsOff(fixtureUnit("tungsten-2k", beam: 55).illuminanceOnAxis(at: 6), 958) < 1.0 / 3, "1 kW / 2 kW fresnels vs published flood")
+check(stopsOff(fixtureUnit("cob-600-d", modifier: "none").illuminanceOnAxis(at: 3), 2600) < 1.0 / 3
+      && stopsOff(fixtureUnit("cob-1200-d", modifier: "none").illuminanceOnAxis(at: 3), 6380) < 1.0 / 3, "bare COBs vs published")
+check(stopsOff(fixtureUnit("hmi-4000-par").illuminanceOnAxis(at: 10), 6500) < 1.0 / 3, "4 kW HMI at 30° vs published")
+var refAtSpot = LightFixture(name: "T", kind: .fresnel, position: P(0, 0)); refAtSpot.apply(profile: FixtureLibrary.profile(id: "tungsten-1k")!)
+refAtSpot.photometricOverride = PhotometricReference(lux: 5000, distance: 3, beamAngle: 20, provenance: .manual); refAtSpot.beamAngle = 20
+check(abs(refAtSpot.photometrics.illuminanceOnAxis(at: 3) - 5000) < 1e-6, "a reading entered at spot on a fresnel round-trips")
+
+// MARK: Lighting calculator
+typealias C = LightingCalculator
+let facingKey = LightingCalculator.Point(x: 0, y: 0, z: 1)   // receptor faces back towards the light (+Z)
+let at3 = LightingCalculator.Point(x: 0, y: 1.5, z: -3)
+let oneLight = C.Scene(lights: [cob])
+let r3 = C.reading(at: at3, normal: facingKey, scene: oneLight)
+check(abs(r3.lux - cobPM.illuminanceOnAxis(at: 3)) < 1, "calculator matches the on-axis figure")
+let tilted = LightingCalculator.Point(x: 0, y: sin(30 * Double.pi / 180), z: cos(30 * Double.pi / 180))
+let r60 = C.reading(at: at3, normal: LightingCalculator.Point(x: 0, y: sin(60 * Double.pi / 180), z: cos(60 * Double.pi / 180)), scene: oneLight)
+check(abs(r60.lux / r3.lux - 0.5) < 1e-6, "cosine law at the receptor")
+_ = tilted
+let twoLights = C.Scene(lights: [cob, { var b = cob; b.id = UUID(); return b }()])
+check(abs(C.reading(at: at3, normal: facingKey, scene: twoLights).lux - 2 * r3.lux) < 1e-6, "overlapping units add up")
+// Barn doors: a point 30° right of the axis goes dark when the right door cuts at 10°.
+var doored = LightFixture(name: "D", kind: .fresnel, position: P(0, 0)); doored.profileID = "fresnel-led-200-bi"
+doored.beamAngle = 50; doored.height = 1.5; doored.tilt = 0
+let right30 = LightingCalculator.Point(x: 3 * sin(30 * Double.pi / 180), y: 1.5, z: -3 * cos(30 * Double.pi / 180))
+let left30 = LightingCalculator.Point(x: -right30.x, y: 1.5, z: right30.z)
+let towardsLight = { (p: LightingCalculator.Point) in (LightingCalculator.Point(x: 0, y: 1.5, z: 0) - p).normalized }
+let openRight = C.reading(at: right30, normal: towardsLight(right30), scene: C.Scene(lights: [doored])).lux
+doored.barnDoors = BarnDoors(top: 90, bottom: 90, left: 90, right: 10)
+let cutRight = C.reading(at: right30, normal: towardsLight(right30), scene: C.Scene(lights: [doored])).lux
+let stillLeft = C.reading(at: left30, normal: towardsLight(left30), scene: C.Scene(lights: [doored])).lux
+check(openRight > 50 && cutRight < 1e-6 && abs(stillLeft - openRight) < 1e-6, "barn door cuts one side only")
+// Walls block; windows pass at the glass transmission.
+var room = FloorPlan()
+room.walls = [PlanSegment(kind: .wall, a: P(-5, -2), b: P(5, -2), height: 2.7, bottom: 0)]
+room.windows = [PlanSegment(kind: .window, a: P(-1, -2), b: P(1, -2), height: 1.5, bottom: 0.8)]
+let outside = LightingCalculator.Point(x: 0, y: 1.5, z: -4)
+let throughGlass = C.reading(at: outside, normal: facingKey, scene: C.Scene(lights: [cob], plan: room, windowTransmission: 0.78)).lux
+let open4 = C.reading(at: outside, normal: facingKey, scene: C.Scene(lights: [cob])).lux
+check(abs(throughGlass / open4 - 0.78) < 1e-6, "window passes its transmission")
+var lowLight = cob; lowLight.height = 0.3
+let lowOutside = LightingCalculator.Point(x: 0, y: 0.3, z: -4)
+check(C.reading(at: lowOutside, normal: facingKey, scene: C.Scene(lights: [lowLight], plan: room)).lux == 0, "wall below the sill blocks")
+// A flag in the beam blocks; a bounce board sends light back.
+var flag = LightFixture(name: "Flag", kind: .flag, position: P(0, -1.5)); flag.height = 1.5; flag.width = 0.6
+check(C.reading(at: at3, normal: facingKey, scene: C.Scene(lights: [cob, flag])).lux == 0, "flag in the beam blocks it")
+var bounceBoard = LightFixture(name: "Bounce", kind: .bounce, position: P(0, -3), pan: 180); bounceBoard.height = 1.5; bounceBoard.width = 1.2
+let behind = LightingCalculator.Point(x: 0.5, y: 1.5, z: -1)
+let bounceRead = C.reading(at: behind, normal: LightingCalculator.Point(x: 0, y: 0, z: -1), scene: C.Scene(lights: [cob, bounceBoard]))
+check(bounceRead.lux > 1 && bounceRead.contributions.allSatisfy { $0.viaBounce != nil }, "bounce board relights the side facing it (\(Int(bounceRead.lux)) lx)")
+// Solve the output for a target.
+let solved = C.solveOutput(for: cob, target: 1000, at: at3, normal: facingKey, allLights: [cob], plan: nil)
+if case .output(let o) = solved {
+    var set = cob; set.dimmer = o
+    check(abs(C.reading(at: at3, normal: facingKey, scene: C.Scene(lights: [set])).lux - 1000) < 1, "solved output hits the target")
+} else { check(false, "target solve returns an output") }
+if case .tooDim(_, let d?) = C.solveOutput(for: cob, target: 20000, at: at3, normal: facingKey, allLights: [cob], plan: nil) {
+    check(d < 3, "too dim suggests moving closer (\(d) m)")
+} else { check(false, "out-of-reach target reports too dim") }
+var hmiKey = LightFixture(name: "H", kind: .hmi, position: P(0, 0)); hmiKey.apply(profile: FixtureLibrary.profile(id: "hmi-1800-par")!)
+hmiKey.height = 1.5; hmiKey.tilt = 0
+if case .atMinimum(let o, let lux) = C.solveOutput(for: hmiKey, target: 1000, at: at3, normal: facingKey, allLights: [hmiKey], plan: nil) {
+    var half = hmiKey; half.dimmer = 0.5
+    check(o == 0.5 && abs(lux - C.reading(at: at3, normal: facingKey, scene: C.Scene(lights: [half])).lux) < 1e-6,
+          "an HMI that can't dim low enough says so (\(Int(lux)) lx at 50 %)")
+} else { check(false, "an HMI that can't dim low enough says so") }
+let grid = C.grid(bounds: PlanRect(minX: -2, minZ: -4, maxX: 2, maxZ: 0), columns: 8, rows: 8, height: 1.5,
+                  scene: oneLight, normal: { towardsLight($0) })
+check(grid.count == 64 && grid.max()! > grid.min()!, "lux map grid")
+
+// MARK: Exposure
+var exp = ExposureSettings()
+check(abs(exp.exposureTime - 1.0 / 48) < 1e-12, "180° at 24 fps is 1/48 s")
+check(abs(exp.keyLux - 250 * 2.8 * 2.8 * 48 / 800) < 1e-9, "key lux for ISO 800, 1/48, T2.8 (\(exp.keyLux))")
+check(abs(exp.tStop(forLux: exp.keyLux) - 2.8) < 1e-9 && abs(exp.stops(forLux: exp.keyLux * 2) - 1) < 1e-9, "lux ↔ stop round trip")
+check(abs(exp.fStop - 2.8 * 0.85.squareRoot()) < 1e-12, "f-stop from T-stop and transmission")
+let key0 = exp.keyLux
+exp.ndStops = 2
+check(abs(exp.keyLux / key0 - 4) < 1e-9, "ND 0.6 needs four times the light")
+exp.ndStops = 0; exp.shutterSeconds = 1.0 / 100
+check(abs(exp.exposureTime - 0.01) < 1e-12 && exp.shutterDescription == "1/100", "shutter speed mode")
+check(ExposureSettings.stopLabel(2.8) == "T2.8" && ExposureSettings.stopLabel(3.17) == "T2.8 +⅓"
+      && ExposureSettings.stopLabel(3.56) == "T4 −⅓" && ExposureSettings.stopLabel(5.6) == "T5.6", "stop labels in thirds")
+check(ExposureSettings.stopLabel(64) == "T64" && ExposureSettings.stopLabel(128) == "T128" && ExposureSettings.stopLabel(0.7) == "T0.71"
+      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25",
+      "stop labels past T64 and under T1")
+check(abs(ExposureSettings().keyLux - 117.6) < 1e-9 && abs({ var e = ExposureSettings(); e.iso = 100; return e.keyLux }() - 940.8) < 1e-9,
+      "key lux by hand: ISO 800 → 117.6 lx, ISO 100 → 940.8 lx at T2.8, 1/48")
+check(ExposureSettings.stopsDelta(1.34) == "+1⅓" && ExposureSettings.stopsDelta(-0.66) == "−⅔"
+      && ExposureSettings.stopsDelta(0.05) == "±0", "stop differences in thirds")
+var expJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(ExposureSettings())) as! [String: Any]
+expJSON.removeValue(forKey: "ndStops")
+check((try JSONDecoder().decode(ExposureSettings.self, from: JSONSerialization.data(withJSONObject: expJSON))).ndStops == 0, "exposure decodes with keys missing")
+
+// MARK: People, meters, display
+var maya = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1))
+check(abs(maya.eyeHeight / maya.height - 0.936) < 0.01, "adult eye height ≈ 94 % of height")
+let standingEye = maya.eyeHeight
+maya.posture = .sitting
+check(maya.eyeHeight < standingEye - 0.4 && maya.eyeHeight > 1.0, "sitting lowers the eyes")
+let kid = PrevisCharacter(name: "Sam", type: .boy, position: P(0, 0))
+check(kid.proportions.headHeight / kid.height > maya.proportions.headHeight / maya.height, "children have bigger heads for their height")
+var broad = maya; broad.build = 1
+check(broad.proportions.shoulderWidth > maya.proportions.shoulderWidth, "build widens the figure")
+let mayaBack = try JSONDecoder().decode(PrevisCharacter.self, from: JSONEncoder().encode(maya))
+check(mayaBack == maya, "person round trip")
+check((try JSONDecoder().decode(PrevisCharacter.self, from: Data(#"{"name":"X","type":"girl","position":{"x":1,"z":2}}"#.utf8))).height == CharacterType.girl.defaultHeight, "person decodes with defaults")
+var previs = Location(name: "Previs")
+previs.previsCharacters = [maya]
+previs.lightMeters = [LightMeter(name: "M1", position: P(0, -3))]
+var shotRig = CameraRig(); shotRig.position = P(0, 3); shotRig.pan = 0
+previs.shots = [Shot(number: 1, rig: shotRig)]
+let points = previs.meterPoints(scanID: nil)
+check(points.count == 2, "meters plus a face per person")
+let face = points.first { if case .character = $0.source { return true }; return false }!
+check(face.normal.z > 0.9, "face meter points at the camera")
+var disp = SceneDisplay()
+let sofaID = UUID()
+disp.setHidden(category: "Sofa", true)
+check(disp.isHidden(object: sofaID, category: "sofa") && !disp.isHidden(object: UUID(), category: "Table"), "hide a category")
+disp.setHidden(category: "Sofa", false); disp.setHidden(item: SceneItemKey.object(sofaID), true)
+check(disp.isHidden(object: sofaID, category: "Sofa") && disp.hiddenGroups == nil, "hide one piece")
+disp.setLabels(.objects, shown: false)
+check(!disp.showsLabels(.objects) && disp.showsLabels(.lights), "labels hide separately from objects")
+previs.displaySettings = SceneDisplay()
+check(previs.display == nil, "default display isn't stored")
+previs.displaySettings = disp
+let previsBack = try JSONDecoder().decode(Location.self, from: JSONEncoder().encode(previs))
+check(previsBack == previs, "location with people, meters and display settings round-trips")
+// Levelling turns a tilted floor normal straight up.
+let tiltedNormal = (x: sin(3 * Double.pi / 180), y: cos(3 * Double.pi / 180) * cos(2 * Double.pi / 180), z: cos(3 * Double.pi / 180) * sin(2 * Double.pi / 180))
+let lev = ScanAlignment.levelling(floorNormal: tiltedNormal)
+do {
+    let r = lev.roll * Double.pi / 180, p = lev.pitch * Double.pi / 180
+    let x1 = tiltedNormal.x * cos(r) - tiltedNormal.y * sin(r), y1 = tiltedNormal.x * sin(r) + tiltedNormal.y * cos(r)
+    let z2 = y1 * sin(p) + tiltedNormal.z * cos(p)
+    check(abs(x1) < 1e-9 && abs(z2) < 1e-9, "levelling angles put the floor normal straight up (\(lev))")
+}
+
+// MARK: Plan-built 3D
+var demoPlan = FloorPlan()
+demoPlan.walls = [P(-3, -2), P(3, -2), P(3, 2), P(-3, 2)].enumerated().map { i, a in
+    let corners = [P(-3, -2), P(3, -2), P(3, 2), P(-3, 2)]
+    return PlanSegment(kind: .wall, a: a, b: corners[(i + 1) % 4], height: 2.7, bottom: 0)
+}
+demoPlan.windows = [PlanSegment(kind: .window, a: P(-1, -2), b: P(1, -2), height: 1.4, bottom: 0.8)]
+demoPlan.floorPolygons = [[P(-3, -2), P(3, -2), P(3, 2), P(-3, 2)]]
+demoPlan.objects = [PlanObject(category: "Sofa", center: P(0, 1), width: 2, depth: 0.9, height: 0.8, rotation: 0)]
+demoPlan.floorY = -1.2
+let planScene = PlanSceneBuilder.sceneGeometry(demoPlan)
+var wallPieces = 0, sawWindow = false, sawSofa = false
+planScene.root.walk { node, _, _ in
+    if node.info["category"] == "wall" { wallPieces += (node.mesh?.triangleCount ?? 0) / 12 }
+    if node.info["category"] == "window" { sawWindow = true }
+    if node.info["id"] == demoPlan.objects[0].id.uuidString { sawSofa = true }
+}
+check(wallPieces >= 6 && sawWindow && sawSofa, "plan-built 3D: walls with a window hole, pane, set piece keeps its id")
+if let floor = planScene.floorEstimate() {
+    check(floor.normal.y > 0.999 && abs(floor.height - -1.2) < 0.03, "floor estimate is level at the plan floor")
+} else { check(false, "floor estimate found") }
+
+// MARK: Lighting setups
+do {
+    var person = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1), facing: 0)
+    person.scanID = nil
+    var exp = ExposureSettings(); exp.iso = 800; exp.tStop = 2.8
+    let setup = LightingSetup.threePoint.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(setup.lights.count == 3 && setup.notes.count == 3, "three-point builds key, fill and back")
+    let inside = setup.lights.allSatisfy { abs($0.position.x) < 3 && abs($0.position.z) < 2 }
+    check(inside, "setup units stay inside the room (\(setup.lights.map(\.position)))")
+    let scene = LightingCalculator.Scene(lights: setup.lights, plan: demoPlan)
+    let face = LightingCalculator.Point(person.position, height: person.eyeHeight - 0.03)
+    let toCam = LightingCalculator.direction(bearing: 0, tilt: 0)
+    let r = LightingCalculator.reading(at: face, normal: toCam, scene: scene)
+    let keyID = setup.lights[0].id, fillID = setup.lights[1].id
+    let keyLux = r.contributions.filter { $0.lightID == keyID }.reduce(0) { $0 + $1.lux }
+    let fillLux = r.contributions.filter { $0.lightID == fillID }.reduce(0) { $0 + $1.lux }
+    check(abs(log2(keyLux / exp.keyLux)) < 0.2, "key solved to the camera's key level (\(keyLux) vs \(exp.keyLux))")
+    check(fillLux > 0 && abs(log2(keyLux / fillLux) - 2) < 0.4, "fill about two stops under key (\(keyLux) / \(fillLux))")
+    let soft = LightingSetup.softSide.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(soft.lights.contains { $0.kind == .negative }, "soft side light adds a neg fill")
+}
+
+// MARK: Sync merge (same cases as web/tests/merge.test.ts)
+do {
+    func j(_ s: String) -> Any { try! JSONSerialization.jsonObject(with: Data(s.utf8)) }
+    let base = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":1},{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let phone = j(#"{"id":"P","name":"Phone","modifiedAt":"2026-11-02T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":0.7},{"id":"B","name":"Fill","dimmer":0.5},{"id":"C","dimmer":1}]}]}"#)
+    let web = j(#"{"id":"P","name":"Web","modifiedAt":"2026-11-01T12:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":1},{"id":"D","dimmer":1},{"id":"B","name":"Fill (bounce)","dimmer":0.5}]}]}"#)
+    let m = SyncMerge.merge(base: base, local: web, remote: phone) as! [String: Any]
+    let lights = ((m["locations"] as! [[String: Any]])[0]["lights"] as! [[String: Any]])
+    check(lights.map { $0["id"] as! String } == ["A", "D", "B", "C"], "sync merge keeps lights added on both sides, in place")
+    check((lights[0]["dimmer"] as! Double) == 0.7 && (lights[2]["name"] as! String) == "Fill (bounce)", "sync merge keeps edits to different lights")
+    check((m["name"] as! String) == "Web" && (m["modifiedAt"] as! String) == "2026-11-02T10:00:00Z", "sync merge: local wins a clash, modifiedAt takes the later")
+    let deleted = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let changedA = j(#"{"id":"P","name":"Shoot","modifiedAt":"2026-11-01T10:00:00Z","locations":[{"id":"L1","lights":[{"id":"A","dimmer":0.2},{"id":"B","name":"Fill","dimmer":0.5}]}]}"#)
+    let kept = SyncMerge.merge(base: base, local: changedA, remote: deleted) as! [String: Any]
+    let keptIDs = (((kept["locations"] as! [[String: Any]])[0]["lights"] as! [[String: Any]])).map { $0["id"] as! String }
+    check(keptIDs == ["A", "B"], "sync merge keeps an item deleted on one side but changed on the other")
+    let p = try SyncMerge.project(from: SyncMerge.jsonObject(Project(name: "Round trip")))
+    check(p.name == "Round trip", "project survives the JSON round trip used by sync")
+} catch {
+    check(false, "sync merge: \(error)")
+}
+
+// MARK: Web parity
+// web/tests/fixtures/parity-bundle.json is a project written by the web planner. Decoding it proves
+// the phone can read web edits; the readings are compared with the TypeScript port by
+// web/tests/parity.test.ts (CI passes this file to it as PARITY_READINGS).
+struct WebBundle: Decodable { var project: Project; var plans: [String: FloorPlan] }
+do {
+    let data = try Data(contentsOf: URL(fileURLWithPath: "web/tests/fixtures/parity-bundle.json"))
+    let bundle = try JSONCoding.decoder.decode(WebBundle.self, from: data)
+    check(true, "web-written project decodes in Swift")
+    let loc = bundle.project.locations[0]
+    let scanID = loc.primaryScanID
+    let plan = scanID.flatMap { bundle.plans[$0.uuidString] }
+    let lights = loc.lightFixtures.filter { $0.scanID == nil || $0.scanID == scanID }
+    let scene = LightingCalculator.Scene(lights: lights, plan: plan, windowTransmission: loc.displaySettings.windowTransmissionValue)
+    var readings: [String: Double] = [:]
+    for m in loc.meterPoints(scanID: scanID) {
+        let key: String
+        switch m.source {
+        case .meter(let id): key = "m:" + id.uuidString
+        case .character(let id): key = "c:" + id.uuidString
+        }
+        readings[key] = LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene).lux
+    }
+    let gridValues = LightingCalculator.grid(bounds: plan?.bounds ?? .unit, columns: 12, rows: 10, height: 1.5, scene: scene) { _ in
+        LightingCalculator.Point(x: 0, y: 1, z: 0)
+    }
+    check(readings.count >= 3 && plan != nil, "parity fixture has a plan and meter points")
+    let json = try JSONSerialization.data(withJSONObject: ["readings": readings, "grid": gridValues])
+    try json.write(to: outDir.appendingPathComponent("parity-readings.json"))
+} catch {
+    check(false, "web-written project decodes in Swift: \(error)")
+}
+
+// MARK: Photometrics matrix (same cases as web/tests/support/matrix.ts)
+// Every fixture × modifier × beam × filters × dimmer and a spread of exposures, written for
+// web/tests/photometry-audit.test.ts (CI passes this file to it as PHOTOMETRICS_MATRIX).
+do {
+    func key(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : "\(v)" }
+    let filterSets: [[String]] = [[], ["cto-full"], ["diff-light"], ["diff-medium", "ctb-half"], ["diff-heavy", "nd-6"]]
+    var matrix: [String: [Double]] = [:]
+    for p in FixtureLibrary.profiles {
+        let mods: [String?] = [nil, "none"] + FixtureLibrary.modifiers(for: p).map(\.id)
+        for mod in mods { for beam in [12.0, 30, 60] { for (fi, filters) in filterSets.enumerated() {
+            for dimmer in [1.0, 0.37] { for rgb in (p.color.rgb ? [false, true] : [false]) {
+                var l = LightFixture(name: "M", kind: p.kind, position: P(0, 0))
+                l.apply(profile: p)
+                l.modifierID = mod
+                l.beamAngle = beam; l.colorTemperature = 4300; l.dimmer = dimmer
+                if !filters.isEmpty { l.filterIDs = filters }
+                if rgb { l.colorMode = .rgb; l.hue = 200; l.saturation = 0.7 }
+                let pm = l.photometrics
+                let k = [p.id, mod ?? "-", key(beam), String(fi), key(dimmer), rgb ? "rgb" : "w"].joined(separator: "|")
+                matrix[k] = [pm.peakIntensity, pm.flux, pm.beamAngle, pm.kelvin, pm.drawWatts] + [0.5, 1, 3, 7].map { pm.illuminanceOnAxis(at: $0) }
+            } }
+        } } }
+    }
+    var exposures: [String: [Any]] = [:]
+    let shutters: [(Double, Double, Double?)] = [(24, 180, nil), (25, 172.8, nil), (23.976, 90, nil), (24, 180, 1.0 / 125)]
+    for iso in [100.0, 800, 3200] { for (si, sh) in shutters.enumerated() { for nd in [0.0, 2] { for lux in [3.0, 117, 1000, 250000] {
+        var e = ExposureSettings()
+        e.iso = iso; e.frameRate = sh.0; e.shutterAngle = sh.1; e.shutterSeconds = sh.2; e.ndStops = nd; e.tStop = 4
+        let t = e.tStop(forLux: lux), st = e.stops(forLux: lux)
+        exposures[[key(iso), String(si), key(nd), key(lux)].joined(separator: "|")] =
+            [e.keyLux, t, st, ExposureSettings.stopLabel(t), ExposureSettings.stopsDelta(st)]
+    } } } }
+    check(matrix.count > 2000 && matrix.values.allSatisfy { $0.allSatisfy(\.isFinite) }, "photometrics matrix (\(matrix.count) configurations)")
+    let json = try JSONSerialization.data(withJSONObject: ["photometrics": matrix, "exposure": exposures])
+    try json.write(to: outDir.appendingPathComponent("photometrics-matrix.json"))
+} catch {
+    check(false, "photometrics matrix written: \(error)")
+}
+
+// MARK: Stands and beam clipping (same rules as web/src/model/rigging.ts)
+do {
+    var cob = LightFixture(name: "K", kind: .fresnel, position: .zero)
+    cob.profileID = "cob-600-d"
+    cob.height = 2
+    check(cob.supportValue == .cStand, "600 W COB at 2 m goes on a C-stand")
+    cob.height = 0.5
+    check(cob.supportValue == .turtleBase, "low unit goes on a turtle base")
+    cob.height = 2
+    cob.modifierID = "softbox-150"
+    check(cob.supportValue == .comboStand, "big softbox goes on a combo")
+    cob.support = .cStand
+    cob.height = 3.8
+    check(cob.supportWarning?.hasPrefix("Higher than a C-stand") == true, "warns above a C-stand's reach")
+    var hmi = LightFixture(name: "H", kind: .hmi, position: .zero)
+    hmi.profileID = "hmi-1800-par"
+    check(hmi.supportValue == .comboStand, "HMI goes on a combo")
+    check(CameraRig().supportValue == .tripod && CameraSupport.automatic(height: 0.3) == .highHat, "camera on a tripod, high hat when low")
+    var plan = FloorPlan()
+    plan.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 2.5, bottom: 0)]
+    check(abs(BeamClip.planReach(from: .zero, bearing: 0, limit: 6, plan: plan) - 2) < 1e-6, "beam stops at the wall")
+    check(abs(BeamClip.planReach(from: .zero, bearing: 180, limit: 6, plan: plan) - 6) < 1e-6, "beam away from walls keeps its reach")
+    // Older rigs without the field still decode.
+    let old = try JSONSerialization.data(withJSONObject: ["position": ["x": 0, "z": 0], "height": 1.5, "pan": 0, "tilt": 0, "focalLength": 32,
+                                                          "sensorID": "arri-minilf-og", "aspect": "sensor"])
+    check((try? JSONDecoder().decode(CameraRig.self, from: old))?.support == nil, "camera rig without a support decodes")
+} catch {
+    check(false, "stands: \(error)")
+}
+
+// MARK: Rooms drawn by hand
+do {
+    var box = DrawnRoom()
+    box.length = 6.2; box.width = 4.8; box.ceiling = 2.74; box.windows = 2
+    let bp = box.plan
+    check(bp.walls.count == 4 && bp.windows.count == 2 && bp.doors.count == 1, "drawn box has four walls, its windows and a door")
+    check(abs(bp.bounds.width - 6.2) < 1e-9 && abs(bp.bounds.depth - 4.8) < 1e-9, "drawn box keeps the typed sizes")
+    check(bp.windows.allSatisfy { $0.a.z == -2.4 && $0.a.x > -3.1 && $0.b.x < 3.1 }, "windows sit inside the top wall")
+    var ell = DrawnRoom()
+    ell.shape = .l; ell.length = 8; ell.width = 6; ell.windows = 0; ell.door = false
+    check(ell.plan.walls.count == 6 && abs(ell.floorArea - 36) < 1e-9, "drawn L has six walls and three quarters of the area")
+    var silly = DrawnRoom()
+    silly.length = 0; silly.width = .nan; silly.ceiling = 99; silly.windows = 9
+    check(silly.normalised.length == 1.5 && silly.normalised.width == 1.5 && silly.normalised.ceiling == 20 && silly.normalised.windows == 4, "drawn room clamps silly sizes")
+    let st = box.stats
+    check(st.provenance(of: .roomSize, kind: .room) == .manual && st.provenance(of: .ceilingHeight, kind: .room) == .manual, "typed sizes are manual, not measured")
+    check(ScanStats().provenance(of: .roomSize, kind: .room) == .measured, "scanned rooms still read as measured")
+    let data = try JSONEncoder().encode(ScanStats())
+    check((try JSONDecoder().decode(ScanStats.self, from: data)).enteredByHand == nil, "older scan stats decode without the new field")
+}
+
+// MARK: Reading units (T-stop by default)
+do {
+    let e = ExposureSettings()
+    check(ReadingUnit.tStop.text(lux: e.keyLux, exposure: e) == ExposureSettings.stopLabel(e.tStop), "key level reads as the set T-stop")
+    check(ReadingUnit.tStop.text(lux: e.keyLux * 2, exposure: e) == ExposureSettings.stopLabel(e.tStop * 2.0.squareRoot()), "double the light reads one stop higher")
+    check(ReadingUnit.stops.text(lux: e.keyLux * 2, exposure: e) == "+1" && ReadingUnit.stops.text(lux: e.keyLux, exposure: e) == "±0", "stops over or under the set stop")
+    check(ReadingUnit.lux.text(lux: 536, exposure: e) == "536 lx", "lux readings unchanged")
+    check(ReadingUnit.footCandles.text(lux: 1076.4, exposure: e) == "100 fc", "foot-candles are lux / 10.764")
+    check(ReadingUnit(rawValue: "tStop") == .tStop && ReadingUnit.allCases.first == .tStop, "T-stop is the first, default unit")
+}
 
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

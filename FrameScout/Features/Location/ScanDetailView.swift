@@ -35,12 +35,15 @@ struct ScanDetailView: View {
                 Text("Drag to orbit, pinch to zoom. This is the geometry that will be exported.")
             }
 
-            Section("Figures") {
+            Section {
                 LabeledContent("Type", value: scan.kind.label)
                 LabeledContent("Captured", value: scan.createdAt.formatted(date: .abbreviated, time: .shortened))
-                LabeledContent("Room", value: UnitsFormatter.dimensions(s.width, s.length))
-                LabeledContent("Floor area", value: UnitsFormatter.area(s.floorArea) + (s.floorAreaIsEstimate ? " (est.)" : ""))
-                LabeledContent("Ceiling", value: UnitsFormatter.distance(s.ceilingHeight))
+                ProvenanceFigureRow(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length),
+                                    provenance: s.provenance(of: .roomSize, kind: scan.kind))
+                ProvenanceFigureRow(label: "Floor area", value: UnitsFormatter.area(s.floorArea),
+                                    provenance: s.provenance(of: .floorArea, kind: scan.kind))
+                ProvenanceFigureRow(label: "Ceiling", value: UnitsFormatter.distance(s.ceilingHeight),
+                                    provenance: s.provenance(of: .ceilingHeight, kind: scan.kind))
                 if scan.kind == .room {
                     LabeledContent("Walls", value: "\(s.wallCount)")
                     LabeledContent("Doors", value: "\(s.doorCount)")
@@ -48,14 +51,21 @@ struct ScanDetailView: View {
                     LabeledContent("Openings", value: "\(s.openingCount)")
                     LabeledContent("Floors", value: "\(s.floorCount)")
                     LabeledContent("Objects", value: "\(s.objectCount)")
-                    if let c = s.completeness { LabeledContent("Completeness (est.)", value: "\(Int(c * 100))%") }
+                    if let c = s.completeness {
+                        ProvenanceFigureRow(label: "Completeness", value: "\(Int(c * 100))%", provenance: .estimated)
+                    }
                     LabeledContent("Segments", value: "\(scan.segmentCount)")
                 } else {
                     LabeledContent("Triangles", value: "\(s.meshFaceCount)")
                     LabeledContent("Vertices", value: "\(s.meshVertexCount)")
                 }
-                LabeledContent("North (compass)", value: scan.northOffset.map { String(format: "%.0f°", $0) } ?? "—")
+                ProvenanceFigureRow(label: "North", value: scan.northOffset.map { String(format: "%.0f°", $0) } ?? "—",
+                                    provenance: scan.northProvenance)
                 LabeledContent("Device", value: scan.deviceModel)
+            } header: {
+                Text("Figures")
+            } footer: {
+                ProvenanceLegend().padding(.top, 4)
             }
 
             if !s.doors.isEmpty || !s.windows.isEmpty {

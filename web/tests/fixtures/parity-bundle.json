@@ -1,0 +1,518 @@
+{
+  "project": {
+    "id": "161607C7-C5A7-42F8-8578-0250BADE310B",
+    "name": "Sample Commercial (web)",
+    "client": "Demo",
+    "notes": "",
+    "createdAt": "2026-11-05T14:45:54Z",
+    "modifiedAt": "2026-11-05T14:45:54Z",
+    "locations": [
+      {
+        "id": "CDDEC084-46BA-494C-9EF5-57B3714D5508",
+        "name": "Hackney Flat — Living Room",
+        "address": "Sample location",
+        "createdAt": "2026-11-05T14:45:54Z",
+        "tags": [],
+        "notes": "",
+        "lightingNotes": "",
+        "productionNotes": "",
+        "quickNotes": [],
+        "scans": [
+          {
+            "id": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "name": "Living room",
+            "kind": "room",
+            "createdAt": "2026-11-05T14:45:54Z",
+            "segmentCount": 1,
+            "deviceModel": "",
+            "notes": "",
+            "stats": {
+              "width": 4.8,
+              "length": 6.2,
+              "ceilingHeight": 2.74,
+              "floorAreaIsEstimate": false,
+              "wallCount": 4,
+              "doorCount": 1,
+              "windowCount": 2,
+              "openingCount": 0,
+              "floorCount": 1,
+              "objectCount": 3,
+              "objectCategories": {},
+              "doors": [],
+              "windows": [],
+              "meshVertexCount": 0,
+              "meshFaceCount": 0
+            },
+            "northOffset": 172
+          }
+        ],
+        "photos": [],
+        "measurements": [],
+        "cameraPositions": [
+          {
+            "id": "704092AF-C507-486A-97ED-A57F6E16EA11",
+            "name": "A · Window corner",
+            "rig": {
+              "position": {
+                "x": -2.2,
+                "z": -1.6
+              },
+              "height": 1.5,
+              "pan": 135,
+              "tilt": 0,
+              "focalLength": 24,
+              "sensorID": "arri-minilf-og",
+              "aspect": "sensor"
+            },
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "notes": "",
+            "createdAt": "2026-11-05T14:45:54Z"
+          }
+        ],
+        "shots": [
+          {
+            "id": "8BCA433B-9832-4D01-8B70-14747B0CE024",
+            "number": 1,
+            "title": "Wide, family on sofa",
+            "rig": {
+              "position": {
+                "x": -2.2,
+                "z": -1.6
+              },
+              "height": 1.5,
+              "pan": 135,
+              "tilt": 0,
+              "focalLength": 24,
+              "sensorID": "arri-minilf-og",
+              "aspect": "sensor"
+            },
+            "subject": {
+              "x": 0.4,
+              "z": 1.8
+            },
+            "subjectHeight": 1.75,
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "notes": "",
+            "createdAt": "2026-11-05T14:45:54Z"
+          },
+          {
+            "id": "A65A0F37-D825-4D54-AFCF-F495CC9661C5",
+            "number": 2,
+            "title": "Single on Maya",
+            "rig": {
+              "position": {
+                "x": 1.6,
+                "z": -1.2
+              },
+              "height": 1.35,
+              "pan": 200,
+              "tilt": 0,
+              "focalLength": 50,
+              "sensorID": "arri-minilf-og",
+              "aspect": "sensor"
+            },
+            "subject": {
+              "x": 0,
+              "z": 1.8
+            },
+            "subjectHeight": 1.75,
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "notes": "",
+            "createdAt": "2026-11-05T14:45:54Z"
+          }
+        ],
+        "primaryScanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+        "lights": [
+          {
+            "id": "EDDCD13C-0AF9-40AA-B85B-815B61F7DABA",
+            "name": "Key",
+            "kind": "fresnel",
+            "position": {
+              "x": -1.2,
+              "z": 0.2
+            },
+            "height": 2.1,
+            "pan": 135,
+            "tilt": -25,
+            "beamAngle": 55,
+            "width": 0.2,
+            "power": "600 W",
+            "colorTemperature": 5600,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 0.25,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "profileID": "cob-600-d",
+            "modifierID": "softbox-90-grid",
+            "role": "key"
+          },
+          {
+            "id": "426F1454-4294-4FAD-B0D3-F908D4BB5B29",
+            "name": "Fill",
+            "kind": "ledPanel",
+            "position": {
+              "x": 2.2,
+              "z": -0.6
+            },
+            "height": 1.8,
+            "pan": 216.86989764584402,
+            "tilt": -15,
+            "beamAngle": 120,
+            "width": 0.3,
+            "power": "100 W",
+            "colorTemperature": 4300,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 0.3,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "profileID": "panel-1x1-bi",
+            "role": "fill"
+          },
+          {
+            "id": "12D47A40-1320-4FEC-827E-486191CCE383",
+            "name": "Back",
+            "kind": "fresnel",
+            "position": {
+              "x": -0.9,
+              "z": 2.25
+            },
+            "height": 2.4,
+            "pan": 63.43494882292202,
+            "tilt": -50,
+            "beamAngle": 30,
+            "width": 0.2,
+            "power": "200 W",
+            "colorTemperature": 5600,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 0.4,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "profileID": "fresnel-led-200-bi",
+            "role": "back",
+            "barnDoors": {
+              "top": 12,
+              "bottom": 90,
+              "left": 90,
+              "right": 10
+            }
+          },
+          {
+            "id": "C2BB55EA-ADB3-47C2-8AE0-0A162D11E87B",
+            "name": "Bounce",
+            "kind": "bounce",
+            "position": {
+              "x": 1.7,
+              "z": 1
+            },
+            "height": 1.5,
+            "pan": 238.3924977537511,
+            "tilt": 0,
+            "beamAngle": 0,
+            "width": 1.2,
+            "power": "",
+            "colorTemperature": 5600,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 1,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA"
+          },
+          {
+            "id": "E8F835F7-2C3B-47CA-B757-40E1B6C578FC",
+            "name": "Neg",
+            "kind": "negative",
+            "position": {
+              "x": -1.4,
+              "z": 2
+            },
+            "height": 1.5,
+            "pan": 83.6598082540901,
+            "tilt": 0,
+            "beamAngle": 0,
+            "width": 1.2,
+            "power": "",
+            "colorTemperature": 5600,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 1,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA"
+          },
+          {
+            "id": "B59287B7-DC73-477C-94F6-EF78A2F8CBEA",
+            "name": "Lamp",
+            "kind": "practical",
+            "position": {
+              "x": 2.6,
+              "z": 1.9
+            },
+            "height": 1.4,
+            "pan": 272.6025622024998,
+            "tilt": -20,
+            "beamAngle": 360,
+            "width": 0.15,
+            "power": "100 W",
+            "colorTemperature": 2850,
+            "gel": "",
+            "modifier": "",
+            "dimmer": 1,
+            "isOn": true,
+            "notes": "",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA",
+            "profileID": "bulb-tungsten-100",
+            "role": "practical"
+          }
+        ],
+        "characters": [
+          {
+            "id": "8B2414DE-417F-4F74-831B-45A4353DFA66",
+            "name": "Maya",
+            "type": "woman",
+            "height": 1.65,
+            "build": 0.5,
+            "skinTone": 4,
+            "position": {
+              "x": 0,
+              "z": 1.8
+            },
+            "facing": 330,
+            "posture": "sitting",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA"
+          },
+          {
+            "id": "01CE6982-76B0-487C-BEE0-09EF4B5A64BD",
+            "name": "Leo",
+            "type": "boy",
+            "height": 1.34,
+            "build": 0.4,
+            "skinTone": 2,
+            "position": {
+              "x": 0.9,
+              "z": 1.8
+            },
+            "facing": 340,
+            "posture": "standing",
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA"
+          }
+        ],
+        "meters": [
+          {
+            "id": "8710F095-B876-48E7-B450-D791E355A0DF",
+            "name": "Table",
+            "position": {
+              "x": 0.4,
+              "z": 0.4
+            },
+            "height": 0.5,
+            "facing": "up",
+            "bearing": 0,
+            "scanID": "62CE3E77-6C44-46B9-B51E-44279E950EAA"
+          }
+        ],
+        "exposure": {
+          "iso": 800,
+          "frameRate": 24,
+          "shutterAngle": 180,
+          "tStop": 5.6,
+          "lensTransmission": 0.85,
+          "ndStops": 0
+        },
+        "display": {
+          "showLuxMap": true
+        }
+      }
+    ],
+    "objects": []
+  },
+  "plans": {
+    "62CE3E77-6C44-46B9-B51E-44279E950EAA": {
+      "walls": [
+        {
+          "id": "5CF3810B-BAE6-41D9-A41F-7D9970269D40",
+          "kind": "wall",
+          "a": {
+            "x": -3.1,
+            "z": -2.4
+          },
+          "b": {
+            "x": 3.1,
+            "z": -2.4
+          },
+          "height": 2.74,
+          "bottom": 0,
+          "isOpen": false
+        },
+        {
+          "id": "58E12CE7-57A5-445F-8B14-0A5317093E96",
+          "kind": "wall",
+          "a": {
+            "x": 3.1,
+            "z": -2.4
+          },
+          "b": {
+            "x": 3.1,
+            "z": 2.4
+          },
+          "height": 2.74,
+          "bottom": 0,
+          "isOpen": false
+        },
+        {
+          "id": "34589F96-AA81-4B0E-A5BB-775A7F06A9EA",
+          "kind": "wall",
+          "a": {
+            "x": 3.1,
+            "z": 2.4
+          },
+          "b": {
+            "x": -3.1,
+            "z": 2.4
+          },
+          "height": 2.74,
+          "bottom": 0,
+          "isOpen": false
+        },
+        {
+          "id": "8E5F2871-66DB-49CF-948B-4553828A6263",
+          "kind": "wall",
+          "a": {
+            "x": -3.1,
+            "z": 2.4
+          },
+          "b": {
+            "x": -3.1,
+            "z": -2.4
+          },
+          "height": 2.74,
+          "bottom": 0,
+          "isOpen": false
+        }
+      ],
+      "doors": [
+        {
+          "id": "4463D58F-B150-4279-A7E8-7EF9328587BC",
+          "kind": "door",
+          "a": {
+            "x": -3.1,
+            "z": 1.6
+          },
+          "b": {
+            "x": -3.1,
+            "z": 0.7
+          },
+          "height": 2.05,
+          "bottom": 0,
+          "isOpen": false
+        }
+      ],
+      "windows": [
+        {
+          "id": "A279D7B3-FA46-457B-BC49-678FA5C55AEC",
+          "kind": "window",
+          "a": {
+            "x": -1.9,
+            "z": -2.4
+          },
+          "b": {
+            "x": -0.5,
+            "z": -2.4
+          },
+          "height": 1.5,
+          "bottom": 0.8,
+          "isOpen": false
+        },
+        {
+          "id": "5DFFA8AD-CEC9-4A98-9439-FAA5267C69B0",
+          "kind": "window",
+          "a": {
+            "x": 0.7,
+            "z": -2.4
+          },
+          "b": {
+            "x": 2.1,
+            "z": -2.4
+          },
+          "height": 1.5,
+          "bottom": 0.8,
+          "isOpen": false
+        }
+      ],
+      "openings": [],
+      "floorPolygons": [
+        [
+          {
+            "x": -3.1,
+            "z": -2.4
+          },
+          {
+            "x": 3.1,
+            "z": -2.4
+          },
+          {
+            "x": 3.1,
+            "z": 2.4
+          },
+          {
+            "x": -3.1,
+            "z": 2.4
+          }
+        ]
+      ],
+      "occupancy": [],
+      "occupancyCellSize": 0.1,
+      "floorY": 0,
+      "objects": [
+        {
+          "id": "B99AA38F-FB0C-4B61-8377-5C1ABC036115",
+          "category": "Sofa",
+          "center": {
+            "x": 0.4,
+            "z": 1.8
+          },
+          "width": 2.2,
+          "depth": 0.9,
+          "height": 0.8,
+          "rotation": 0
+        },
+        {
+          "id": "8331650A-CEB6-49ED-BBF6-C646BFFC774F",
+          "category": "Table",
+          "center": {
+            "x": 0.4,
+            "z": 0.4
+          },
+          "width": 1.2,
+          "depth": 0.6,
+          "height": 0.45,
+          "rotation": 0
+        },
+        {
+          "id": "EA61EE98-6E5D-4349-95BA-E6108D5462BD",
+          "category": "Storage",
+          "center": {
+            "x": 2.8,
+            "z": 0.2
+          },
+          "width": 0.4,
+          "depth": 1.6,
+          "height": 1.9,
+          "rotation": 0
+        }
+      ],
+      "bounds": {
+        "minX": -3.1,
+        "minZ": -2.4,
+        "maxX": 3.1,
+        "maxZ": 2.4
+      }
+    }
+  }
+}

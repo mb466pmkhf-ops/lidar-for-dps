@@ -5,6 +5,7 @@ enum Route: Hashable {
     case location(LocationRef)
     case scanDetail(LocationRef, scanID: UUID)
     case plan(LocationRef)
+    case lighting(LocationRef)
     case shots(LocationRef)
     case sun(LocationRef)
     case measurements(LocationRef)
