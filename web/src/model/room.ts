@@ -94,6 +94,8 @@ export function buildRoom(name: string, raw: RoomSpec): { location: Location; sc
       doors: plan.doors.map(d => ({ width: Math.hypot(d.b.x - d.a.x, d.b.z - d.a.z), height: d.height, sillHeight: 0 })),
       windows: plan.windows.map(w => ({ width: Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z), height: w.height, sillHeight: w.bottom })),
       meshVertexCount: 0, meshFaceCount: 0,
+      // The phone reads this to label the figures as manual rather than measured.
+      enteredByHand: true,
     },
   };
   const location: Location = { ...newLocation(name.trim() || 'New room'), scans: [scan], primaryScanID: scanID };
