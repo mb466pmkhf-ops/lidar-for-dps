@@ -2,6 +2,18 @@ import SwiftUI
 
 /// Bottom panel for a stand-in person: type, height, build, skin tone and posture in one place.
 struct CharacterPanel: View {
+    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
+
+    private func faceText(_ reading: (lux: Double, stops: Double)) -> String {
+        let value = readingUnit.text(lux: reading.lux, exposure: exposure)
+        switch readingUnit {
+        case .tStop: return "≈ \(value)"
+        case .stops: return "≈ \(value) at \(ExposureSettings.stopLabel(exposure.tStop))"
+        case .lux, .footCandles:
+            return "≈ \(value) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: reading.lux))) at \(ExposureSettings.stopLabel(exposure.tStop))"
+        }
+    }
+
     let character: PrevisCharacter
     var reading: (lux: Double, stops: Double)?
     var exposure = ExposureSettings()
@@ -24,7 +36,7 @@ struct CharacterPanel: View {
             if let reading {
                 HStack {
                     Text("FACE").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-                    Text("≈ \(LuxFormat.lux(reading.lux)) · \(ExposureSettings.stopsDelta(reading.stops)) at \(ExposureSettings.stopLabel(exposure.tStop))")
+                    Text(faceText(reading))
                         .font(.fsMono)
                     Spacer()
                     ProvenanceBadge(provenance: .estimated)
@@ -39,7 +51,7 @@ struct CharacterPanel: View {
                 } label: {
                     Label("Light this person…", systemImage: "lightbulb.2")
                         .frame(maxWidth: .infinity, minHeight: 40)
-                        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                 }
                 .accessibilityHint("Places a starting lighting setup round this person, set for the camera's exposure")
             }
@@ -97,7 +109,7 @@ struct CharacterFields: View {
                     Button { update { $0.skinTone = tone } } label: {
                         Circle().fill(Color(red: c.r, green: c.g, blue: c.b))
                             .frame(width: 26, height: 26)
-                            .overlay(Circle().stroke(character.skinTone == tone ? Color.white : Color.clear, lineWidth: 2).padding(-3))
+                            .overlay(Circle().stroke(character.skinTone == tone ? Theme.accent : Color.clear, lineWidth: 2).padding(-3))
                             .frame(width: 34, height: 34)
                             .contentShape(Rectangle())
                     }

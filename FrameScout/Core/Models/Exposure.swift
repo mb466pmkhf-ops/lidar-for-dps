@@ -79,7 +79,7 @@ struct ExposureSettings: Codable, Hashable {
 
     // MARK: Formatting
 
-    static let fullStops: [Double] = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64]
+    static let fullStops: [Double] = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64, 90, 128, 180, 256]
 
     /// "T2.8", "T2.8 +⅓", "T4 −⅓": nearest third of a stop, named from the nearest full stop.
     static func stopLabel(_ n: Double, prefix: String = "T") -> String {
@@ -91,7 +91,9 @@ struct ExposureSettings: Codable, Hashable {
         if fullIndex >= 0 && fullIndex < fullStops.count {
             name = trim(fullStops[fullIndex])
         } else {
-            name = String(format: "%.2g", pow(2, Double(fullIndex) / 2))
+            let v = pow(2, Double(fullIndex) / 2)
+            // Under T1: two decimals, rounded half up the same way as the web ("T0.13", not "T0.12").
+            name = v < 1 ? String(format: "%g", (v * 100).rounded() / 100) : String(Int(v.rounded()))
         }
         switch offset {
         case 1: return "\(prefix)\(name) +⅓"
@@ -130,5 +132,64 @@ extension Location {
     var exposureSettings: ExposureSettings {
         get { exposure ?? ExposureSettings() }
         set { exposure = newValue }
+    }
+}
+
+/// How a light reading is written out. Crews think in stops, so the default is the T-stop an incident
+/// meter would show; lux and foot-candles are there for people who work from photometric data.
+/// Whatever the unit, the figure comes from the same estimate (D-006) and keeps its "estimated" badge.
+enum ReadingUnit: String, CaseIterable, Identifiable {
+    /// The stop an incident meter would give at the camera's ISO, shutter and ND: "T4 +⅓".
+    case tStop
+    /// Over or under the stop set on the camera: "+⅓".
+    case stops
+    case lux
+    case footCandles
+
+    /// UserDefaults key for the app-wide choice.
+    static let key = "readings.unit"
+    static let luxPerFootCandle = 10.764
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .tStop: return "T-stop"
+        case .stops: return "Stops over / under"
+        case .lux: return "Lux"
+        case .footCandles: return "Foot-candles"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .tStop: return "The stop a light meter would show at your ISO and shutter."
+        case .stops: return "How far over or under the stop set on the camera."
+        case .lux: return "Light falling on the subject, in lux."
+        case .footCandles: return "Light falling on the subject, in foot-candles."
+        }
+    }
+
+    func text(lux: Double, exposure: ExposureSettings) -> String {
+        switch self {
+        case .tStop: return ExposureSettings.stopLabel(exposure.tStop(forLux: lux))
+        case .stops: return ExposureSettings.stopsDelta(exposure.stops(forLux: lux))
+        case .lux: return Self.luxText(lux)
+        case .footCandles: return Self.footCandleText(lux)
+        }
+    }
+
+    static func luxText(_ v: Double) -> String {
+        if v >= 10_000 { return String(format: "%.0fk lx", v / 1000) }
+        if v >= 1000 { return String(format: "%.1fk lx", v / 1000) }
+        if v >= 10 { return "\(Int(v.rounded())) lx" }
+        return String(format: "%.1f lx", v)
+    }
+
+    static func footCandleText(_ lux: Double) -> String {
+        let fc = lux / luxPerFootCandle
+        if fc >= 1000 { return String(format: "%.1fk fc", fc / 1000) }
+        if fc >= 10 { return "\(Int(fc.rounded())) fc" }
+        return String(format: "%.1f fc", fc)
     }
 }

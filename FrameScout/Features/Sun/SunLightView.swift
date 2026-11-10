@@ -108,7 +108,7 @@ struct SunLightView: View {
                     let lit = litWindows(plan: plan, north: north, sun: sun)
                     FloorPlanCanvas(plan: plan, overlay: sunOverlay(north: north, sun: sun, lit: lit), style: .full)
                         .frame(height: 300)
-                        .background(Theme.background, in: Rectangle())
+                        .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     Text(lit.isEmpty ? "No window is in direct sun at this time."
                                      : "\(lit.count) window\(lit.count == 1 ? "" : "s") in direct sun (highlighted).")
                         .font(.fsBody)
@@ -231,7 +231,7 @@ struct SunLightView: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(HairlineButtonStyle(prominent: true))
-            .foregroundStyle(.black)
+            .foregroundStyle(Theme.onAccent)
             if let error = locator.lastError { Text(error).font(.fsCaption).foregroundStyle(Theme.danger) }
             HStack {
                 TextField("Latitude", text: $latText).keyboardType(.numbersAndPunctuation)
@@ -266,7 +266,7 @@ struct SunPathDiagram: View {
             for e in [0.0, 30, 60] {
                 let r = radius * CGFloat((90 - e) / 90)
                 ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
-                           with: .color(.white.opacity(e == 0 ? 0.35 : 0.12)), lineWidth: 1)
+                           with: .color(Theme.ink.opacity(e == 0 ? 0.35 : 0.12)), lineWidth: 1)
             }
             for (label, az) in [("N", 0.0), ("E", 90), ("S", 180), ("W", 270)] {
                 let a = az * .pi / 180
