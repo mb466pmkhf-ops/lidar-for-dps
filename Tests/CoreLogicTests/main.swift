@@ -380,7 +380,8 @@ exp.ndStops = 0; exp.shutterSeconds = 1.0 / 100
 check(abs(exp.exposureTime - 0.01) < 1e-12 && exp.shutterDescription == "1/100", "shutter speed mode")
 check(ExposureSettings.stopLabel(2.8) == "T2.8" && ExposureSettings.stopLabel(3.17) == "T2.8 +⅓"
       && ExposureSettings.stopLabel(3.56) == "T4 −⅓" && ExposureSettings.stopLabel(5.6) == "T5.6", "stop labels in thirds")
-check(ExposureSettings.stopLabel(64) == "T64" && ExposureSettings.stopLabel(128) == "T128" && ExposureSettings.stopLabel(0.7) == "T0.71",
+check(ExposureSettings.stopLabel(64) == "T64" && ExposureSettings.stopLabel(128) == "T128" && ExposureSettings.stopLabel(0.7) == "T0.71"
+      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25",
       "stop labels past T64 and under T1")
 check(abs(ExposureSettings().keyLux - 117.6) < 1e-9 && abs({ var e = ExposureSettings(); e.iso = 100; return e.keyLux }() - 940.8) < 1e-9,
       "key lux by hand: ISO 800 → 117.6 lx, ISO 100 → 940.8 lx at T2.8, 1/48")
