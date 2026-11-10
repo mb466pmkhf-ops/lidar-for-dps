@@ -29,6 +29,8 @@ struct LightingContext {
         case .tooDim(let maxLux, let d):
             let move = d.map { " Move it to about \(UnitsFormatter.distance($0)) away, or use a brighter unit." } ?? ""
             return "Even at full it gives \(LuxFormat.lux(maxLux)) here.\(move)"
+        case .atMinimum(let o, let lux):
+            return "At its lowest (\(Int((o * 100).rounded())) %) it still gives \(LuxFormat.lux(lux)) here. Move it back, or add ND or diffusion."
         case .othersTooBright(let others):
             return "The other units already give \(LuxFormat.lux(others)) here. Turn them down first."
         case .noContribution:
