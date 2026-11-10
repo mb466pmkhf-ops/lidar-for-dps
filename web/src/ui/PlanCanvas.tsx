@@ -212,7 +212,7 @@ export function PlanCanvas(props: Props) {
   const key = keyLux(exposure);
   const labelFor = (text: string, p: PlanPoint, dy = -16, strong = false) => (
     <g pointerEvents="none">
-      <text x={sx(p.x)} y={sy(p.z) + dy} textAnchor="middle" className="plan-label" fontSize={12} fill={strong ? '#fff' : '#cfcfcf'} stroke="#070707" strokeWidth={4} paintOrder="stroke" fontFamily="Poppins, system-ui" fontWeight={400}>{text}</text>
+      <text x={sx(p.x)} y={sy(p.z) + dy} textAnchor="middle" className="plan-label" fontSize={12} fill={strong ? 'var(--ink)' : 'var(--ink2)'} stroke="var(--paper)" strokeWidth={4} paintOrder="stroke" fontFamily="Poppins, system-ui" fontWeight={400}>{text}</text>
     </g>
   );
 
@@ -220,8 +220,8 @@ export function PlanCanvas(props: Props) {
     const h = { x: p.x + unitBearing(bearing).x * r, z: p.z + unitBearing(bearing).z * r };
     return (
       <g>
-        <line x1={sx(p.x)} y1={sy(p.z)} x2={sx(h.x)} y2={sy(h.z)} stroke="#fff" strokeWidth={1} strokeDasharray="3 3" pointerEvents="none" />
-        <circle cx={sx(h.x)} cy={sy(h.z)} r={9} fill="#fff" stroke="#070707" strokeWidth={2} style={{ cursor: 'grab' }}
+        <line x1={sx(p.x)} y1={sy(p.z)} x2={sx(h.x)} y2={sy(h.z)} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" pointerEvents="none" />
+        <circle cx={sx(h.x)} cy={sy(h.z)} r={9} fill="var(--accent)" stroke="var(--paper)" strokeWidth={2} style={{ cursor: 'grab' }}
           onPointerDown={e => down(e, { ...s, part: 'rotate' })} aria-label="Rotate" />
       </g>
     );
@@ -241,10 +241,18 @@ export function PlanCanvas(props: Props) {
     const body = 10;
     return (
       <g key={s.kind + s.id}>
-        {(layers.has('views') || sel) && <polygon points={wedge.join(' ')} fill="rgba(143,166,189,.10)" stroke="rgba(143,166,189,.55)" strokeWidth={1} pointerEvents="none" />}
+        {(layers.has('views') || sel) && <polygon points={wedge.join(' ')} fill="var(--floor)" stroke="var(--ink3)" strokeWidth={1} pointerEvents="none" />}
         <g transform={`translate(${sx(rig.position.x)},${sy(rig.position.z)}) rotate(${rig.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <rect x={-body} y={-body * 0.7} width={body * 2} height={body * 1.4} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
-          <polygon points={`-6,${-body * 0.7} 6,${-body * 0.7} 9,${-body * 1.5} -9,${-body * 1.5}`} fill={sel ? '#fff' : 'var(--info)'} stroke="#070707" strokeWidth={1.5} />
+          {/* Tripod legs, battery, body with top handle, lens and matte box. Forward is up (−y). */}
+          <path d="M0,0 L-13,13 M0,0 L13,13 M0,0 L0,-17" stroke="var(--ink3)" strokeWidth={2} strokeLinecap="round" />
+          <circle cx={-13} cy={13} r={2} fill="var(--ink3)" /><circle cx={13} cy={13} r={2} fill="var(--ink3)" />
+          <rect x={-5} y={body * 0.9} width={10} height={6} rx={1.5} fill="var(--ink2)" />
+          <rect x={-body * 0.8} y={-body * 0.9} width={body * 1.6} height={body * 1.8} rx={3} fill={sel ? 'var(--accent)' : 'var(--ink)'} stroke="var(--paper)" strokeWidth={1.5} />
+          <rect x={body * 0.8} y={-5} width={3} height={10} rx={1.5} fill={sel ? 'var(--accent)' : 'var(--ink)'} />
+          <rect x={-5} y={-body * 0.9 - 8} width={10} height={8} fill={sel ? 'var(--accent)' : 'var(--ink)'} stroke="var(--paper)" strokeWidth={1} />
+          <polygon points={`-5,${-body * 0.9 - 8} 5,${-body * 0.9 - 8} 9,${-body * 0.9 - 14} -9,${-body * 0.9 - 14}`} fill={sel ? 'var(--accent)' : 'var(--ink)'} stroke="var(--paper)" strokeWidth={1} />
+          <circle r={3} fill="none" stroke="var(--paper)" strokeWidth={1.5} />
+          <circle r={body * 1.6} fill="transparent" />
         </g>
         {labelFor(label, rig.position, 26, sel)}
         {sel && rotateHandle(s, rig.position, rig.pan, 1.2)}
@@ -277,23 +285,50 @@ export function PlanCanvas(props: Props) {
           g.push(<polygon key="beam" points={pts.join(' ')} fill={cssRGB(pm.color, 0.10)} stroke={cssRGB(pm.color, 0.45)} strokeWidth={1} pointerEvents="none" />);
         }
       }
-      const r = Math.max(9, (l.width / 2) * v.scale);
+      const r = Math.max(11, (l.width / 2) * v.scale);
+      const face = l.isOn ? col : 'var(--off)';
+      const edge = sel ? 'var(--accent)' : 'var(--paper)';
+      const edgeW = sel ? 2.5 : 1.5;
       g.push(
         <g key="body" transform={`translate(${cx},${cy}) rotate(${l.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          {l.kind === 'tube' || l.kind === 'ledPanel' || l.kind === 'softbox'
-            ? <rect x={-r} y={-6} width={r * 2} height={l.kind === 'tube' ? 5 : 12} fill={l.isOn ? col : '#333'} stroke={sel ? '#fff' : '#070707'} strokeWidth={sel ? 2.5 : 1.5} />
-            : l.kind === 'spaceLight' || l.kind === 'practical'
-              ? <circle r={10} fill={l.isOn ? col : '#333'} stroke={sel ? '#fff' : '#070707'} strokeWidth={sel ? 2.5 : 1.5} />
-              : <polygon points="-9,8 9,8 6,-9 -6,-9" fill={l.isOn ? col : '#333'} stroke={sel ? '#fff' : '#070707'} strokeWidth={sel ? 2.5 : 1.5} />}
+          {/* Stand legs under the unit; the face of the unit points up (−y). */}
+          {l.kind !== 'practical' && <>
+            <path d="M0,4 L-11,15 M0,4 L11,15 M0,4 L0,-10" stroke="var(--ink3)" strokeWidth={2} strokeLinecap="round" />
+            <circle cx={-11} cy={15} r={2} fill="var(--ink3)" /><circle cx={11} cy={15} r={2} fill="var(--ink3)" />
+          </>}
+          {l.kind === 'tube'
+            ? <rect x={-r} y={-4} width={r * 2} height={6} rx={3} fill={face} stroke={edge} strokeWidth={edgeW} />
+            : l.kind === 'softbox'
+              ? <>
+                  <rect x={-6} y={2} width={12} height={10} rx={2} fill="var(--ink)" />
+                  <polygon points={`${-r},-8 ${r},-8 6,2 -6,2`} fill={face} stroke={edge} strokeWidth={edgeW} strokeLinejoin="round" />
+                  <path d={`M${-r * 0.5},-8 L-3,2 M0,-8 L0,2 M${r * 0.5},-8 L3,2`} stroke="var(--paper)" strokeWidth={1} opacity={0.7} />
+                  <line x1={-r} y1={-9} x2={r} y2={-9} stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+                </>
+              : l.kind === 'ledPanel'
+                ? <>
+                    <rect x={-r} y={-6} width={r * 2} height={10} rx={2} fill="var(--ink)" stroke={edge} strokeWidth={edgeW} />
+                    <rect x={-r + 2} y={-6} width={r * 2 - 4} height={4} fill={face} />
+                    <path d={`M${-r},-6 L${-r - 5},-12 M${r},-6 L${r + 5},-12`} stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" />
+                  </>
+                : l.kind === 'spaceLight' || l.kind === 'practical'
+                  ? <><circle r={10} fill={face} stroke={edge} strokeWidth={edgeW} /><circle r={4} fill="none" stroke="var(--paper)" strokeWidth={1} opacity={0.7} /></>
+                  : <>
+                      <rect x={-8} y={-6} width={16} height={15} rx={3} fill="var(--ink)" stroke={edge} strokeWidth={edgeW} />
+                      <path d="M-8,0 H8 M-8,4 H8" stroke="var(--ink3)" strokeWidth={1} />
+                      <path d="M-7,-6 A8,6 0 0 1 7,-6 Z" fill={face} stroke="var(--paper)" strokeWidth={1} />
+                      <path d="M-8,-6 L-13,-14 M8,-6 L13,-14" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+                    </>}
+          <circle r={Math.max(r, 14)} fill="transparent" />
         </g>,
       );
     } else {
       const half = (l.width / 2) * v.scale;
-      const fill = l.kind === 'bounce' ? '#f2f2f2' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? '#3a3a3a' : 'rgba(255,255,255,.35)';
+      const fill = l.kind === 'bounce' ? 'var(--paper)' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? 'var(--ink2)' : 'var(--occ)';
       g.push(
         <g key="body" transform={`translate(${cx},${cy}) rotate(${l.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <rect x={-Math.max(half, 8)} y={-3} width={Math.max(half, 8) * 2} height={6} fill={fill} stroke={sel ? '#fff' : '#9a9a9a'} strokeWidth={sel ? 2 : 1} strokeDasharray={l.kind === 'diffusion' ? '4 3' : undefined} />
-          <line x1={0} y1={-3} x2={0} y2={-12} stroke={sel ? '#fff' : '#9a9a9a'} strokeWidth={1.5} />
+          <rect x={-Math.max(half, 8)} y={-3} width={Math.max(half, 8) * 2} height={6} fill={fill} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={l.kind === 'diffusion' ? '4 3' : undefined} />
+          <line x1={0} y1={-3} x2={0} y2={-12} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={1.5} />
           <rect x={-Math.max(half, 14)} y={-12} width={Math.max(half, 14) * 2} height={24} fill="transparent" />
         </g>,
       );
@@ -311,8 +346,8 @@ export function PlanCanvas(props: Props) {
     return (
       <g key={c.id}>
         <g transform={`translate(${sx(c.position.x)},${sy(c.position.z)}) rotate(${c.facing})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <ellipse rx={r} ry={r * 0.62} fill={skinRGB[c.skinTone - 1] ?? skinRGB[2]} stroke={sel ? '#fff' : '#070707'} strokeWidth={sel ? 2.5 : 1.5} />
-          <polygon points={`-5,${-r * 0.55} 5,${-r * 0.55} 0,${-r * 0.55 - 9}`} fill={sel ? '#fff' : '#d9d9d9'} />
+          <ellipse rx={r} ry={r * 0.62} fill={skinRGB[c.skinTone - 1] ?? skinRGB[2]} stroke={sel ? 'var(--accent)' : 'var(--paper)'} strokeWidth={sel ? 2.5 : 1.5} />
+          <polygon points={`-5,${-r * 0.55} 5,${-r * 0.55} 0,${-r * 0.55 - 9}`} fill={sel ? 'var(--accent)' : 'var(--ink2)'} />
         </g>
         {labelFor(c.name, c.position, -r - 6, sel)}
         {reading !== undefined && lights.length > 0 && (layers.has('readings') || sel) && labelFor(`≈ ${fmtLux(reading)} · ${stopsDelta(stopsForLux(exposure, reading))}`, c.position, r + 18, true)}
@@ -328,7 +363,7 @@ export function PlanCanvas(props: Props) {
     return (
       <g key={m.id}>
         <g transform={`translate(${sx(m.position.x)},${sy(m.position.z)})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <rect x={-7} y={-7} width={14} height={14} transform="rotate(45)" fill={sel ? '#fff' : '#070707'} stroke="#fff" strokeWidth={1.5} />
+          <rect x={-7} y={-7} width={14} height={14} transform="rotate(45)" fill={sel ? 'var(--accent)' : 'var(--paper)'} stroke="var(--ink)" strokeWidth={1.5} />
           <circle r={14} fill="transparent" />
         </g>
         {labelFor(m.name, m.position, -14, sel)}
@@ -343,8 +378,8 @@ export function PlanCanvas(props: Props) {
   const gridLines: ReactElement[] = [];
   const x0 = Math.floor((v.cx - size.w / 2 / v.scale) / gridStep) * gridStep;
   const z0 = Math.floor((v.cz - size.h / 2 / v.scale) / gridStep) * gridStep;
-  for (let x = x0; x < v.cx + size.w / 2 / v.scale; x += gridStep) gridLines.push(<line key={'x' + x} x1={sx(x)} y1={0} x2={sx(x)} y2={size.h} stroke="rgba(255,255,255,.05)" />);
-  for (let z = z0; z < v.cz + size.h / 2 / v.scale; z += gridStep) gridLines.push(<line key={'z' + z} x1={0} y1={sy(z)} x2={size.w} y2={sy(z)} stroke="rgba(255,255,255,.05)" />);
+  for (let x = x0; x < v.cx + size.w / 2 / v.scale; x += gridStep) gridLines.push(<line key={'x' + x} x1={sx(x)} y1={0} x2={sx(x)} y2={size.h} stroke="var(--grid)" />);
+  for (let z = z0; z < v.cz + size.h / 2 / v.scale; z += gridStep) gridLines.push(<line key={'z' + z} x1={0} y1={sy(z)} x2={size.w} y2={sy(z)} stroke="var(--grid)" />);
 
   const hidden = new Set(location.display?.hiddenGroups ?? []);
   const scan = location.scans.find(s => s.id === scanID);
@@ -358,21 +393,21 @@ export function PlanCanvas(props: Props) {
           <image href={luxMap.href} x={sx(luxMap.b.minX)} y={sy(luxMap.b.minZ)} width={(luxMap.b.maxX - luxMap.b.minX) * v.scale} height={(luxMap.b.maxZ - luxMap.b.minZ) * v.scale}
             opacity={0.55} preserveAspectRatio="none" style={{ imageRendering: 'auto' }} pointerEvents="none" />
         )}
-        {plan && !hidden.has('floors') && plan.floorPolygons.map((poly, i) => <polygon key={'f' + i} points={poly.map(pt).join(' ')} fill="rgba(255,255,255,.035)" pointerEvents="none" />)}
-        {plan && plan.occupancy.length > 0 && plan.occupancy.map((p, i) => <rect key={'o' + i} x={sx(p.x)} y={sy(p.z)} width={plan.occupancyCellSize * v.scale} height={plan.occupancyCellSize * v.scale} fill="rgba(255,255,255,.18)" pointerEvents="none" />)}
+        {plan && !hidden.has('floors') && plan.floorPolygons.map((poly, i) => <polygon key={'f' + i} points={poly.map(pt).join(' ')} fill="var(--floor)" pointerEvents="none" />)}
+        {plan && plan.occupancy.length > 0 && plan.occupancy.map((p, i) => <rect key={'o' + i} x={sx(p.x)} y={sy(p.z)} width={plan.occupancyCellSize * v.scale} height={plan.occupancyCellSize * v.scale} fill="var(--occ)" pointerEvents="none" />)}
         {plan && !hidden.has('furniture') && plan.objects.map(o => {
           const s: Selection = { kind: 'object', id: o.id };
           const sel = sameSel(selection, s);
           return (
             <g key={o.id} transform={`translate(${sx(o.center.x)},${sy(o.center.z)}) rotate(${o.rotation * 180 / Math.PI})`} onPointerDown={e => { e.stopPropagation(); props.onSelect(s); }}>
-              <rect x={-o.width / 2 * v.scale} y={-o.depth / 2 * v.scale} width={o.width * v.scale} height={o.depth * v.scale} fill="rgba(255,255,255,.04)" stroke={sel ? '#fff' : 'rgba(255,255,255,.4)'} strokeWidth={sel ? 2 : 1} />
+              <rect x={-o.width / 2 * v.scale} y={-o.depth / 2 * v.scale} width={o.width * v.scale} height={o.depth * v.scale} fill="var(--floor)" stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} />
             </g>
           );
         })}
         {plan && !hidden.has('furniture') && layers.has('names') && plan.objects.map(o => <g key={'ol' + o.id}>{labelFor(o.category, o.center, 4)}</g>)}
-        {plan && !hidden.has('walls') && plan.walls.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="#ebebeb" strokeWidth={Math.max(3, 0.1 * v.scale)} strokeLinecap="square" pointerEvents="none" />)}
+        {plan && !hidden.has('walls') && plan.walls.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--wall)" strokeWidth={Math.max(3, 0.1 * v.scale)} strokeLinecap="square" pointerEvents="none" />)}
         {plan && !hidden.has('windows') && plan.windows.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--window)" strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
-        {plan && !hidden.has('doors') && [...plan.doors, ...plan.openings].map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke={w.kind === 'door' ? 'var(--door)' : '#070707'} strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
+        {plan && !hidden.has('doors') && [...plan.doors, ...plan.openings].map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke={w.kind === 'door' ? 'var(--door)' : 'var(--paper)'} strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
         {plan && layers.has('dimensions') && plan.walls.map(w => {
           const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
           if (len < 1 || v.scale < 40) return null;
@@ -392,13 +427,13 @@ export function PlanCanvas(props: Props) {
         {scan?.northOffset !== undefined && (
           <g transform={`translate(${size.w - 70},${size.h - 100}) rotate(${-scan.northOffset})`} pointerEvents="none" opacity={0.8}>
             <polygon points="0,-18 6,6 0,2 -6,6" fill="var(--danger)" />
-            <text y={-24} textAnchor="middle" fill="#fff" fontSize={11} transform={`rotate(${scan.northOffset} 0 -28)`}>N</text>
+            <text y={-24} textAnchor="middle" fill="var(--ink)" fontSize={11} transform={`rotate(${scan.northOffset} 0 -28)`}>N</text>
           </g>
         )}
         <g transform={`translate(16,${size.h - 24})`} pointerEvents="none">
-          <line x1={0} y1={0} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={0} stroke="#fff" />
-          <line x1={0} y1={-5} x2={0} y2={5} stroke="#fff" /><line x1={v.scale * (v.scale > 60 ? 1 : 2)} y1={-5} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={5} stroke="#fff" />
-          <text x={v.scale * (v.scale > 60 ? 0.5 : 1)} y={-8} textAnchor="middle" fill="#fff" fontSize={11} fontFamily="ui-monospace, monospace">{v.scale > 60 ? '1 m' : '2 m'}</text>
+          <line x1={0} y1={0} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={0} stroke="var(--ink)" />
+          <line x1={0} y1={-5} x2={0} y2={5} stroke="var(--ink)" /><line x1={v.scale * (v.scale > 60 ? 1 : 2)} y1={-5} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={5} stroke="var(--ink)" />
+          <text x={v.scale * (v.scale > 60 ? 0.5 : 1)} y={-8} textAnchor="middle" fill="var(--ink)" fontSize={11} fontFamily="ui-monospace, monospace">{v.scale > 60 ? '1 m' : '2 m'}</text>
         </g>
       </svg>
       {props.hint && <div className="plan-hint">{props.hint}</div>}

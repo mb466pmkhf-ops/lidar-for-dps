@@ -93,6 +93,17 @@ export class Workspace {
     this.emit();
   }
 
+  /// Like commit, for an edit that also adds or changes a scan's 2D plan (a room drawn by hand).
+  commitBundle(bundle: ProjectBundle) {
+    const e = this.entries.get(bundle.project.id);
+    if (!e) return;
+    e.bundle = { project: { ...bundle.project, modifiedAt: isoNow() }, plans: bundle.plans };
+    e.dirty = true;
+    e.version++;
+    this.persist(e);
+    this.emit();
+  }
+
   add(bundle: ProjectBundle) {
     const e: Entry = { id: bundle.project.id, bundle, dirty: true, version: 1 };
     this.entries.set(e.id, e);
