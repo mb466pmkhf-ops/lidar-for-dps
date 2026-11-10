@@ -1,5 +1,6 @@
 import type { ExposureSettings } from '../model/types';
-import { stopsDelta, stopLabel, stopsForLux } from '../model/exposure';
+import { useSyncExternalStore } from 'react';
+import { stopsDelta, stopLabel, stopsForLux, tStopForLux } from '../model/exposure';
 
 export function lux(v: number): string {
   if (v >= 10_000) return `${(v / 1000).toFixed(0)}k lx`;
@@ -12,8 +13,51 @@ export const metres = (m: number) => `${m.toFixed(2)} m`;
 export const deg = (d: number) => `${Math.round(((d % 360) + 360) % 360)}°`;
 export const signedDeg = (d: number) => `${d >= 0 ? '+' : '−'}${Math.abs(Math.round(d))}°`;
 export const pct = (v: number) => `${Math.round(v * 100)} %`;
-/// "≈ 420 lx · +⅓ at T5.6": every reading is an estimate (D-006).
-export const readingText = (v: number, e: ExposureSettings) => `≈ ${lux(v)} · ${stopsDelta(stopsForLux(e, v))} at ${stopLabel(e.tStop)}`;
+
+/// How a light reading is written out (same choice and names as ReadingUnit on the iPhone).
+/// Crews think in stops, so the default is the T-stop an incident meter would show.
+export type ReadingUnit = 'tStop' | 'stops' | 'lux' | 'footCandles';
+export const READING_UNITS: [ReadingUnit, string][] = [['tStop', 'T-stop'], ['stops', 'Stops over / under'], ['lux', 'Lux'], ['footCandles', 'Foot-candles']];
+export const LUX_PER_FOOT_CANDLE = 10.764;
+const UNIT_KEY = 'framescan.readings';
+let unit: ReadingUnit = (() => {
+  try { const v = localStorage.getItem(UNIT_KEY); return READING_UNITS.some(u => u[0] === v) ? v as ReadingUnit : 'tStop'; } catch { return 'tStop'; }
+})();
+const listeners = new Set<() => void>();
+export const readingUnit = () => unit;
+export function setReadingUnit(next: ReadingUnit) {
+  unit = next;
+  try { localStorage.setItem(UNIT_KEY, next); } catch { /* private mode */ }
+  listeners.forEach(l => l());
+}
+/// Subscribes a component to the readings unit, so everything under it redraws when it changes.
+export const useReadingUnit = () => useSyncExternalStore(l => { listeners.add(l); return () => { listeners.delete(l); }; }, readingUnit);
+
+export function footCandles(luxValue: number): string {
+  const fc = luxValue / LUX_PER_FOOT_CANDLE;
+  if (fc >= 1000) return `${(fc / 1000).toFixed(1)}k fc`;
+  if (fc >= 10) return `${Math.round(fc)} fc`;
+  return `${fc.toFixed(1)} fc`;
+}
+/// One reading in the chosen unit: "T4 +⅓", "+⅓", "420 lx" or "39 fc".
+export function reading(v: number, e: ExposureSettings, u: ReadingUnit = unit): string {
+  switch (u) {
+    case 'tStop': return stopLabel(tStopForLux(e, v));
+    case 'stops': return stopsDelta(stopsForLux(e, v));
+    case 'lux': return lux(v);
+    case 'footCandles': return footCandles(v);
+  }
+}
+/// Short label for the plan: lux and foot-candles also say how far off the set stop they are.
+export function readingShort(v: number, e: ExposureSettings, u: ReadingUnit = unit): string {
+  return u === 'lux' || u === 'footCandles' ? `≈ ${reading(v, e, u)} · ${stopsDelta(stopsForLux(e, v))}` : `≈ ${reading(v, e, u)}`;
+}
+/// Full line for a panel. Every reading is an estimate (D-006), whatever unit it is shown in.
+export function readingText(v: number, e: ExposureSettings, u: ReadingUnit = unit): string {
+  if (u === 'tStop') return `≈ ${reading(v, e, u)}`;
+  if (u === 'stops') return `≈ ${reading(v, e, u)} at ${stopLabel(e.tStop)}`;
+  return `≈ ${reading(v, e, u)} · ${stopsDelta(stopsForLux(e, v))} at ${stopLabel(e.tStop)}`;
+}
 
 /// False-colour for an exposure, from the iOS plan (PlanLuxMap.color): blue under, green on key, red over.
 export function stopColor(stops: number): string | undefined {

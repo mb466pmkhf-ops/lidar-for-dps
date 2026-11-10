@@ -12,7 +12,8 @@ import { solveOutput, type MeterPoint, type Scene, reading as calcReading } from
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
-import { deg, lux as fmtLux, metres, pct, readingText, signedDeg, watts } from './format';
+import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
+import type { ReadingUnit } from './format';
 import { Icon } from './icons';
 import type { Selection } from './PlanCanvas';
 
@@ -193,7 +194,9 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
       <Panel title="At meters and faces">
         {atMeters.length ? atMeters.map(({ m, own, total }) => (
           <div key={m.key} className="meter-row">
-            <span className="stack2"><span>{m.name}</span><span className="mono muted" title="This unit's share of the total">≈ {fmtLux(own)} of {fmtLux(total)} · {stopsDelta(stopsForLux(p.exposure, total))}</span></span>
+            <span className="stack2"><span>{m.name}</span><span className="mono muted" title="This unit's share of the total">{readingUnit() === 'tStop' ? `≈ ${fmtReading(total, p.exposure)} · this light alone ${fmtReading(own, p.exposure)}`
+              : readingUnit() === 'stops' ? readingText(total, p.exposure)
+              : `≈ ${fmtReading(own, p.exposure)} of ${fmtReading(total, p.exposure)} · ${stopsDelta(stopsForLux(p.exposure, total))}`}</span></span>
             <span />
             <button className="btn small" onClick={() => setToKey(m)} title={`Set output so ${m.name} reads ${m.targetLux ? fmtLux(m.targetLux) : 'key'}`}>Set to {m.targetLux ? 'target' : 'key'}</button>
           </div>
@@ -453,11 +456,12 @@ function Overview(p: InspectorProps) {
         <p className="note">An incident reading of {fmtLux(keyLux(e))} exposes a subject correctly at these settings. T-stops include lens loss; a T-stop is a camera setting, not scene brightness.</p>
       </Panel>
       <Panel title="Readings">
+        <div className="field"><span>Show as</span><select value={readingUnit()} onChange={x => setReadingUnit(x.target.value as ReadingUnit)}>{READING_UNITS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select><span /></div>
         {p.meters.length ? p.meters.map(m => {
           const r = p.readings.get(m.key) ?? 0;
           return (
             <button key={m.key} className="meter-row row" style={{ display: 'grid', padding: '8px 0' }} onClick={() => p.select('meter' in m.source ? { kind: 'meter', id: m.source.meter } : { kind: 'character', id: m.source.character })}>
-              <span>{m.name}</span><span className="mono">≈ {fmtLux(r)}</span><span className="mono muted">{stopsDelta(stopsForLux(e, r))}</span>
+              <span>{m.name}</span><span className="mono">≈ {fmtReading(r, e)}</span><span className="mono muted">{readingUnit() === 'lux' || readingUnit() === 'footCandles' ? stopsDelta(stopsForLux(e, r)) : ''}</span>
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}
