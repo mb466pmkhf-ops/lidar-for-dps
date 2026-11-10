@@ -20,7 +20,7 @@ struct ScanFlowView: View {
                 MeshScanScreen(target: target, onClose: close)
             }
         }
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
     }
 
     private func close(_ saved: LocationRef?, openPlan: Bool) {

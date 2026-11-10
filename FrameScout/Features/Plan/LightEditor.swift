@@ -285,7 +285,7 @@ struct KelvinChips: View {
                         .padding(.horizontal, 10)
                         .frame(minHeight: 34)
                         .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-                        .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])

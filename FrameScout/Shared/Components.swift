@@ -7,15 +7,15 @@ struct CardModifier: ViewModifier {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
     }
 }
 
 extension View {
     func card(padding: CGFloat = 16) -> some View { modifier(CardModifier(padding: padding)) }
 
-    /// Standard dark screen background.
+    /// Standard screen background.
     func fsScreen() -> some View {
         background(Theme.background.ignoresSafeArea())
             .scrollContentBackground(.hidden)
@@ -116,27 +116,27 @@ struct ActionTile: View {
                     Text(title)
                         .font(.poppins(.regular, 15))
                         .tracking(Theme.tracking)
-                        .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+                        .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
                     Image(systemName: systemImage)
                         .font(.system(size: 15, weight: .ultraLight))
-                        .foregroundStyle(prominent ? Color.black.opacity(0.7) : Theme.textTertiary)
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textTertiary)
                 }
                 Spacer(minLength: 0)
                 if let subtitle {
                     Text(subtitle)
                         .font(.fsCaption)
-                        .foregroundStyle(prominent ? Color.black.opacity(0.65) : Theme.textSecondary)
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-            .background(prominent ? Color.white : Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
             .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
@@ -252,7 +252,7 @@ struct TagChip: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-            .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
         if let action {
             Button(action: action) { label }.buttonStyle(.plain)
         } else {
@@ -272,11 +272,11 @@ struct HairlineButtonStyle: ButtonStyle {
             .font(.fsLabel)
             .tracking(Theme.tracking)
             .labelStyle(.titleOnly)
-            .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
+            .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .background(prominent ? Color.white : Color.clear, in: Rectangle())
-            .overlay(Rectangle().stroke(prominent ? Color.clear : Color.white.opacity(0.45), lineWidth: 0.5))
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairlineStrong, lineWidth: 0.5))
             .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
     }
 }
@@ -362,7 +362,7 @@ struct ProvenanceBadge: View {
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
         .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
-        .overlay(Rectangle().stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
                                     style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
         .fixedSize()
         .accessibilityElement(children: .ignore)

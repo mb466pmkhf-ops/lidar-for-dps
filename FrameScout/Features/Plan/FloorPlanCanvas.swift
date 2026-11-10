@@ -240,7 +240,7 @@ struct PlanRenderer {
             path.addLine(to: s(PlanPoint(x: br.x, z: z)))
             z += step
         }
-        ctx.stroke(path, with: .color(.white.opacity(0.05)), lineWidth: 1)
+        ctx.stroke(path, with: .color(Theme.planGrid), lineWidth: 1)
     }
 
     private func drawFloors(_ ctx: inout GraphicsContext) {
@@ -281,7 +281,7 @@ struct PlanRenderer {
             path.closeSubpath()
             let selected = overlay.selectedObject == o.id
             ctx.fill(path, with: .color(Theme.planObject.opacity(selected ? 0.4 : 0.18)))
-            ctx.stroke(path, with: .color(selected ? Color.white : Theme.planObject), lineWidth: selected ? 1.5 : 1)
+            ctx.stroke(path, with: .color(selected ? Theme.accent : Theme.planObject), lineWidth: selected ? 1.5 : 1)
             if full && vp.scale > 40 && overlay.showObjectLabels {
                 labels.append(PlanLabel(text: Text(o.category).font(.poppins(.light, 9)).foregroundColor(Theme.textSecondary),
                                         anchor: c, priority: .object))
@@ -416,6 +416,14 @@ struct PlanRenderer {
             func pt(_ f: CGFloat, _ l: CGFloat) -> CGPoint {
                 CGPoint(x: origin.x + d.dx * f + side.dx * l, y: origin.y + d.dy * f + side.dy * l)
             }
+            // Tripod legs under the camera, so it reads as equipment rather than a box.
+            var legs = Path()
+            let feet: [(CGFloat, CGFloat)] = [(-13, -12), (-13, 12), (15, 0)]
+            for foot in feet {
+                legs.move(to: origin)
+                legs.addLine(to: pt(foot.0, foot.1))
+            }
+            ctx.stroke(legs, with: .color(Theme.planStand), style: StrokeStyle(lineWidth: 2, lineCap: .round))
             var body = Path()
             body.move(to: pt(-bodyLength / 2, -bodyWidth / 2))
             body.addLine(to: pt(bodyLength / 2, -bodyWidth / 2))
@@ -425,9 +433,22 @@ struct PlanRenderer {
             body.addLine(to: pt(-bodyLength / 2, bodyWidth / 2))
             body.closeSubpath()
             ctx.fill(body, with: .color(color))
+            ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
+            // Battery on the back and the lens ring where the matte box starts.
+            var battery = Path()
+            battery.move(to: pt(-bodyLength / 2 - 5, -3.5))
+            battery.addLine(to: pt(-bodyLength / 2, -3.5))
+            battery.addLine(to: pt(-bodyLength / 2, 3.5))
+            battery.addLine(to: pt(-bodyLength / 2 - 5, 3.5))
+            battery.closeSubpath()
+            ctx.fill(battery, with: .color(Theme.planStand))
+            var ring = Path()
+            ring.move(to: pt(bodyLength / 2, -bodyWidth / 2))
+            ring.addLine(to: pt(bodyLength / 2, bodyWidth / 2))
+            ctx.stroke(ring, with: .color(Theme.surface), lineWidth: 1.5)
             if cam.selected {
                 ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - 18, y: origin.y - 18, width: 36, height: 36)),
-                           with: .color(.white), lineWidth: 1.5)
+                           with: .color(Theme.accent), lineWidth: 1.5)
             }
             let labelPos = CGPoint(x: origin.x - d.dx * 22, y: origin.y - d.dy * 22)
             guard overlay.showCameraLabels else { continue }
@@ -479,6 +500,33 @@ struct PlanRenderer {
                     CGPoint(x: origin.x + d.dx * f + side.dx * l, y: origin.y + d.dy * f + side.dy * l)
                 }
                 let depth: CGFloat = light.kind == .tube ? 5 : 10
+                if light.kind != .practical {
+                    // Stand legs, then the lamp head behind the face of the unit.
+                    var legs = Path()
+                    let feet: [(CGFloat, CGFloat)] = [(-18, -10), (-18, 10), (2, 0)]
+                    for foot in feet {
+                        legs.move(to: pt(-depth / 2 - 3, 0))
+                        legs.addLine(to: pt(foot.0, foot.1))
+                    }
+                    ctx.stroke(legs, with: .color(Theme.planStand), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    if light.kind != .tube {
+                        var head = Path()
+                        head.move(to: pt(-depth / 2 - 8, -5))
+                        head.addLine(to: pt(-depth / 2, -min(halfWidth, 8)))
+                        head.addLine(to: pt(-depth / 2, min(halfWidth, 8)))
+                        head.addLine(to: pt(-depth / 2 - 8, 5))
+                        head.closeSubpath()
+                        ctx.fill(head, with: .color(Theme.planEquipment))
+                    }
+                    if light.kind == .fresnel || light.kind == .hmi {
+                        var doors = Path()
+                        doors.move(to: pt(depth / 2, -halfWidth))
+                        doors.addLine(to: pt(depth / 2 + 6, -halfWidth - 4))
+                        doors.move(to: pt(depth / 2, halfWidth))
+                        doors.addLine(to: pt(depth / 2 + 6, halfWidth + 4))
+                        ctx.stroke(doors, with: .color(Theme.planEquipment), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    }
+                }
                 var body = Path()
                 body.move(to: pt(-depth / 2, -halfWidth))
                 body.addLine(to: pt(depth / 2, -halfWidth))
@@ -486,7 +534,7 @@ struct PlanRenderer {
                 body.addLine(to: pt(-depth / 2, halfWidth))
                 body.closeSubpath()
                 ctx.fill(body, with: .color(on ? tint : Theme.textTertiary))
-                ctx.stroke(body, with: .color(.black.opacity(0.6)), lineWidth: 1)
+                ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
             } else {
                 // Grip: a board across the facing direction. White bounce, black neg, grey flag,
                 // hatched diffusion.
@@ -502,8 +550,9 @@ struct PlanRenderer {
                 case .diffusion: color = Color(white: 0.85)
                 default: color = Color(white: 0.45)
                 }
-                if light.kind == .negative {
-                    ctx.stroke(board, with: .color(.white.opacity(0.7)), lineWidth: 7)
+                // An outline keeps a white bounce visible on paper and a black neg visible at night.
+                if light.kind == .negative || light.kind == .bounce {
+                    ctx.stroke(board, with: .color(Theme.ink.opacity(0.7)), lineWidth: 7)
                 }
                 ctx.stroke(board, with: .color(color),
                            style: StrokeStyle(lineWidth: 5, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
@@ -516,13 +565,13 @@ struct PlanRenderer {
             if marker.selected {
                 let r = max(halfWidth + 6, 18)
                 ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - r, y: origin.y - r, width: 2 * r, height: 2 * r)),
-                           with: .color(.white), lineWidth: 1.5)
+                           with: .color(Theme.accent), lineWidth: 1.5)
             }
             let labelPos = CGPoint(x: origin.x - d.dx * 20, y: origin.y - d.dy * 20)
             guard overlay.showLightLabels else { continue }
             let text = marker.label ?? (light.kind.emits && !light.power.isEmpty ? "\(light.name) · \(light.power)" : light.name)
             labels.append(PlanLabel(text: Text(text).font(.poppins(.medium, 10))
-                                        .foregroundColor(light.kind.emits && on ? tint : Theme.textSecondary),
+                                        .foregroundColor(light.kind.emits && on ? Theme.textPrimary : Theme.textSecondary),
                                     anchor: labelPos, priority: .light))
         }
     }
@@ -568,7 +617,7 @@ struct PlanRenderer {
             }
             body.closeSubpath()
             ctx.fill(body, with: .color(Color(white: p.selected ? 0.75 : 0.55)))
-            ctx.stroke(body, with: .color(.black.opacity(0.6)), lineWidth: 1)
+            ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
             let hr = max(px(p.headRadius), 4)
             let head = CGRect(x: c.x - hr, y: c.y - hr, width: 2 * hr, height: 2 * hr)
             ctx.fill(Path(ellipseIn: head), with: .color(Color(red: p.skin.r, green: p.skin.g, blue: p.skin.b)))
@@ -581,13 +630,13 @@ struct PlanRenderer {
             ctx.fill(nose, with: .color(Color(red: p.skin.r, green: p.skin.g, blue: p.skin.b)))
             if p.selected {
                 let r = hw + 6
-                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(.white), lineWidth: 1.5)
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.accent), lineWidth: 1.5)
             }
             var parts: [String] = []
             if overlay.showPeopleLabels { parts.append(p.name) }
             if overlay.showMeterLabels, let reading = p.reading { parts.append(reading) }
             if !parts.isEmpty {
-                labels.append(PlanLabel(text: Text(parts.joined(separator: " · ")).font(.poppins(.medium, 10)).foregroundColor(.white),
+                labels.append(PlanLabel(text: Text(parts.joined(separator: " · ")).font(.poppins(.medium, 10)).foregroundColor(Theme.ink),
                                         anchor: CGPoint(x: c.x - d.dx * (hw + 12), y: c.y - d.dy * (hw + 12)), priority: .subject))
             }
         }
@@ -597,17 +646,17 @@ struct PlanRenderer {
         for m in overlay.meters {
             let c = s(m.position)
             let r: CGFloat = m.selected ? 8 : 6
-            ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(.white))
+            ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.ink))
             var cross = Path()
             cross.move(to: CGPoint(x: c.x - r - 4, y: c.y)); cross.addLine(to: CGPoint(x: c.x + r + 4, y: c.y))
             cross.move(to: CGPoint(x: c.x, y: c.y - r - 4)); cross.addLine(to: CGPoint(x: c.x, y: c.y + r + 4))
-            ctx.stroke(cross, with: .color(.white.opacity(0.7)), lineWidth: 1)
+            ctx.stroke(cross, with: .color(Theme.surface), lineWidth: 1)
             if m.selected {
-                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)), with: .color(.white), lineWidth: 1.5)
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)), with: .color(Theme.accent), lineWidth: 1.5)
             }
             guard overlay.showMeterLabels else { continue }
             labels.append(PlanLabel(text: Text(m.reading.isEmpty ? m.name : "\(m.name) · \(m.reading)").font(.poppins(.medium, 10))
-                                        .foregroundColor(m.onKey ? Color(red: 0.45, green: 0.85, blue: 0.55) : .white),
+                                        .foregroundColor(m.onKey ? Theme.success : Theme.ink),
                                     anchor: CGPoint(x: c.x, y: c.y + 18), priority: .subject))
         }
     }
@@ -670,13 +719,13 @@ struct PlanRenderer {
             var path = Path()
             path.move(to: a)
             path.addLine(to: b)
-            let color = m.live ? Color.white : Theme.accent
+            let color = m.live ? Theme.ink : Theme.accent
             ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 2, dash: m.live ? [6, 4] : []))
             for p in [a, b] {
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)), with: .color(color))
             }
             let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-            let text = Text(m.label).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundColor(.black)
+            let text = Text(m.label).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundColor(Theme.onAccent)
             let resolved = ctx.resolve(text)
             let sz = resolved.measure(in: CGSize(width: 300, height: 40))
             let bg = CGRect(x: mid.x - sz.width / 2 - 5, y: mid.y - sz.height / 2 - 3, width: sz.width + 10, height: sz.height + 6)
@@ -723,9 +772,9 @@ struct PlanRenderer {
         arrow.addLine(to: CGPoint(x: c.x - d.dx * 4, y: c.y - d.dy * 4))
         arrow.addLine(to: CGPoint(x: c.x - d.dx * 10 - side.dx * 8, y: c.y - d.dy * 10 - side.dy * 8))
         arrow.closeSubpath()
-        ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22, y: c.y - 22, width: 44, height: 44)), with: .color(.black.opacity(0.5)))
+        ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22, y: c.y - 22, width: 44, height: 44)), with: .color(Theme.overlay))
         ctx.fill(arrow, with: .color(Theme.danger))
-        ctx.draw(Text("N").font(.poppins(.medium, 10)).foregroundColor(.white),
+        ctx.draw(Text("N").font(.poppins(.medium, 10)).foregroundColor(Theme.ink),
                  at: CGPoint(x: c.x + d.dx * 27, y: c.y + d.dy * 27))
     }
 

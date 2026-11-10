@@ -12,9 +12,11 @@ struct RootView: View {
                 }
         }
         .fullScreenCover(item: $router.capture) { flow in
+            // Capture screens sit over the live camera, so they always use the night colours.
             CaptureFlowView(flow: flow)
                 .environmentObject(store)
                 .environmentObject(router)
+                .environment(\.colorScheme, .dark)
         }
         .onAppear {
             #if DEBUG

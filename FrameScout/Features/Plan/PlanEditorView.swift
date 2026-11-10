@@ -450,8 +450,8 @@ struct PlanEditorView: View {
                 .font(.system(size: 15, weight: .light))
                 .frame(width: 40, height: 40)
                 .foregroundStyle(.white)
-                .background(Color.black.opacity(0.55), in: Rectangle())
-                .overlay(Rectangle().stroke(.white.opacity(0.25), lineWidth: 0.5))
+                .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -552,7 +552,7 @@ struct PlanEditorView: View {
                     .lineLimit(3)
                     .minimumScaleFactor(0.8)
                     .padding(8)
-                    .background(Color.black.opacity(0.6), in: Rectangle())
+                    .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     // Below the Show bar, clear of the north arrow, and never blocks a tap.
                     .padding(.top, 52)
                     .padding(.horizontal, 44)
@@ -581,8 +581,8 @@ struct PlanEditorView: View {
                 }
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 10).frame(minHeight: 32)
-                .background(Color.black.opacity(0.65), in: Rectangle())
-                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+                .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(showInfoBar ? "Hide information layers" : "Show more information on the plan")
@@ -611,10 +611,10 @@ struct PlanEditorView: View {
     private func infoChip(_ text: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text).font(.fsLabel).tracking(Theme.tracking)
-                .foregroundStyle(on ? Color.black : Theme.textPrimary)
+                .foregroundStyle(on ? Theme.onAccent : Theme.textPrimary)
                 .padding(.horizontal, 10).frame(minHeight: 32)
-                .background(on ? Theme.accent : Color.black.opacity(0.65), in: Rectangle())
-                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+                .background(on ? Theme.accent : Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -638,7 +638,7 @@ struct PlanEditorView: View {
                 let entry = pair.element
                 Text(entry.0)
                     .font(.fsMicro)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Theme.onAccent)
                     .frame(minWidth: 30, minHeight: 18)
                     .background(PlanLuxMap.color(entry.1) ?? .clear)
             }
@@ -1167,8 +1167,8 @@ struct PlanEditorView: View {
                                 .font(.fsLabel).tracking(Theme.tracking)
                                 .padding(.horizontal, 12)
                                 .frame(minHeight: 40)
-                                .foregroundStyle(tool == t ? Color.black : Theme.textPrimary)
-                                .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: Rectangle())
+                                .foregroundStyle(tool == t ? Theme.onAccent : Theme.textPrimary)
+                                .background(tool == t ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .disabled(disabled)
@@ -1251,8 +1251,8 @@ struct PlanEditorView: View {
                 .font(.fsLabel).tracking(Theme.tracking)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
-                .foregroundStyle(selected ? Color.black : Theme.textPrimary)
-                .background(selected ? Theme.accent : Theme.surfaceRaised, in: Rectangle())
+                .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
+                .background(selected ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1420,7 +1420,7 @@ struct PlanEditorView: View {
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1497,7 +1497,7 @@ struct PlanEditorView: View {
                 }
                 Button("Save") { showSaveMeasurement = true }
                     .buttonStyle(HairlineButtonStyle(prominent: true))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Theme.onAccent)
             }
         }
         .padding()
@@ -1608,7 +1608,7 @@ struct PlanEditorView: View {
                 .foregroundStyle(Theme.textSecondary)
         }
         .padding()
-        .background(Color.black.opacity(0.6), in: Rectangle())
+        .background(Theme.overlay, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         .padding(.horizontal, 40)
         .allowsHitTesting(false)
     }

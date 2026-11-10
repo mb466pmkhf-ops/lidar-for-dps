@@ -39,7 +39,7 @@ struct CharacterPanel: View {
                 } label: {
                     Label("Light this person…", systemImage: "lightbulb.2")
                         .frame(maxWidth: .infinity, minHeight: 40)
-                        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                 }
                 .accessibilityHint("Places a starting lighting setup round this person, set for the camera's exposure")
             }
@@ -97,7 +97,7 @@ struct CharacterFields: View {
                     Button { update { $0.skinTone = tone } } label: {
                         Circle().fill(Color(red: c.r, green: c.g, blue: c.b))
                             .frame(width: 26, height: 26)
-                            .overlay(Circle().stroke(character.skinTone == tone ? Color.white : Color.clear, lineWidth: 2).padding(-3))
+                            .overlay(Circle().stroke(character.skinTone == tone ? Theme.accent : Color.clear, lineWidth: 2).padding(-3))
                             .frame(width: 34, height: 34)
                             .contentShape(Rectangle())
                     }

@@ -4,10 +4,10 @@ import SwiftUI
 /// entry screen needs bigger targets and clearer tools. Poppins at readable weights (scaled
 /// with Dynamic Type), a teal accent for things you can tap, rounded cards and more air.
 enum HomeStyle {
-    static let accent = Color(red: 0.30, green: 0.80, blue: 0.78)
-    static let card = Color(red: 0.11, green: 0.11, blue: 0.118)
-    static let cardRaised = Color(red: 0.17, green: 0.17, blue: 0.18)
-    static let corner: CGFloat = 10
+    static let accent = Theme.accent
+    static let card = Theme.surface
+    static let cardRaised = Theme.surfaceRaised
+    static let corner: CGFloat = 20
     static let sectionSpacing: CGFloat = 32
     static let minTap: CGFloat = 44
 
@@ -23,6 +23,7 @@ extension View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -60,6 +61,8 @@ struct HomeTile: View {
     var systemImage: String
     var prominent = false
     var disabled = false
+    /// Shorter tile for the secondary row.
+    var compact = false
     var action: () -> Void
 
     var body: some View {
@@ -68,24 +71,25 @@ struct HomeTile: View {
             VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: disabled ? "lock" : systemImage)
                     .font(.title2)
-                    .foregroundStyle(filled ? Color.black : (disabled ? Theme.textTertiary : HomeStyle.accent))
+                    .foregroundStyle(filled ? Theme.onAccent : (disabled ? Theme.textTertiary : HomeStyle.accent))
                     .frame(height: 30)
                 Text(title)
                     .font(HomeStyle.headline)
-                    .foregroundStyle(filled ? Color.black : Theme.textPrimary)
+                    .foregroundStyle(filled ? Theme.onAccent : Theme.textPrimary)
                     .multilineTextAlignment(.leading)
                 if let subtitle {
                     Text(subtitle)
                         .font(HomeStyle.footnote)
-                        .foregroundStyle(filled ? Color.black.opacity(0.7) : Theme.textTertiary)
+                        .foregroundStyle(filled ? Theme.onAccent.opacity(0.85) : Theme.textTertiary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: compact ? 104 : 124, alignment: .topLeading)
             .background(filled ? HomeStyle.accent : HomeStyle.card,
                         in: RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous).stroke(filled ? Color.clear : Theme.hairline, lineWidth: 1))
             .opacity(disabled ? 0.6 : 1)
             .contentShape(RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous))
         }

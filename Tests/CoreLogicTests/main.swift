@@ -533,5 +533,26 @@ do {
     check(false, "stands: \(error)")
 }
 
+// MARK: Rooms drawn by hand
+do {
+    var box = DrawnRoom()
+    box.length = 6.2; box.width = 4.8; box.ceiling = 2.74; box.windows = 2
+    let bp = box.plan
+    check(bp.walls.count == 4 && bp.windows.count == 2 && bp.doors.count == 1, "drawn box has four walls, its windows and a door")
+    check(abs(bp.bounds.width - 6.2) < 1e-9 && abs(bp.bounds.depth - 4.8) < 1e-9, "drawn box keeps the typed sizes")
+    check(bp.windows.allSatisfy { $0.a.z == -2.4 && $0.a.x > -3.1 && $0.b.x < 3.1 }, "windows sit inside the top wall")
+    var ell = DrawnRoom()
+    ell.shape = .l; ell.length = 8; ell.width = 6; ell.windows = 0; ell.door = false
+    check(ell.plan.walls.count == 6 && abs(ell.floorArea - 36) < 1e-9, "drawn L has six walls and three quarters of the area")
+    var silly = DrawnRoom()
+    silly.length = 0; silly.width = .nan; silly.ceiling = 99; silly.windows = 9
+    check(silly.normalised.length == 1.5 && silly.normalised.width == 1.5 && silly.normalised.ceiling == 20 && silly.normalised.windows == 4, "drawn room clamps silly sizes")
+    let st = box.stats
+    check(st.provenance(of: .roomSize, kind: .room) == .manual && st.provenance(of: .ceilingHeight, kind: .room) == .manual, "typed sizes are manual, not measured")
+    check(ScanStats().provenance(of: .roomSize, kind: .room) == .measured, "scanned rooms still read as measured")
+    let data = try JSONEncoder().encode(ScanStats())
+    check((try JSONDecoder().decode(ScanStats.self, from: data)).enteredByHand == nil, "older scan stats decode without the new field")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

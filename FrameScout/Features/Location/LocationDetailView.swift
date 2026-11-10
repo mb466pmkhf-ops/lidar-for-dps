@@ -242,7 +242,7 @@ struct LocationDetailView: View {
                 SectionHeader(title: "Plan", systemImage: "map")
                 FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
                     .frame(height: 260)
-                    .background(Theme.background, in: Rectangle())
+                    .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     .onTapGesture { router.open(.lighting(ref)) }
                 Text("Tap to open the lighting plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
@@ -471,8 +471,8 @@ struct SmallTool: View {
                     .foregroundStyle(Theme.textPrimary)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .background(Theme.surface, in: Rectangle())
-            .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
             .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
