@@ -554,5 +554,16 @@ do {
     check((try JSONDecoder().decode(ScanStats.self, from: data)).enteredByHand == nil, "older scan stats decode without the new field")
 }
 
+// MARK: Reading units (T-stop by default)
+do {
+    let e = ExposureSettings()
+    check(ReadingUnit.tStop.text(lux: e.keyLux, exposure: e) == ExposureSettings.stopLabel(e.tStop), "key level reads as the set T-stop")
+    check(ReadingUnit.tStop.text(lux: e.keyLux * 2, exposure: e) == ExposureSettings.stopLabel(e.tStop * 2.0.squareRoot()), "double the light reads one stop higher")
+    check(ReadingUnit.stops.text(lux: e.keyLux * 2, exposure: e) == "+1" && ReadingUnit.stops.text(lux: e.keyLux, exposure: e) == "±0", "stops over or under the set stop")
+    check(ReadingUnit.lux.text(lux: 536, exposure: e) == "536 lx", "lux readings unchanged")
+    check(ReadingUnit.footCandles.text(lux: 1076.4, exposure: e) == "100 fc", "foot-candles are lux / 10.764")
+    check(ReadingUnit(rawValue: "tStop") == .tStop && ReadingUnit.allCases.first == .tStop, "T-stop is the first, default unit")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

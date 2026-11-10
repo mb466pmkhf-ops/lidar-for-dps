@@ -2,6 +2,18 @@ import SwiftUI
 
 /// Bottom panel for a stand-in person: type, height, build, skin tone and posture in one place.
 struct CharacterPanel: View {
+    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
+
+    private func faceText(_ reading: LightingCalculator.Reading) -> String {
+        let value = readingUnit.text(lux: reading.lux, exposure: exposure)
+        switch readingUnit {
+        case .tStop: return "≈ \(value)"
+        case .stops: return "≈ \(value) at \(ExposureSettings.stopLabel(exposure.tStop))"
+        case .lux, .footCandles:
+            return "≈ \(value) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: reading.lux))) at \(ExposureSettings.stopLabel(exposure.tStop))"
+        }
+    }
+
     let character: PrevisCharacter
     var reading: (lux: Double, stops: Double)?
     var exposure = ExposureSettings()
@@ -24,7 +36,7 @@ struct CharacterPanel: View {
             if let reading {
                 HStack {
                     Text("FACE").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-                    Text("≈ \(LuxFormat.lux(reading.lux)) · \(ExposureSettings.stopsDelta(reading.stops)) at \(ExposureSettings.stopLabel(exposure.tStop))")
+                    Text(faceText(reading))
                         .font(.fsMono)
                     Spacer()
                     ProvenanceBadge(provenance: .estimated)

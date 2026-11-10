@@ -3,7 +3,7 @@ import UIKit
 
 /// "Big buttons, daylight" (Docs/DECISIONS.md D-008): a light screen that reads in the sun, large
 /// rounded controls and one blue accent. Every colour has a night partner: a dim, near-black screen
-/// with a soft red accent, so the phone puts as little light as possible into a dark set. SwiftUI
+/// with a dim green-teal accent, so the phone puts as little light as possible into a dark set. SwiftUI
 /// picks the partner from the colour scheme, which the app sets from the Night switch
 /// (`Theme.nightKey`). Capture screens over the camera always use the night set.
 enum Theme {
@@ -20,7 +20,7 @@ enum Theme {
 
     static let uiBackground = ui(hex(0xF3F4F1), hex(0x000000))
     static let uiText = ui(hex(0x14181A), hex(0xB9B2AE))
-    static let uiAccent = ui(hex(0x1F5FD1), hex(0xB5483F))
+    static let uiAccent = ui(hex(0x1F5FD1), hex(0x4F9A8C))
 
     static let background = Color(uiBackground)
     static let surface = pair(hex(0xFFFFFF), hex(0x0A0A0A))

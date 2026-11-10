@@ -212,6 +212,7 @@ struct PlanEditorView: View {
     @State private var fittedBounds: PlanRect?
     /// Information layers switched on above the essentials ("beams,readings"…).
     @AppStorage("plan.infoLayers") private var infoLayersRaw = ""
+    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
     @State private var showInfoBar = false
 
     private enum DragTarget: Equatable {
@@ -375,9 +376,22 @@ struct PlanEditorView: View {
         return LightingAnalysis(context: context, readings: readings, scene: scene)
     }
 
+    /// One line under the exposure summary saying what the readings mean in the chosen unit.
+    private var keyLine: String {
+        switch readingUnit {
+        case .tStop: return "Readings are the stop a light meter would show"
+        case .stops: return "Readings are over or under \(ExposureSettings.stopLabel(exposure.tStop))"
+        case .lux, .footCandles: return "Key ≈ \(readingUnit.text(lux: exposure.keyLux, exposure: exposure)) for a correct exposure"
+        }
+    }
+
     private func readingText(_ r: LightingCalculator.Reading?) -> String? {
         guard let r, !sceneLights.isEmpty else { return nil }
-        return "\(LuxFormat.lux(r.lux)) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: r.lux)))"
+        let value = readingUnit.text(lux: r.lux, exposure: exposure)
+        switch readingUnit {
+        case .tStop, .stops: return value
+        case .lux, .footCandles: return "\(value) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: r.lux)))"
+        }
     }
 
     /// False-colour map of stops against key at face height (1.5 m), metered towards camera.
@@ -1442,7 +1456,7 @@ struct PlanEditorView: View {
                     Image(systemName: "camera.aperture").foregroundStyle(Theme.textSecondary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(exposure.summary).font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
-                        Text("Key ≈ \(LuxFormat.lux(exposure.keyLux)) for a correct exposure").font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                        Text(keyLine).font(.fsCaption).foregroundStyle(Theme.textSecondary)
                     }
                     Spacer()
                     Image(systemName: "chevron.right").font(.fsCaption).foregroundStyle(Theme.textTertiary)
@@ -1456,6 +1470,21 @@ struct PlanEditorView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("READINGS").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        Menu {
+                            Picker("Show readings as", selection: $readingUnit) {
+                                ForEach(ReadingUnit.allCases) { unit in Text(unit.label).tag(unit) }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(readingUnit.label)
+                                Image(systemName: "chevron.up.chevron.down")
+                            }
+                            .font(.fsCaption)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 32)
+                            .background(Theme.surfaceRaised, in: Capsule())
+                        }
+                        .accessibilityLabel("Show readings as \(readingUnit.label)")
                         Spacer()
                         ProvenanceBadge(provenance: .estimated)
                     }
