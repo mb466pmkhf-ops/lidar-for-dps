@@ -124,7 +124,7 @@ struct CompareView: View {
             }
         }
         .padding(.horizontal, 8)
-        .background(Theme.surface, in: Rectangle())
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
     }
 
     private func cell<Content: View>(_ row: Int, @ViewBuilder content: () -> Content) -> some View {

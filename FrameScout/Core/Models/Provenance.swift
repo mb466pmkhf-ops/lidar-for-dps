@@ -68,6 +68,7 @@ enum ScanFigure {
 
 extension ScanStats {
     func provenance(of figure: ScanFigure, kind: ScanKind) -> Provenance {
+        if enteredByHand == true { return .manual }
         switch figure {
         case .roomSize:
             // RoomPlan: extents of detected walls. Mesh: bounding box of everything seen, clutter included.

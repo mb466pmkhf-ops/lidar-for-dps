@@ -72,7 +72,7 @@ struct ExportView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(HairlineButtonStyle(prominent: true))
-                .foregroundStyle(.black)
+                .foregroundStyle(Theme.onAccent)
                 .disabled(busy || selectedProject == nil)
 
                 Button(action: exportBackup) {

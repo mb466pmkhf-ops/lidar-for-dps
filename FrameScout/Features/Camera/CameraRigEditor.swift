@@ -16,9 +16,9 @@ struct LensPicker: View {
                             Text("\(Int(f))")
                                 .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .frame(minWidth: 44, minHeight: 40)
-                                .foregroundStyle(selected ? Color.black : Theme.textPrimary)
+                                .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
                                 .background(selected ? Theme.accent : Theme.surfaceRaised,
-                                            in: Rectangle())
+                                            in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .id(f)
@@ -32,9 +32,9 @@ struct LensPicker: View {
                             .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 40)
-                            .foregroundStyle(isCustom ? Color.black : Theme.textPrimary)
+                            .foregroundStyle(isCustom ? Theme.onAccent : Theme.textPrimary)
                             .background(isCustom ? Theme.accent : Theme.surfaceRaised,
-                                        in: Rectangle())
+                                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -94,7 +94,7 @@ struct SensorPicker: View {
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
             }
             .padding(10)
-            .background(Theme.surfaceRaised, in: Rectangle())
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
     }
 }
@@ -188,6 +188,13 @@ struct CameraRigForm: View {
             }
             SliderRow(title: "Pan", value: $rig.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
             SliderRow(title: "Tilt", value: $rig.tilt, range: -60...60, step: 1, format: { String(format: "%+.0f°", $0) })
+            Picker("Support", selection: $rig.support) {
+                Text("Automatic · \(CameraSupport.automatic(height: rig.height).label)").tag(CameraSupport?.none)
+                ForEach(CameraSupport.allCases) { Text($0.label).tag(CameraSupport?.some($0)) }
+            }
+            if let w = rig.supportWarning {
+                Text(w).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+            }
             if let ceilingHeight, rig.height > ceilingHeight - 0.25 {
                 Label("Less than 25 cm to the ceiling", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Theme.accent)
