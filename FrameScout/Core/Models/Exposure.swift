@@ -79,7 +79,7 @@ struct ExposureSettings: Codable, Hashable {
 
     // MARK: Formatting
 
-    static let fullStops: [Double] = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64]
+    static let fullStops: [Double] = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64, 90, 128, 180, 256]
 
     /// "T2.8", "T2.8 +⅓", "T4 −⅓": nearest third of a stop, named from the nearest full stop.
     static func stopLabel(_ n: Double, prefix: String = "T") -> String {
@@ -91,7 +91,9 @@ struct ExposureSettings: Codable, Hashable {
         if fullIndex >= 0 && fullIndex < fullStops.count {
             name = trim(fullStops[fullIndex])
         } else {
-            name = String(format: "%.2g", pow(2, Double(fullIndex) / 2))
+            let v = pow(2, Double(fullIndex) / 2)
+            // Under T1: two decimals, rounded half up the same way as the web ("T0.13", not "T0.12").
+            name = v < 1 ? String(format: "%g", (v * 100).rounded() / 100) : String(Int(v.rounded()))
         }
         switch offset {
         case 1: return "\(prefix)\(name) +⅓"
