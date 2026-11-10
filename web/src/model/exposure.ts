@@ -14,7 +14,7 @@ export const keyLux = (e: ExposureSettings) => luxForTStop(e, e.tStop);
 export const tStopForLux = (e: ExposureSettings, lux: number) => Math.sqrt(Math.max(lux, 1e-6) * e.iso * exposureTime(e) / (METER_CALIBRATION * Math.pow(2, e.ndStops)));
 export const stopsForLux = (e: ExposureSettings, lux: number) => Math.log2(Math.max(lux, 1e-6) / keyLux(e));
 
-export const fullStops = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64];
+export const fullStops = [1, 1.4, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64, 90, 128, 180, 256];
 export const trim = (v: number) => (Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(1));
 
 export function stopLabel(n: number, prefix = 'T'): string {
@@ -22,7 +22,8 @@ export function stopLabel(n: number, prefix = 'T'): string {
   const thirds = Math.round(6 * Math.log2(n));
   const fullIndex = Math.round(thirds / 3);
   const offset = thirds - fullIndex * 3;
-  const name = fullIndex >= 0 && fullIndex < fullStops.length ? trim(fullStops[fullIndex]) : Number(Math.pow(2, fullIndex / 2).toPrecision(2)).toString();
+  const v = Math.pow(2, fullIndex / 2);
+  const name = fullIndex >= 0 && fullIndex < fullStops.length ? trim(fullStops[fullIndex]) : v < 1 ? String(Math.round(v * 100) / 100) : String(Math.round(v)); // same rounding as Swift
   return offset === 1 ? `${prefix}${name} +⅓` : offset === -1 ? `${prefix}${name} −⅓` : `${prefix}${name}`;
 }
 

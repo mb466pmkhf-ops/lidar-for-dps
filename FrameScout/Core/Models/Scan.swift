@@ -71,6 +71,8 @@ struct ScanStats: Codable, Hashable {
     var completeness: Double? = nil
     var meshVertexCount: Int = 0
     var meshFaceCount: Int = 0
+    /// True for a room drawn by hand: every size was typed in, so figures are manual, not measured.
+    var enteredByHand: Bool? = nil
 }
 
 // MARK: - Top-down plan (derived from a scan, renderer-agnostic)

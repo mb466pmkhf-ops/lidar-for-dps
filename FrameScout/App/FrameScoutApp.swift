@@ -6,6 +6,7 @@ struct FrameScoutApp: App {
     @StateObject private var store = ProjectStore()
     @StateObject private var router = AppRouter()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(Theme.nightKey) private var night = false
 
     init() {
         Self.registerBundledFonts()
@@ -29,7 +30,7 @@ struct FrameScoutApp: App {
             RootView()
                 .environmentObject(store)
                 .environmentObject(router)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(night ? .dark : .light)
                 .tint(Theme.accent)
                 .font(.fsBody)
                 .task { CloudSync.shared.attach(store) }

@@ -620,7 +620,7 @@ struct ViewfinderView: View {
             }
         }
         .statusBarHidden()
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
         .onChange(of: model.settings) { _, _ in model.updateZoom(imageRect: imageRect) }

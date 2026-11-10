@@ -11,6 +11,10 @@ import Foundation
 //   Modifiers and filters scale that flux and change the shape; the dimmer scales it linearly.
 //   Peak intensity follows from flux ÷ the beam's solid-angle factor, so a flooded beam is dimmer
 //   on axis than a spotted one with the same flux.
+// - Focusing a fresnel lens (spot ↔ flood) does not keep the flux: spotted, the lens catches less of
+//   the lamp. Beam flux scales as (beam ÷ full flood)^0.85, fitted to published spot/medium/flood
+//   tables of 650 W–2 kW studio fresnels (spot gains about 5× on axis over flood, not the ~13× a
+//   constant flux would give).
 // - Electrical watts only drive the power-draw figure. They never set output.
 
 /// How a unit spreads its light. Beam angles follow the photometric convention: the full angle at
@@ -188,6 +192,8 @@ struct LightModifier: Identifiable, Hashable {
     /// New emitting face size (m), for softboxes and lanterns.
     var size: Double? = nil
     var allowsBarnDoors: Bool = false
+    /// Focuses like a fresnel lens: loses flux when spotted (see `Photometry.focusFactor`).
+    var focusesLikeFresnel: Bool = false
 }
 
 /// Gels, diffusion and ND on the unit. Transmission values are typical published figures for
@@ -231,30 +237,36 @@ enum FixtureLibrary {
 
     /// Generic units. Reference readings are estimates for a typical unit of each class,
     /// derived from typical efficacy and optics; replace them with the maker's data when you have it.
+    /// Checked 2026-11 against published tables (rounded, kept a little under the brightest maker):
+    /// tungsten fresnels against 650 W / 1 kW / 2 kW studio fresnels at flood (≈1,190 / 2,250 /
+    /// 3,830 lx at 3 m); COBs against the bare-emitter readings of 600 W and 1200 W daylight COBs
+    /// (2,600 and 6,380 lx at 3 m), which the model reproduces within ⅓ stop through `cob-bare`;
+    /// HMIs against 1.8 kW and 4 kW open-face PARs at 30° (≈39,000 / 72,000 lx at 3 m).
+    /// The 100 W COB is scaled from the 300 W one by power (no table checked).
     static let profiles: [FixtureProfile] = [
         FixtureProfile(id: "cob-1200-d", name: "1200 W COB LED · daylight", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 1200, color: .fixed(5600), distribution: .beam, defaultBeam: 55,
-                       reference: ref(9000, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.25, emitterHeight: 0.25,
+                       reference: ref(20000, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.25, emitterHeight: 0.25,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-600-d", name: "600 W COB LED · daylight", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 600, color: .fixed(5600), distribution: .beam, defaultBeam: 55,
-                       reference: ref(4500, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.2, emitterHeight: 0.2,
+                       reference: ref(9000, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.2, emitterHeight: 0.2,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-600-bi", name: "600 W COB LED · bi-colour", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 600, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 55,
-                       reference: ref(3600, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.2, emitterHeight: 0.2,
+                       reference: ref(6500, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.2, emitterHeight: 0.2,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-300-d", name: "300 W COB LED · daylight", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 300, color: .fixed(5600), distribution: .beam, defaultBeam: 55,
-                       reference: ref(2200, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.18, emitterHeight: 0.18,
+                       reference: ref(3500, at: 3, beam: 55, "Standard 55° reflector"), emitterWidth: 0.18, emitterHeight: 0.18,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-300-bi", name: "300 W COB LED · bi-colour", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 300, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 55,
-                       reference: ref(1800, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.18, emitterHeight: 0.18,
+                       reference: ref(2800, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.18, emitterHeight: 0.18,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-100-bi", name: "100 W COB LED · bi-colour", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 100, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 55,
-                       reference: ref(650, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.12, emitterHeight: 0.12,
+                       reference: ref(900, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.12, emitterHeight: 0.12,
                        defaultModifierID: "reflector-55"),
         FixtureProfile(id: "fresnel-led-200-bi", name: "200 W LED fresnel · bi-colour", category: .fresnel, kind: .fresnel, technology: .led,
                        ratedPower: 200, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 50, beamRange: 15...50,
@@ -298,19 +310,19 @@ enum FixtureLibrary {
                        hasBarnDoors: true, minOutput: 0.5),
         FixtureProfile(id: "hmi-4000-par", name: "4K HMI PAR", category: .hmi, kind: .hmi, technology: .hmi,
                        ratedPower: 4000, color: .fixed(5600), distribution: .beam, defaultBeam: 30,
-                       reference: ref(90000, at: 3, beam: 30, "Medium flood lens"), emitterWidth: 0.55, emitterHeight: 0.55,
+                       reference: ref(75000, at: 3, beam: 30, "Medium flood lens"), emitterWidth: 0.55, emitterHeight: 0.55,
                        hasBarnDoors: true, minOutput: 0.5),
         FixtureProfile(id: "tungsten-650", name: "650 W tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
                        ratedPower: 650, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
-                       reference: ref(600, at: 3, beam: 55, "Full flood"), emitterWidth: 0.15, emitterHeight: 0.15,
+                       reference: ref(1200, at: 3, beam: 55, "Full flood"), emitterWidth: 0.15, emitterHeight: 0.15,
                        hasBarnDoors: true),
         FixtureProfile(id: "tungsten-1k", name: "1K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
                        ratedPower: 1000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
-                       reference: ref(950, at: 3, beam: 55, "Full flood"), emitterWidth: 0.2, emitterHeight: 0.2,
+                       reference: ref(2250, at: 3, beam: 55, "Full flood"), emitterWidth: 0.2, emitterHeight: 0.2,
                        hasBarnDoors: true),
         FixtureProfile(id: "tungsten-2k", name: "2K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
                        ratedPower: 2000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
-                       reference: ref(1900, at: 3, beam: 55, "Full flood"), emitterWidth: 0.25, emitterHeight: 0.25,
+                       reference: ref(3800, at: 3, beam: 55, "Full flood"), emitterWidth: 0.25, emitterHeight: 0.25,
                        hasBarnDoors: true),
         FixtureProfile(id: "lantern-300-bi", name: "LED lantern / space light · bi-colour (≈300 W)", category: .spaceLight, kind: .spaceLight, technology: .led,
                        ratedPower: 300, color: .biColour(2700, 6500), distribution: .omni, defaultBeam: 360,
@@ -333,7 +345,7 @@ enum FixtureLibrary {
         LightModifier(id: "cob-bare", name: "Bare (no reflector)", appliesTo: [.cob], transmission: 1.3,
                       distribution: .lambertian),
         LightModifier(id: "fresnel-attachment", name: "Fresnel attachment (12–45°)", appliesTo: [.cob], transmission: 0.55,
-                      distribution: .beam, beam: 45, beamRange: 12...45, allowsBarnDoors: true),
+                      distribution: .beam, beam: 45, beamRange: 12...45, allowsBarnDoors: true, focusesLikeFresnel: true),
         LightModifier(id: "projector", name: "Spot projector (19–36°)", appliesTo: [.cob], transmission: 0.25,
                       distribution: .beam, beam: 26, beamRange: 19...36),
         LightModifier(id: "softbox-90", name: "Softbox 90 cm", appliesTo: [.cob, .fresnel, .hmi, .tungsten], transmission: 0.5,
@@ -348,7 +360,7 @@ enum FixtureLibrary {
                       distribution: .beam, beam: 40, allowsBarnDoors: true),
         LightModifier(id: "panel-softbox", name: "Panel softbox", appliesTo: [.panel], transmission: 0.6,
                       distribution: .lambertian, size: 0.6),
-        LightModifier(id: "par-spot", name: "Spot lens (12°)", appliesTo: [.hmi], transmission: 1,
+        LightModifier(id: "par-spot", name: "Spot lens (12°)", appliesTo: [.hmi], transmission: 0.8,
                       distribution: .beam, beam: 12, allowsBarnDoors: true),
         LightModifier(id: "par-wide", name: "Wide flood lens (50°)", appliesTo: [.hmi], transmission: 0.95,
                       distribution: .beam, beam: 50, allowsBarnDoors: true),
@@ -371,7 +383,7 @@ enum FixtureLibrary {
         LightFilter(id: "nd-6", name: "ND 0.6 (2 stops)", transmission: 0.25),
         LightFilter(id: "nd-9", name: "ND 0.9 (3 stops)", transmission: 0.125),
         LightFilter(id: "diff-light", name: "Light diffusion (opal / ¼ frost)", transmission: 0.8, diffusion: .light),
-        LightFilter(id: "diff-medium", name: "Medium diffusion (½ white)", transmission: 0.55, diffusion: .medium),
+        LightFilter(id: "diff-medium", name: "Medium diffusion (½ white)", transmission: 0.6, diffusion: .medium),
         LightFilter(id: "diff-heavy", name: "Heavy diffusion (full white)", transmission: 0.36, diffusion: .heavy),
     ]
 
@@ -473,6 +485,15 @@ enum Photometry {
         }
     }
 
+    /// Exponent of the fresnel focus loss: beam flux ∝ (beam ÷ full flood)^k.
+    static let fresnelFocusExponent = 0.85
+
+    /// Fraction of the full-flood beam flux a fresnel lens passes at `beam` (1 at full flood).
+    static func focusFactor(beam: Double, range: ClosedRange<Double>) -> Double {
+        let b = min(max(beam, range.lowerBound), range.upperBound)
+        return pow(b / range.upperBound, fresnelFocusExponent)
+    }
+
     /// Mired arithmetic for gels.
     static func shifted(kelvin: Double, mired: Double) -> Double {
         let m = 1_000_000 / max(kelvin, 1000) + mired
@@ -539,6 +560,10 @@ extension LightFixture {
                                                   emitterRadius: refRadius, tubeLength: p.emitterWidth)
         let refPeak = reference.lux / max(refFactor, 1e-9)
         var flux = refPeak * refDistribution.solidAngleFactor(beamAngle: refBeam)
+        // A fresnel's own reading taken spotted in → the flux at full flood.
+        if refModifier == nil, let r = p.beamRange, refDistribution == .beam {
+            flux /= Photometry.focusFactor(beam: refBeam, range: r)
+        }
 
         // 2. Modifier: shape, size and loss relative to the reference configuration.
         let modifier = modifierItem
@@ -556,6 +581,12 @@ extension LightFixture {
             beam = modifier?.beam ?? p.defaultBeam
         }
         if distribution != .beam { beam = distribution.nominalBeam ?? beam }
+        // Spotting a fresnel lens loses flux.
+        if distribution == .beam, let range {
+            if modifier?.focusesLikeFresnel == true || (modifier == nil && p.beamRange != nil) {
+                flux *= Photometry.focusFactor(beam: beam, range: range)
+            }
+        }
 
         // 3. Filters: transmission, colour shift, diffusion.
         var kelvin = p.color.isAdjustable ? min(max(colorTemperature, p.color.minKelvin), p.color.maxKelvin) : p.color.minKelvin

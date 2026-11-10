@@ -16,9 +16,9 @@ struct LensPicker: View {
                             Text("\(Int(f))")
                                 .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .frame(minWidth: 44, minHeight: 40)
-                                .foregroundStyle(selected ? Color.black : Theme.textPrimary)
+                                .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
                                 .background(selected ? Theme.accent : Theme.surfaceRaised,
-                                            in: Rectangle())
+                                            in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .id(f)
@@ -32,9 +32,9 @@ struct LensPicker: View {
                             .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 40)
-                            .foregroundStyle(isCustom ? Color.black : Theme.textPrimary)
+                            .foregroundStyle(isCustom ? Theme.onAccent : Theme.textPrimary)
                             .background(isCustom ? Theme.accent : Theme.surfaceRaised,
-                                        in: Rectangle())
+                                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -94,7 +94,7 @@ struct SensorPicker: View {
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
             }
             .padding(10)
-            .background(Theme.surfaceRaised, in: Rectangle())
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
     }
 }

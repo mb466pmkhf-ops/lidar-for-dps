@@ -237,6 +237,23 @@ final class ProjectStore: ObservableObject {
         flush()
     }
 
+    /// Saves a room drawn by hand as a new location: a scan record with only a plan, no mesh.
+    @discardableResult
+    func addDrawnRoom(_ room: DrawnRoom, name: String, to projectID: UUID) -> LocationRef? {
+        guard let ref = addLocation(to: projectID, name: name.isEmpty ? "New room" : name) else { return nil }
+        let record = room.scanRecord
+        StoragePaths.ensureDirectory(StoragePaths.scanDir(ref, scanID: record.id))
+        do {
+            try JSONCoding.encoder.encode(room.plan).write(to: StoragePaths.scanFile(ref, scanID: record.id, .plan))
+        } catch {
+            lastError = "Couldn't save the room: \(error.localizedDescription)"
+            deleteLocation(ref)
+            return nil
+        }
+        addScan(record, to: ref)
+        return ref
+    }
+
     func deleteScan(_ scanID: UUID, from ref: LocationRef) {
         try? fm.removeItem(at: StoragePaths.scanDir(ref, scanID: scanID))
         planCache[scanID] = nil

@@ -147,6 +147,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
     const sol = solveOutput(l, target, m.point, m.normal, p.lights, p.plan, p.windowTransmission);
     if (sol.kind === 'output') set({ dimmer: Math.round(sol.output * 100) / 100, isOn: true });
     else alert(sol.kind === 'tooDim' ? `Even at full this unit gives about ${fmtLux(sol.maxLux)} there.${sol.suggestedDistance ? ` Move it to about ${metres(sol.suggestedDistance)} away.` : ''}`
+      : sol.kind === 'atMinimum' ? `At its lowest (${Math.round(sol.output * 100)} %) this unit still gives about ${fmtLux(sol.lux)} there. Move it back, or add ND or diffusion.`
       : sol.kind === 'othersTooBright' ? `The other units already give about ${fmtLux(sol.othersLux)} there.` : "This unit doesn't reach that point.");
   };
 

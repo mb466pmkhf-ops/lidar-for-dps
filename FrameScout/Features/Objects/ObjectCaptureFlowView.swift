@@ -191,7 +191,7 @@ struct ObjectCaptureFlowView: View {
                 capture
             }
         }
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
         .statusBarHidden(model.step != .intro)
         .confirmationDialog("Discard this object scan?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard", role: .destructive) {

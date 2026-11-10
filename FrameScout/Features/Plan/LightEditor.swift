@@ -29,6 +29,8 @@ struct LightingContext {
         case .tooDim(let maxLux, let d):
             let move = d.map { " Move it to about \(UnitsFormatter.distance($0)) away, or use a brighter unit." } ?? ""
             return "Even at full it gives \(LuxFormat.lux(maxLux)) here.\(move)"
+        case .atMinimum(let o, let lux):
+            return "At its lowest (\(Int((o * 100).rounded())) %) it still gives \(LuxFormat.lux(lux)) here. Move it back, or add ND or diffusion."
         case .othersTooBright(let others):
             return "The other units already give \(LuxFormat.lux(others)) here. Turn them down first."
         case .noContribution:
@@ -38,12 +40,7 @@ struct LightingContext {
 }
 
 enum LuxFormat {
-    static func lux(_ v: Double) -> String {
-        if v >= 10_000 { return String(format: "%.0fk lx", v / 1000) }
-        if v >= 1000 { return String(format: "%.1fk lx", v / 1000) }
-        if v >= 10 { return "\(Int(v.rounded())) lx" }
-        return String(format: "%.1f lx", v)
-    }
+    static func lux(_ v: Double) -> String { ReadingUnit.luxText(v) }
 
     static func watts(_ w: Double) -> String {
         w >= 1000 ? String(format: "%.2f kW", w / 1000) : "\(Int(w.rounded())) W"
@@ -54,6 +51,7 @@ enum LuxFormat {
 /// Everything else is in Details.
 struct LightPanel: View {
     let light: LightFixture
+    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
     var context = LightingContext()
     let update: (@escaping (inout LightFixture) -> Void) -> Void
     var onDetails: () -> Void
@@ -164,7 +162,19 @@ struct LightPanel: View {
         }
     }
 
-    /// This unit's share of the reading where it matters most, in lux and stops.
+    private func readoutText(own: Double, total: Double, stops: Double) -> String {
+        let e = context.exposure
+        switch readingUnit {
+        case .tStop:
+            return "≈ \(readingUnit.text(lux: total, exposure: e)) · this light alone \(readingUnit.text(lux: own, exposure: e))"
+        case .stops:
+            return "≈ \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
+        case .lux, .footCandles:
+            return "≈ \(readingUnit.text(lux: own, exposure: e)) of \(readingUnit.text(lux: total, exposure: e)) · \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
+        }
+    }
+
+    /// This unit's share of the reading where it matters most, in the chosen readings unit.
     @ViewBuilder
     private var readout: some View {
         if let p = context.primaryMeter(for: light) {
@@ -172,7 +182,7 @@ struct LightPanel: View {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AT \(p.meter.name.uppercased())").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary).lineLimit(1)
-                    Text("≈ \(LuxFormat.lux(p.own)) of \(LuxFormat.lux(p.total)) · \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(context.exposure.tStop))")
+                    Text(readoutText(own: p.own, total: p.total, stops: stops))
                         .font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 4)
@@ -285,7 +295,7 @@ struct KelvinChips: View {
                         .padding(.horizontal, 10)
                         .frame(minHeight: 34)
                         .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-                        .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])
