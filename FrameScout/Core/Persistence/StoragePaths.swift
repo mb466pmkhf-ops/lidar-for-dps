@@ -6,6 +6,7 @@ import Foundation
 ///       Projects/<projectID>/project.json
 ///       Projects/<projectID>/Locations/<locationID>/Photos/<photo>.jpg
 ///       Projects/<projectID>/Locations/<locationID>/Scans/<scanID>/{rooms.json, structure.json, plan.json, mesh.fsmesh, roomplan.usdz}
+///       Projects/<projectID>/Objects/<objectID>/{Images/, model.usdz, model.glb, thumbnail.jpg}
 ///       Exports/…            (generated packages, safe to delete)
 enum StoragePaths {
     static let projectFileName = "project.json"
@@ -55,6 +56,27 @@ enum StoragePaths {
 
     static func scanFile(_ ref: LocationRef, scanID: UUID, _ file: ScanFile) -> URL {
         scanDir(ref, scanID: scanID).appendingPathComponent(file.rawValue)
+    }
+
+    static func objectDir(_ projectID: UUID, objectID: UUID) -> URL {
+        projectDir(projectID)
+            .appendingPathComponent("Objects", isDirectory: true)
+            .appendingPathComponent(objectID.uuidString, isDirectory: true)
+    }
+
+    enum ObjectFile: String {
+        /// Object Capture input photos (HEIC + depth/gravity metadata). Re-processable on a Mac.
+        case images = "Images"
+        /// PhotogrammetrySession checkpoint; deleted once the model is built.
+        case checkpoint = "Checkpoint"
+        case usdz = "model.usdz"
+        case glb = "model.glb"
+        case thumbnail = "thumbnail.jpg"
+    }
+
+    static func objectFile(_ projectID: UUID, objectID: UUID, _ file: ObjectFile) -> URL {
+        objectDir(projectID, objectID: objectID).appendingPathComponent(file.rawValue,
+                                                                         isDirectory: file == .images || file == .checkpoint)
     }
 
     static func ensureDirectory(_ url: URL) {

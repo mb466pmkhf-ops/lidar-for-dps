@@ -7,7 +7,7 @@ on:
 
 jobs:
   ios-build:
-    name: iOS app (Xcode, unsigned device build)
+    name: iOS app (Xcode, unsigned Release build + IPA)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -21,12 +21,25 @@ jobs:
           xcodebuild build \
             -project FrameScout.xcodeproj \
             -scheme FrameScout \
-            -configuration Debug \
+            -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never|unused)|\*\* BUILD" || true
           grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+      - name: Package unsigned IPA (for SideStore / AltStore / re-signing)
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry ../FrameScout-unsigned.ipa Payload)
+          ls -la FrameScout-unsigned.ipa
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FrameScout-unsigned-ipa
+          path: FrameScout-unsigned.ipa
+          retention-days: 30
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -44,15 +57,27 @@ jobs:
           swift-version: "6.1"
       - name: Run core tests
         run: ./Tests/run_core_tests.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Web planner matches the Swift lighting maths
+        working-directory: web
+        run: |
+          npm ci
+          test -f /tmp/framescout-core-tests/parity-readings.json
+          test -f /tmp/framescout-core-tests/photometrics-matrix.json
+          PARITY_READINGS=/tmp/framescout-core-tests/parity-readings.json PHOTOMETRICS_MATRIX=/tmp/framescout-core-tests/photometrics-matrix.json npx vitest run
       - name: Validate GLB with the Khronos glTF validator
         run: |
           npm install --no-save gltf-validator@2.0.0-dev.3.10
           node -e "
             const v = require('gltf-validator'); const fs = require('fs');
-            v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/test.glb'))).then(r => {
-              console.log(JSON.stringify(r.issues, null, 1));
-              if (r.issues.numErrors > 0) process.exit(1);
-            });"
+            for (const f of ['test.glb', 'object.glb']) {
+              v.validateBytes(new Uint8Array(fs.readFileSync('/tmp/framescout-core-tests/' + f))).then(r => {
+                console.log(f, JSON.stringify(r.issues, null, 1));
+                if (r.issues.numErrors > 0) process.exit(1);
+              });
+            }"
       - name: Validate USD with Pixar USD
         run: |
           pip install --quiet usd-core

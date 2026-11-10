@@ -25,7 +25,7 @@ struct CompareView: View {
                                 Button { selections.append(nil) } label: {
                                     Label("Add", systemImage: "plus").frame(width: 80, height: 60)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(HairlineButtonStyle())
                             }
                         }
                     }
@@ -55,8 +55,9 @@ struct CompareView: View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: 56)
             ForEach(Array(Self.rowLabels.enumerated()), id: \.offset) { i, label in
-                Text(label.uppercased())
+                Text(label)
                     .font(.fsLabel)
+                    .tracking(Theme.tracking)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 96, height: Self.rowHeights[i], alignment: .leading)
             }
@@ -67,6 +68,8 @@ struct CompareView: View {
         let ref = selections[index]
         let location = ref.flatMap { store.location($0) }
         let stats = location?.primaryScan?.stats
+        let kind = location?.primaryScan?.kind ?? .room
+        func mark(_ value: String, _ figure: ScanFigure) -> String { stats?.marked(value, figure, kind: kind) ?? value }
         let letter = String(Character(UnicodeScalar(65 + index)!))
         return VStack(alignment: .leading, spacing: 0) {
             Menu {
@@ -80,8 +83,8 @@ struct CompareView: View {
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("LOCATION \(letter)").font(.fsLabel).foregroundStyle(Theme.accent)
-                    Text(location?.name ?? "Choose…").font(.headline).lineLimit(1)
+                    Text("Location \(letter)").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text(location?.name ?? "Choose…").font(.fsHeadline).lineLimit(1)
                 }
                 .frame(width: 180, height: 56, alignment: .leading)
             }
@@ -94,13 +97,13 @@ struct CompareView: View {
                 if let ref, let photo = location?.photos.first {
                     StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 400)
                         .frame(width: 180, height: 96).clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(Rectangle())
                 } else { placeholder("No photos") }
             }
-            cell(2) { value(UnitsFormatter.dimensions(stats?.width, stats?.length)) }
-            cell(3) { value(UnitsFormatter.area(stats?.floorArea), best: isBest(\.floorArea, higher: true, ref: ref)) }
-            cell(4) { value(UnitsFormatter.distance(stats?.ceilingHeight), best: isBest(\.ceilingHeight, higher: true, ref: ref)) }
-            cell(5) { value(UnitsFormatter.distance(stats?.minCeilingHeight)) }
+            cell(2) { value(mark(UnitsFormatter.dimensions(stats?.width, stats?.length), .roomSize)) }
+            cell(3) { value(mark(UnitsFormatter.area(stats?.floorArea), .floorArea), best: isBest(\.floorArea, higher: true, ref: ref)) }
+            cell(4) { value(mark(UnitsFormatter.distance(stats?.ceilingHeight), .ceilingHeight), best: isBest(\.ceilingHeight, higher: true, ref: ref)) }
+            cell(5) { value(mark(UnitsFormatter.distance(stats?.minCeilingHeight), .ceilingHeight)) }
             cell(6) { value(stats.map { "\($0.windowCount)" } ?? "—") }
             cell(7) { value(stats.map { "\($0.doorCount)" } ?? "—") }
             cell(8) { value(stats.map { "\($0.openingCount)" } ?? "—") }
@@ -109,19 +112,19 @@ struct CompareView: View {
             cell(11) { value(location.map { "\($0.shots.count)" } ?? "—") }
             cell(12) {
                 Text(location?.sortedTags.map(\.label).joined(separator: " · ") ?? "")
-                    .font(.system(size: 10, weight: .bold).width(.condensed))
+                    .font(.fsMicro).tracking(Theme.tracking)
                     .foregroundStyle(Theme.accent)
                     .lineLimit(4)
             }
             cell(13) {
                 Text(notesSummary(location))
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(7)
             }
         }
         .padding(.horizontal, 8)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
     }
 
     private func cell<Content: View>(_ row: Int, @ViewBuilder content: () -> Content) -> some View {
@@ -133,12 +136,12 @@ struct CompareView: View {
     private func value(_ text: String, best: Bool = false) -> some View {
         HStack(spacing: 4) {
             Text(text).font(.system(.body, design: .rounded).monospacedDigit().weight(.semibold))
-            if best { Image(systemName: "arrowtriangle.up.fill").font(.caption2).foregroundStyle(Theme.success) }
+            if best { Image(systemName: "arrowtriangle.up.fill").font(.fsMicro).foregroundStyle(Theme.success) }
         }
     }
 
     private func placeholder(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(Theme.textTertiary)
+        Text(text).font(.fsCaption).foregroundStyle(Theme.textTertiary)
     }
 
     private func isBest(_ key: KeyPath<ScanStats, Double?>, higher: Bool, ref: LocationRef?) -> Bool {

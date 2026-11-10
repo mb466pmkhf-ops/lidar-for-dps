@@ -8,16 +8,64 @@ struct CardModifier: ViewModifier {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
     }
 }
 
 extension View {
     func card(padding: CGFloat = 16) -> some View { modifier(CardModifier(padding: padding)) }
 
-    /// Standard dark screen background.
+    /// Standard screen background.
     func fsScreen() -> some View {
         background(Theme.background.ignoresSafeArea())
             .scrollContentBackground(.hidden)
+    }
+
+    /// The site's spaced small-caps-free label treatment.
+    func fsTracked(_ amount: CGFloat = Theme.tracking) -> some View { tracking(amount) }
+
+    /// For screens named after something the user typed (projects, locations): the bar keeps the
+    /// title for the back button and VoiceOver but shows none, and `ScreenHeading` draws it in the
+    /// content where it can wrap instead of being cut off like a long large title.
+    func fsWrappingTitle(_ title: String) -> some View {
+        navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+            }
+    }
+}
+
+/// Screen title drawn in the content, wrapping onto as many lines as it needs.
+struct ScreenHeading: View {
+    var title: String
+
+    var body: some View {
+        Text(title)
+            .font(.fsTitle)
+            .foregroundStyle(Theme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Lower-case wordmark in the spirit of the site's "norbert varjasi / cinematographer" lockup.
+struct Wordmark: View {
+    var subtitle: String = "location scouting · previs"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("frame scout")
+                .font(.poppins(.medium, 15))
+                .tracking(2.2)
+                .foregroundStyle(Theme.textSecondary)
+            Text(subtitle)
+                .font(.poppins(.light, 10))
+                .tracking(1.8)
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -28,30 +76,31 @@ struct SectionHeader: View {
     var actionLabel: String = "Add"
 
     var body: some View {
-        HStack {
-            if let systemImage {
-                Image(systemName: systemImage).foregroundStyle(Theme.accent)
-            }
-            Text(title.uppercased())
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title)
                 .font(.fsLabel)
-                .tracking(1.2)
-                .foregroundStyle(Theme.textSecondary)
-            Spacer()
+                .tracking(Theme.tracking)
+                .foregroundStyle(Theme.textPrimary)
+            Rectangle()
+                .fill(Theme.hairline)
+                .frame(height: 0.5)
+                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
             if let action {
                 Button(action: action) {
-                    Label(actionLabel, systemImage: "plus")
+                    Text("+ \(actionLabel)")
                         .font(.fsLabel)
-                        .labelStyle(.titleAndIcon)
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(Theme.textSecondary)
                 }
                 .buttonStyle(.borderless)
-                .tint(Theme.accent)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 2)
+        .padding(.top, 6)
     }
 }
 
-/// Large home-screen / toolbar tile, sized for thumbs.
+/// Home / toolbar entry. Square frame, hairline border, text first — no icon tiles.
 struct ActionTile: View {
     var title: String
     var subtitle: String? = nil
@@ -62,57 +111,132 @@ struct ActionTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(prominent ? Color.black : Theme.accent)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    Text(title)
+                        .font(.poppins(.regular, 15))
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Spacer(minLength: 4)
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .ultraLight))
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textTertiary)
+                }
                 Spacer(minLength: 0)
-                Text(title.uppercased())
-                    .font(.fsButton)
-                    .foregroundStyle(prominent ? Color.black : Theme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(prominent ? Color.black.opacity(0.7) : Theme.textSecondary)
+                        .font(.fsCaption)
+                        .foregroundStyle(prominent ? Theme.onAccent.opacity(0.85) : Theme.textSecondary)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-            .background(prominent ? Theme.accent : Theme.surface,
-                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-            .opacity(disabled ? 0.4 : 1)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairline, lineWidth: 0.5))
+            .opacity(disabled ? 0.35 : 1)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
     }
 }
 
-/// Compact labelled figure ("CEILING 2.64 m").
+/// Text row with a hairline under it, like an entry in the site's work list.
+struct MenuRow: View {
+    var title: String
+    var subtitle: String? = nil
+    var trailing: String? = nil
+    var disabled = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.poppins(.light, 21, relativeTo: .title3))
+                        .tracking(0.6)
+                        .foregroundStyle(Theme.textPrimary)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.fsCaption)
+                            .tracking(0.4)
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                Spacer()
+                Text(trailing ?? "→")
+                    .font(trailing == nil ? .poppins(.light, 16) : .fsMono)
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+            .opacity(disabled ? 0.35 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+}
+
+/// Text tabs with a thin underline on the active one — the site's navigation bar.
+struct UnderlineTabs<Value: Hashable>: View {
+    var options: [(Value, String)]
+    @Binding var selection: Value
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ForEach(options.indices, id: \.self) { i in
+                let value = options[i].0
+                let label = options[i].1
+                let active = value == selection
+                Button { selection = value } label: {
+                    Text(label)
+                        .font(.fsLabel)
+                        .tracking(Theme.tracking)
+                        .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
+                        .padding(.vertical, 6)
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(Color.white).frame(height: 1).opacity(active ? 1 : 0)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Compact labelled figure ("Ceiling  2.64 m").
 struct StatView: View {
     var label: String
     var value: String
     var detail: String? = nil
     var highlight = false
+    var provenance: Provenance? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
                 .font(.fsLabel)
-                .tracking(0.8)
-                .foregroundStyle(Theme.textSecondary)
+                .tracking(Theme.tracking)
+                .foregroundStyle(Theme.textTertiary)
+                .lineLimit(1)
             Text(value)
                 .font(.fsValue)
-                .foregroundStyle(highlight ? Theme.accent : Theme.textPrimary)
+                .foregroundStyle(highlight ? Theme.textPrimary : Theme.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             if let detail {
-                Text(detail).font(.caption2).foregroundStyle(Theme.textTertiary)
+                Text(detail).font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
+            // Under the value, so a long label ("Floor area") never gets truncated by the badge.
+            if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -122,18 +246,38 @@ struct TagChip: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        let label = Text(text)
-            .font(.system(size: 12, weight: .bold).width(.condensed))
-            .tracking(0.6)
+        let label = Text(text.capitalized)
+            .font(.fsLabel)
+            .tracking(Theme.tracking)
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .foregroundStyle(selected ? Color.black : Theme.textSecondary)
-            .background(selected ? Theme.accent : Theme.surfaceRaised, in: Capsule())
+            .padding(.vertical, 5)
+            .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
         if let action {
             Button(action: action) { label }.buttonStyle(.plain)
         } else {
             label
         }
+    }
+}
+
+/// Square hairline button (secondary) or white block (primary) — replaces the system's
+/// rounded bordered styles.
+struct HairlineButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.fsLabel)
+            .tracking(Theme.tracking)
+            .labelStyle(.titleOnly)
+            .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairlineStrong, lineWidth: 0.5))
+            .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
     }
 }
 
@@ -187,19 +331,78 @@ struct OverlayButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: size * 0.38, weight: .semibold))
+                    .font(.system(size: size * 0.34, weight: .light))
                     .foregroundStyle(filled ? Color.black : tint)
                     .frame(width: size, height: size)
-                    .background(filled ? AnyShapeStyle(tint) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
+                    .background(filled ? AnyShapeStyle(tint) : AnyShapeStyle(Color.black.opacity(0.45)), in: Circle())
+                    .overlay(Circle().stroke(filled ? Color.clear : Color.white.opacity(0.25), lineWidth: 0.5))
                 if let label {
-                    Text(label.uppercased())
-                        .font(.system(size: 10, weight: .bold).width(.condensed))
+                    Text(label)
+                        .font(.fsMicro)
+                        .tracking(Theme.tracking)
                         .foregroundStyle(.white)
-                        .shadow(radius: 2)
+                        .shadow(color: .black.opacity(0.8), radius: 2)
                 }
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Says whether a figure was measured, estimated or entered by hand. Shape and word carry the
+/// meaning (not colour alone), so it reads in sunlight, in grayscale and with VoiceOver.
+struct ProvenanceBadge: View {
+    var provenance: Provenance
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
+            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
+                                    style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(provenance.label) value")
+        .accessibilityHint(provenance.explanation)
+    }
+}
+
+/// A labelled figure with its provenance badge, for Forms and Lists.
+struct ProvenanceFigureRow: View {
+    var label: String
+    var value: String
+    var provenance: Provenance?
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                Text(value)
+                if let provenance, value != "—" { ProvenanceBadge(provenance: provenance) }
+            }
+        } label: {
+            Text(label)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// One-line key to the badges, shown under lists of figures.
+struct ProvenanceLegend: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Provenance.allCases) { p in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ProvenanceBadge(provenance: p).accessibilityHidden(true)
+                    Text(p.explanation).font(.fsMicro).foregroundStyle(Theme.textTertiary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(p.label): \(p.explanation)")
+            }
+        }
     }
 }
 
@@ -212,11 +415,11 @@ struct RequirementBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(Theme.accent)
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Theme.textTertiary)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary)
+                Text(title).font(.fsHeadline).tracking(0.4)
+                Text(message).font(.fsBody).foregroundStyle(Theme.textSecondary)
             }
         }
         .card()
@@ -247,11 +450,11 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 36))
+                .font(.system(size: 28, weight: .ultraLight))
                 .foregroundStyle(Theme.textTertiary)
-            Text(title).font(.headline)
+            Text(title).font(.fsHeadline).tracking(0.4)
             Text(message)
-                .font(.subheadline)
+                .font(.fsBody)
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
         }

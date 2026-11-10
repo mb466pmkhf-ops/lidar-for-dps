@@ -12,9 +12,16 @@ struct RootView: View {
                 }
         }
         .fullScreenCover(item: $router.capture) { flow in
+            // Capture screens sit over the live camera, so they always use the night colours.
             CaptureFlowView(flow: flow)
                 .environmentObject(store)
                 .environmentObject(router)
+                .environment(\.colorScheme, .dark)
+        }
+        .onAppear {
+            #if DEBUG
+            if DemoContent.isEnabled, router.path.isEmpty { DemoContent.routes.forEach(router.open) }
+            #endif
         }
         .alert("Something went wrong", isPresented: Binding(
             get: { store.lastError != nil },
@@ -39,6 +46,8 @@ struct RouteDestination: View {
             ScanDetailView(ref: ref, scanID: scanID)
         case .plan(let ref):
             PlanEditorView(ref: ref)
+        case .lighting(let ref):
+            PlanEditorView(ref: ref, lightingMode: true)
         case .shots(let ref):
             ShotListView(ref: ref)
         case .sun(let ref):
@@ -49,6 +58,8 @@ struct RouteDestination: View {
             PhotoGalleryView(ref: ref)
         case .notes(let ref):
             LocationNotesView(ref: ref)
+        case .object(let projectID, let objectID):
+            ObjectDetailView(projectID: projectID, objectID: objectID)
         case .compare:
             CompareView()
         case .export(let projectID, let location):
@@ -68,8 +79,13 @@ struct CaptureFlowView: View {
             ARMeasureView(target: target)
         case .viewfinder(let target):
             ViewfinderView(target: target)
+        case .objectScan(let projectID):
+            ObjectCaptureFlowView(projectID: projectID)
         case .virtualCamera(let ref, let cameraID):
             VirtualCameraView(ref: ref, initialCameraID: cameraID)
+                // A black 3D viewport: keep the night colours so its labels stay readable in day mode.
+                .environment(\.colorScheme, .dark)
+                .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }

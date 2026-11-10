@@ -14,11 +14,11 @@ struct LensPicker: View {
                         let selected = abs(f - focalLength) < 0.01
                         Button { focalLength = f } label: {
                             Text("\(Int(f))")
-                                .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                                .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .frame(minWidth: 44, minHeight: 40)
-                                .foregroundStyle(selected ? Color.black : Theme.textPrimary)
+                                .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
                                 .background(selected ? Theme.accent : Theme.surfaceRaised,
-                                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                            in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .id(f)
@@ -29,12 +29,12 @@ struct LensPicker: View {
                         showCustom = true
                     } label: {
                         Text(isCustom ? Optics.formatFocal(focalLength) : "Custom")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.fsLabel).tracking(Theme.tracking)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 40)
-                            .foregroundStyle(isCustom ? Color.black : Theme.textPrimary)
+                            .foregroundStyle(isCustom ? Theme.onAccent : Theme.textPrimary)
                             .background(isCustom ? Theme.accent : Theme.surfaceRaised,
-                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -83,18 +83,18 @@ struct SensorPicker: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(SensorLibrary.format(id: sensorID, custom: customSensor).displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.fsBodyStrong)
                         .foregroundStyle(Theme.textPrimary)
                         .multilineTextAlignment(.leading)
                     Text(SensorLibrary.format(id: sensorID, custom: customSensor).sizeDescription)
-                        .font(.caption)
+                        .font(.fsCaption)
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
             }
             .padding(10)
-            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         }
     }
 }
@@ -120,7 +120,7 @@ struct LabeledNumberField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+            Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
             TextField(title, value: $value, format: .number.precision(.fractionLength(0...2)))
                 .keyboardType(.decimalPad)
                 .font(.fsValue)
@@ -182,12 +182,19 @@ struct CameraRigForm: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     ForEach(HeightPreset.allCases) { p in
-                        TagChip(text: p.label.uppercased(), selected: abs(rig.height - p.metres) < 0.02) { rig.height = p.metres }
+                        TagChip(text: p.label, selected: abs(rig.height - p.metres) < 0.02) { rig.height = p.metres }
                     }
                 }
             }
             SliderRow(title: "Pan", value: $rig.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
             SliderRow(title: "Tilt", value: $rig.tilt, range: -60...60, step: 1, format: { String(format: "%+.0f°", $0) })
+            Picker("Support", selection: $rig.support) {
+                Text("Automatic · \(CameraSupport.automatic(height: rig.height).label)").tag(CameraSupport?.none)
+                ForEach(CameraSupport.allCases) { Text($0.label).tag(CameraSupport?.some($0)) }
+            }
+            if let w = rig.supportWarning {
+                Text(w).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+            }
             if let ceilingHeight, rig.height > ceilingHeight - 0.25 {
                 Label("Less than 25 cm to the ceiling", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Theme.accent)
@@ -216,7 +223,7 @@ struct SliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title.uppercased()).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+                Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 Spacer()
                 Text(format(value)).font(.system(.body, design: .rounded).monospacedDigit().weight(.semibold))
             }
@@ -255,7 +262,7 @@ struct ClearanceGrid: View {
         }
         if let behind = clearances.behind, behind < 1.2 {
             Text("Tight behind camera — limited room for operator, dolly or pull-back.")
-                .font(.caption)
+                .font(.fsCaption)
                 .foregroundStyle(Theme.accent)
         }
     }
@@ -286,7 +293,7 @@ struct LensCalculator: View {
                 .font(.fsLabel).foregroundStyle(Theme.textSecondary)
             ForEach(Optics.ShotSize.allCases) { size in
                 HStack {
-                    Text(size.label).font(.subheadline)
+                    Text(size.label).font(.fsBody)
                     Spacer()
                     Text(UnitsFormatter.distance(Optics.distance(toCover: size.verticalCoverage, size: area.height, focalLength: rig.focalLength)))
                         .font(.subheadline.monospacedDigit().weight(.semibold))

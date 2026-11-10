@@ -47,6 +47,9 @@ struct MeasurementListView: View {
                     .listRowBackground(Theme.surface)
                 }
             }
+            if !(location?.measurements.isEmpty ?? true) {
+                ProvenanceLegend().listRowBackground(Color.clear)
+            }
             if location?.measurements.isEmpty ?? true {
                 EmptyStateView(systemImage: "ruler", title: "No measurements",
                                message: "Measure in AR, on the scanned plan, or generate them from the scan.")
@@ -63,16 +66,19 @@ struct MeasurementListView: View {
     private func generateFromScan(_ scan: ScanRecord) {
         let s = scan.stats
         var items: [DistanceMeasurement] = []
-        func add(_ kind: MeasurementKind, _ label: String, _ value: Double?, vertical: Double? = nil) {
+        func add(_ kind: MeasurementKind, _ label: String, _ value: Double?, vertical: Double? = nil, figure: ScanFigure = .openings) {
             guard let value, value > 0 else { return }
+            let provenance = s.provenance(of: figure, kind: scan.kind)
             items.append(DistanceMeasurement(kind: kind, label: label, value: value, vertical: vertical,
-                                             source: .scanAuto, scanID: scan.id))
+                                             source: .scanAuto,
+                                             provenanceOverride: provenance == .measured ? nil : provenance,
+                                             scanID: scan.id))
         }
-        add(.roomDimension, "Room width", s.width)
-        add(.roomDimension, "Room length", s.length)
-        add(.ceilingHeight, "Ceiling height", s.ceilingHeight, vertical: s.ceilingHeight)
+        add(.roomDimension, "Room width", s.width, figure: .roomSize)
+        add(.roomDimension, "Room length", s.length, figure: .roomSize)
+        add(.ceilingHeight, "Ceiling height", s.ceilingHeight, vertical: s.ceilingHeight, figure: .ceilingHeight)
         if let low = s.minCeilingHeight, let high = s.ceilingHeight, high - low > 0.1 {
-            add(.ceilingHeight, "Lowest ceiling", low, vertical: low)
+            add(.ceilingHeight, "Lowest ceiling", low, vertical: low, figure: .ceilingHeight)
         }
         for (i, d) in s.doors.enumerated() {
             add(.door, "Door \(i + 1) width (h \(UnitsFormatter.distance(d.height)))", d.width)
@@ -92,24 +98,26 @@ struct MeasurementRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: measurement.kind.symbol).foregroundStyle(Theme.accent).frame(width: 26)
+            Image(systemName: measurement.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(measurement.label.isEmpty ? measurement.kind.label : measurement.label)
                 HStack(spacing: 6) {
-                    Text(measurement.source.label.uppercased()).font(.fsLabel).foregroundStyle(Theme.textTertiary)
+                    Text(measurement.source.label).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    ProvenanceBadge(provenance: measurement.provenance)
                     if let h = measurement.horizontal, let v = measurement.vertical, measurement.source == .ar {
                         Text("h \(UnitsFormatter.distance(h)) · v \(UnitsFormatter.distance(v))")
-                            .font(.caption2).foregroundStyle(Theme.textSecondary)
+                            .font(.fsMicro).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 if !measurement.notes.isEmpty {
-                    Text(measurement.notes).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text(measurement.notes).font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 }
             }
             Spacer()
             Text(UnitsFormatter.distance(measurement.value, precise: true))
-                .font(.body.monospacedDigit().weight(.semibold))
+                .font(.fsMono)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 

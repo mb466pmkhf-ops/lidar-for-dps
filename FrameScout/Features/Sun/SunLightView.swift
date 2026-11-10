@@ -31,7 +31,7 @@ struct SunLightView: View {
                     coordinateEntry
                 }
                 Text("Sun positions use the NOAA solar algorithm and work offline. Direction inside the scan relies on the compass reading taken during scanning — indoors it can be off by 10–20°, so calibrate north if you know the true orientation. This is planning information, not a lighting simulation.")
-                    .font(.caption)
+                    .font(.fsCaption)
                     .foregroundStyle(Theme.textTertiary)
             }
             .padding()
@@ -61,12 +61,14 @@ struct SunLightView: View {
                 Text(String(format: "%02d:%02d", Int(minutes) / 60, Int(minutes) % 60))
                     .font(.fsBigValue)
                 Spacer()
-                Text(location.timeZone.identifier).font(.caption).foregroundStyle(Theme.textSecondary)
+                Text(location.timeZone.identifier).font(.fsCaption).foregroundStyle(Theme.textSecondary)
             }
             Slider(value: $minutes, in: 0...1439, step: 5)
-            HStack {
-                ForEach([7, 9, 12, 15, 16, 18, 20], id: \.self) { h in
-                    TagChip(text: "\(h):00", selected: Int(minutes) == h * 60) { minutes = Double(h * 60) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach([7, 9, 12, 15, 16, 18, 20], id: \.self) { h in
+                        TagChip(text: "\(h):00", selected: Int(minutes) == h * 60) { minutes = Double(h * 60) }
+                    }
                 }
             }
         }
@@ -106,14 +108,14 @@ struct SunLightView: View {
                     let lit = litWindows(plan: plan, north: north, sun: sun)
                     FloorPlanCanvas(plan: plan, overlay: sunOverlay(north: north, sun: sun, lit: lit), style: .full)
                         .frame(height: 300)
-                        .background(Theme.background, in: RoundedRectangle(cornerRadius: 10))
+                        .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                     Text(lit.isEmpty ? "No window is in direct sun at this time."
                                      : "\(lit.count) window\(lit.count == 1 ? "" : "s") in direct sun (highlighted).")
-                        .font(.subheadline)
+                        .font(.fsBody)
                     northCalibration(scan)
                 } else {
                     Text("This scan has no compass reading, so the sun can't be placed on it. Set north manually:")
-                        .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                        .font(.fsBody).foregroundStyle(Theme.textSecondary)
                     northCalibration(scan)
                 }
             }
@@ -146,7 +148,7 @@ struct SunLightView: View {
                         if let i = loc.scans.firstIndex(where: { $0.id == scan.id }) { loc.scans[i].northOffset = measured }
                     }
                 }
-                .font(.caption)
+                .font(.fsCaption)
             }
         }
     }
@@ -170,16 +172,16 @@ struct SunLightView: View {
                                                    sun: SolarCalculator.position(date: date, latitude: coordinate.latitude, longitude: coordinate.longitude))
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
-                            Text("Window \(index + 1)").font(.headline)
+                            Text("Window \(index + 1)").font(.fsHeadline)
                             Text("faces \(SolarCalculator.compassName(facing)) (\(Int(facing))°) · \(UnitsFormatter.distance(window.length)) wide")
-                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                                .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                             Spacer()
                             if now > 0.02 {
-                                Label("\(Int(now * 100))%", systemImage: "sun.max.fill").foregroundStyle(Theme.sun).font(.caption.bold())
+                                Label("\(Int(now * 100))%", systemImage: "sun.max.fill").foregroundStyle(Theme.sun).font(.fsCaptionStrong)
                             }
                         }
                         Text(directSunWindows(facing: facing, coordinate: coordinate, date: date, zone: location.timeZone))
-                            .font(.caption)
+                            .font(.fsCaption)
                             .foregroundStyle(Theme.textSecondary)
                     }
                     Divider()
@@ -228,9 +230,9 @@ struct SunLightView: View {
                 Label(locator.isLocating ? "Locating…" : "Use current GPS position", systemImage: "location.fill")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .foregroundStyle(.black)
-            if let error = locator.lastError { Text(error).font(.caption).foregroundStyle(Theme.danger) }
+            .buttonStyle(HairlineButtonStyle(prominent: true))
+            .foregroundStyle(Theme.onAccent)
+            if let error = locator.lastError { Text(error).font(.fsCaption).foregroundStyle(Theme.danger) }
             HStack {
                 TextField("Latitude", text: $latText).keyboardType(.numbersAndPunctuation)
                 TextField("Longitude", text: $lonText).keyboardType(.numbersAndPunctuation)
@@ -264,11 +266,11 @@ struct SunPathDiagram: View {
             for e in [0.0, 30, 60] {
                 let r = radius * CGFloat((90 - e) / 90)
                 ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
-                           with: .color(.white.opacity(e == 0 ? 0.35 : 0.12)), lineWidth: 1)
+                           with: .color(Theme.ink.opacity(e == 0 ? 0.35 : 0.12)), lineWidth: 1)
             }
             for (label, az) in [("N", 0.0), ("E", 90), ("S", 180), ("W", 270)] {
                 let a = az * .pi / 180
-                ctx.draw(Text(label).font(.caption.bold()).foregroundColor(label == "N" ? Theme.danger : Theme.textSecondary),
+                ctx.draw(Text(label).font(.fsCaptionStrong).foregroundColor(label == "N" ? Theme.danger : Theme.textSecondary),
                          at: CGPoint(x: c.x + (radius + 12) * CGFloat(sin(a)), y: c.y - (radius + 12) * CGFloat(cos(a))))
             }
             var line = Path()
@@ -287,14 +289,14 @@ struct SunPathDiagram: View {
                 guard hour % 2 == 0 else { continue }
                 let p = point(sample.1)
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4)), with: .color(Theme.sun))
-                ctx.draw(Text("\(hour)").font(.system(size: 9)).foregroundColor(Theme.textSecondary),
+                ctx.draw(Text("\(hour)").font(.system(size: 9, design: .monospaced)).foregroundColor(Theme.textSecondary),
                          at: CGPoint(x: p.x, y: p.y - 9))
             }
             if current.elevation > 0 {
                 let p = point(current)
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)), with: .color(Theme.sun))
             } else {
-                ctx.draw(Text("Sun below horizon").font(.caption).foregroundColor(Theme.textSecondary), at: c)
+                ctx.draw(Text("Sun below horizon").font(.fsCaption).foregroundColor(Theme.textSecondary), at: c)
             }
         }
     }
