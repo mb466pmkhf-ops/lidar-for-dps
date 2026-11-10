@@ -51,6 +51,12 @@ Lux, stops and power draw come only from `Core/Models/Photometrics.swift`, `Expo
 - Exposure: incident-meter equation N²/t = E·S/C with C = 250, set in T-stops (T includes lens loss); the
   f-stop is shown as T × √transmission for reference. ND in stops. Key lux follows ISO, shutter, T-stop and ND.
 - Hiding a unit changes only the view; switching it off changes the light.
+- 2026-11-10 audit: formulas re-derived and tested by hand; library figures checked against published
+  maker tables and raised where they were a stop or more low (tungsten fresnels, COBs); a fresnel now
+  loses flux when spotted (flux ∝ (beam ÷ flood)^0.85, fitted to studio fresnel tables) instead of keeping
+  it; an HMI that can't dim to a target says so. CI compares every fixture configuration and exposure
+  between Swift and TypeScript (`web/tests/photometry-audit.test.ts`). Not modelled: tubes radiate all
+  round their axis (many real tubes are one-sided), and panels are fully diffuse (some have a ~50° lens).
 - Scan alignment is a stored correction (`ScanRecord.alignment`), applied to the whole 3D world (scan, cameras,
   lights, people) so positions stay consistent; the scan files and the 2D plan are not changed.
 

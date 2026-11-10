@@ -117,6 +117,9 @@ enum LightingSetup: String, CaseIterable, Identifiable {
             case .tooDim(let maxLux, _):
                 light.dimmer = 1
                 notes.append("\(spec.name): even at full ≈ \(Int(maxLux.rounded())) lx — move it closer or open the lens")
+            case .atMinimum(let o, let lux):
+                light.dimmer = o
+                notes.append("\(spec.name): at its lowest (\(Int((o * 100).rounded())) %) ≈ \(Int(lux.rounded())) lx, over the target — move it back or add ND")
             case .othersTooBright, .noContribution:
                 light.dimmer = 0.5
                 notes.append("\(spec.name): couldn't reach the face from here; check its aim")

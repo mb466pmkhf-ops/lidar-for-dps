@@ -65,7 +65,8 @@ jobs:
         run: |
           npm ci
           test -f /tmp/framescout-core-tests/parity-readings.json
-          PARITY_READINGS=/tmp/framescout-core-tests/parity-readings.json npx vitest run
+          test -f /tmp/framescout-core-tests/photometrics-matrix.json
+          PARITY_READINGS=/tmp/framescout-core-tests/parity-readings.json PHOTOMETRICS_MATRIX=/tmp/framescout-core-tests/photometrics-matrix.json npx vitest run
       - name: Validate GLB with the Khronos glTF validator
         run: |
           npm install --no-save gltf-validator@2.0.0-dev.3.10
