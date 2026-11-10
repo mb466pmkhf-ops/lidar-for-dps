@@ -258,7 +258,7 @@ function beam(l: LightFixture, origin: THREE.Vector3, q: THREE.Quaternion, color
   geo.setAttribute('along', new THREE.Float32BufferAttribute(along, 1));
   geo.setIndex(index);
   geo.computeVertexNormals();
-  const strength = 0.05 + 0.05 * Math.min(1, Math.log10(1 + pm.flux / 500));
+  const strength = 0.2 + 0.15 * Math.min(1, Math.log10(1 + pm.flux / 500));
   const material = new THREE.ShaderMaterial({
     uniforms: { color: { value: color.clone() }, strength: { value: strength } },
     vertexShader: beamVertex, fragmentShader: beamFragment,
