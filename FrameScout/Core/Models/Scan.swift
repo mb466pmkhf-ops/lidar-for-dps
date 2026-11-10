@@ -36,6 +36,8 @@ struct ScanRecord: Identifiable, Codable, Hashable {
     var measuredNorthOffset: Double? = nil
     var deviceModel: String = ""
     var notes: String = ""
+    /// Levelling and placement correction for the 3D view; the scan files are never changed.
+    var alignment: ScanAlignment? = nil
 }
 
 struct OpeningSize: Codable, Hashable {
@@ -69,6 +71,8 @@ struct ScanStats: Codable, Hashable {
     var completeness: Double? = nil
     var meshVertexCount: Int = 0
     var meshFaceCount: Int = 0
+    /// True for a room drawn by hand: every size was typed in, so figures are manual, not measured.
+    var enteredByHand: Bool? = nil
 }
 
 // MARK: - Top-down plan (derived from a scan, renderer-agnostic)

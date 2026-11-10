@@ -12,9 +12,11 @@ struct RootView: View {
                 }
         }
         .fullScreenCover(item: $router.capture) { flow in
+            // Capture screens sit over the live camera, so they always use the night colours.
             CaptureFlowView(flow: flow)
                 .environmentObject(store)
                 .environmentObject(router)
+                .environment(\.colorScheme, .dark)
         }
         .onAppear {
             #if DEBUG
@@ -44,6 +46,8 @@ struct RouteDestination: View {
             ScanDetailView(ref: ref, scanID: scanID)
         case .plan(let ref):
             PlanEditorView(ref: ref)
+        case .lighting(let ref):
+            PlanEditorView(ref: ref, lightingMode: true)
         case .shots(let ref):
             ShotListView(ref: ref)
         case .sun(let ref):
@@ -79,6 +83,9 @@ struct CaptureFlowView: View {
             ObjectCaptureFlowView(projectID: projectID)
         case .virtualCamera(let ref, let cameraID):
             VirtualCameraView(ref: ref, initialCameraID: cameraID)
+                // A black 3D viewport: keep the night colours so its labels stay readable in day mode.
+                .environment(\.colorScheme, .dark)
+                .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }

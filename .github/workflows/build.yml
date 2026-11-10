@@ -57,6 +57,16 @@ jobs:
           swift-version: "6.1"
       - name: Run core tests
         run: ./Tests/run_core_tests.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Web planner matches the Swift lighting maths
+        working-directory: web
+        run: |
+          npm ci
+          test -f /tmp/framescout-core-tests/parity-readings.json
+          test -f /tmp/framescout-core-tests/photometrics-matrix.json
+          PARITY_READINGS=/tmp/framescout-core-tests/parity-readings.json PHOTOMETRICS_MATRIX=/tmp/framescout-core-tests/photometrics-matrix.json npx vitest run
       - name: Validate GLB with the Khronos glTF validator
         run: |
           npm install --no-save gltf-validator@2.0.0-dev.3.10
