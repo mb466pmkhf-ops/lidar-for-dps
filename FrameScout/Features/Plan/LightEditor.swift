@@ -29,6 +29,8 @@ struct LightingContext {
         case .tooDim(let maxLux, let d):
             let move = d.map { " Move it to about \(UnitsFormatter.distance($0)) away, or use a brighter unit." } ?? ""
             return "Even at full it gives \(LuxFormat.lux(maxLux)) here.\(move)"
+        case .atMinimum(let o, let lux):
+            return "At its lowest (\(Int((o * 100).rounded())) %) it still gives \(LuxFormat.lux(lux)) here. Move it back, or add ND or diffusion."
         case .othersTooBright(let others):
             return "The other units already give \(LuxFormat.lux(others)) here. Turn them down first."
         case .noContribution:
@@ -38,12 +40,7 @@ struct LightingContext {
 }
 
 enum LuxFormat {
-    static func lux(_ v: Double) -> String {
-        if v >= 10_000 { return String(format: "%.0fk lx", v / 1000) }
-        if v >= 1000 { return String(format: "%.1fk lx", v / 1000) }
-        if v >= 10 { return "\(Int(v.rounded())) lx" }
-        return String(format: "%.1f lx", v)
-    }
+    static func lux(_ v: Double) -> String { ReadingUnit.luxText(v) }
 
     static func watts(_ w: Double) -> String {
         w >= 1000 ? String(format: "%.2f kW", w / 1000) : "\(Int(w.rounded())) W"
@@ -54,12 +51,15 @@ enum LuxFormat {
 /// Everything else is in Details.
 struct LightPanel: View {
     let light: LightFixture
+    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
     var context = LightingContext()
     let update: (@escaping (inout LightFixture) -> Void) -> Void
     var onDetails: () -> Void
     var onDuplicate: () -> Void
     var onDelete: () -> Void
     @State private var message: String?
+    /// Beam, tilt and draw; off by default to keep the panel short.
+    @AppStorage("lightPanel.more") private var showMore = false
 
     var body: some View {
         let pm = light.photometrics
@@ -83,26 +83,25 @@ struct LightPanel: View {
                     compact("OUTPUT", value: light.dimmer, range: pm.profile.minOutput...1, format: { "\(Int(($0 * 100).rounded())) %" }) { v in
                         update { $0.dimmer = v }
                     }
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("DRAW").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-                        Text("≈ " + LuxFormat.watts(pm.drawWatts)).font(.fsMono)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Estimated power draw \(LuxFormat.watts(pm.drawWatts))")
-                }
-                ColourControls(light: light, update: update)
-                HStack(spacing: 14) {
-                    if pm.beamIsAdjustable, let range = pm.beamRange {
-                        compact("BEAM", value: light.beamAngle, range: range, format: { String(format: "%.0f°", $0) }) { v in
-                            update { $0.beamAngle = v }
-                        }
-                    }
-                    compact("HEIGHT", value: light.height, range: 0.2...6, format: { UnitsFormatter.distance($0) }) { v in
+                    compact("HEIGHT", value: light.height, range: 0.1...6, format: { UnitsFormatter.distance($0) }) { v in
                         update { $0.height = v }
                     }
-                    compact("TILT", value: light.tilt, range: -90...45, format: { String(format: "%+.0f°", $0) }) { v in
-                        update { $0.tilt = v }
+                }
+                ColourControls(light: light, update: update)
+                standRow
+                if showMore {
+                    HStack(spacing: 14) {
+                        if pm.beamIsAdjustable, let range = pm.beamRange {
+                            compact("BEAM", value: light.beamAngle, range: range, format: { String(format: "%.0f°", $0) }) { v in
+                                update { $0.beamAngle = v }
+                            }
+                        }
+                        compact("TILT", value: light.tilt, range: -90...45, format: { String(format: "%+.0f°", $0) }) { v in
+                            update { $0.tilt = v }
+                        }
                     }
+                    Text("DRAW ≈ " + LuxFormat.watts(pm.drawWatts)).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        .accessibilityLabel("Estimated power draw \(LuxFormat.watts(pm.drawWatts))")
                 }
                 readout
             } else {
@@ -114,13 +113,20 @@ struct LightPanel: View {
                         update { $0.height = v }
                     }
                 }
+                standRow
                 if light.kind == .bounce { readout }
             }
             if let message {
                 Text(message).font(.fsCaption).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 10) {
-                Button(action: onDetails) { Label("Details", systemImage: "slider.horizontal.3") }
+                if light.kind.emits {
+                    Button { withAnimation(.snappy) { showMore.toggle() } } label: {
+                        Label(showMore ? "Less" : "More", systemImage: showMore ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(HairlineButtonStyle())
+                }
+                Button(action: onDetails) { Label("All settings", systemImage: "slider.horizontal.3") }
                     .buttonStyle(HairlineButtonStyle())
                 Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
                     .buttonStyle(HairlineButtonStyle())
@@ -133,7 +139,42 @@ struct LightPanel: View {
         .onChange(of: light.id) { _, _ in message = nil }
     }
 
-    /// This unit's share of the reading where it matters most, in lux and stops.
+    /// What it stands on, changeable from a menu; warns when the height is beyond the stand.
+    private var standRow: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Stand", selection: Binding(get: { light.support }, set: { v in update { $0.support = v } })) {
+                    Text("Automatic · \(LightSupport.automatic(for: light).label)").tag(LightSupport?.none)
+                    ForEach(LightSupport.allCases) { Text($0.label).tag(LightSupport?.some($0)) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("STAND").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text(light.supportValue.label).font(.fsCaption)
+                    Image(systemName: "chevron.up.chevron.down").font(.fsMicro).foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .accessibilityLabel("Stand: \(light.supportValue.label)")
+            if let w = light.supportWarning {
+                Text(w).font(.fsMicro).foregroundStyle(Theme.textSecondary).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func readoutText(own: Double, total: Double, stops: Double) -> String {
+        let e = context.exposure
+        switch readingUnit {
+        case .tStop:
+            return "≈ \(readingUnit.text(lux: total, exposure: e)) · this light alone \(readingUnit.text(lux: own, exposure: e))"
+        case .stops:
+            return "≈ \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
+        case .lux, .footCandles:
+            return "≈ \(readingUnit.text(lux: own, exposure: e)) of \(readingUnit.text(lux: total, exposure: e)) · \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
+        }
+    }
+
+    /// This unit's share of the reading where it matters most, in the chosen readings unit.
     @ViewBuilder
     private var readout: some View {
         if let p = context.primaryMeter(for: light) {
@@ -141,7 +182,7 @@ struct LightPanel: View {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AT \(p.meter.name.uppercased())").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary).lineLimit(1)
-                    Text("≈ \(LuxFormat.lux(p.own)) of \(LuxFormat.lux(p.total)) · \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(context.exposure.tStop))")
+                    Text(readoutText(own: p.own, total: p.total, stops: stops))
                         .font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 4)
@@ -254,7 +295,7 @@ struct KelvinChips: View {
                         .padding(.horizontal, 10)
                         .frame(minHeight: 34)
                         .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-                        .overlay(Rectangle().stroke(selected ? Color.white.opacity(0.7) : Theme.hairline, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? .isSelected : [])
@@ -273,6 +314,8 @@ struct LightForm: View {
     @State private var targetMeter: MeterPoint.Source?
     @State private var targetLux: Double?
     @State private var solveMessage: String?
+    /// Shaping, filters, photometric data and solving; hidden until asked for.
+    @AppStorage("lightForm.advanced") private var advanced = false
 
     var body: some View {
         let pm = light.photometrics
@@ -299,7 +342,9 @@ struct LightForm: View {
                 Toggle("On", isOn: $light.isOn)
                 SliderRow(title: "Output", value: $light.dimmer, range: pm.profile.minOutput...1, step: 0.01,
                           format: { "\(Int(($0 * 100).rounded())) %" })
-                LabeledContent("Power", value: "\(LuxFormat.watts(pm.profile.ratedPower)) rated · ≈ \(LuxFormat.watts(pm.drawWatts)) now")
+                if advanced {
+                    LabeledContent("Power", value: "\(LuxFormat.watts(pm.profile.ratedPower)) rated · ≈ \(LuxFormat.watts(pm.drawWatts)) now")
+                }
                 if pm.profile.color.isAdjustable && !light.usesRGB {
                     SliderRow(title: "Colour temperature", value: $light.colorTemperature,
                               range: pm.profile.color.minKelvin...pm.profile.color.maxKelvin, step: 50,
@@ -312,13 +357,9 @@ struct LightForm: View {
                 Text(pm.profile.technology == .tungsten ? "Output is light output. Tungsten draws more than its share when dimmed and warms as it dims."
                      : "Output is light output. Draw is an estimate from the rated power.")
             }
-            shapingSection(pm)
-            filtersSection
-            photometricsSection(pm)
-            if !context.meters.isEmpty { targetSection }
         }
-        Section("Placement") {
-            SliderRow(title: "Height", value: $light.height, range: 0.2...6, step: 0.05, format: { UnitsFormatter.distance($0) })
+        Section {
+            SliderRow(title: "Height", value: $light.height, range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
             SliderRow(title: "Pan", value: $light.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
             SliderRow(title: "Tilt", value: $light.tilt, range: -90...45, step: 1, format: { String(format: "%+.0f°", $0) })
             if !light.kind.emits {
@@ -326,6 +367,26 @@ struct LightForm: View {
                 SliderRow(title: "Frame height", value: Binding(get: { light.boardHeight ?? light.width }, set: { light.boardHeight = $0 }),
                           range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
             }
+            Picker("Stand", selection: $light.support) {
+                Text("Automatic · \(LightSupport.automatic(for: light).label)").tag(LightSupport?.none)
+                ForEach(LightSupport.allCases) { Text($0.label).tag(LightSupport?.some($0)) }
+            }
+        } header: {
+            Text("Placement")
+        } footer: {
+            if let w = light.supportWarning { Text(w) }
+        }
+        Section {
+            Toggle("Advanced options", isOn: $advanced.animation())
+        } footer: {
+            Text(advanced ? "Modifiers, beam, barn doors, gels and diffusion, photometric data and solving for a target."
+                          : "Show modifiers, beam, barn doors, gels and diffusion, photometric data and solving for a target.")
+        }
+        if advanced && light.kind.emits {
+            shapingSection(pm)
+            filtersSection
+            photometricsSection(pm)
+            if !context.meters.isEmpty { targetSection }
         }
         Section("Notes") {
             TextField("Notes", text: $light.notes, axis: .vertical)

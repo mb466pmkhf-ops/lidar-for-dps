@@ -9,6 +9,9 @@ struct HomeView: View {
     @State private var showNewProject = false
     @State private var newProjectName = ""
     @State private var showImporter = false
+    @State private var showSync = false
+    @State private var showDrawRoom = false
+    @AppStorage(Theme.nightKey) private var night = false
     @State private var importMessage: String?
 
     var body: some View {
@@ -20,11 +23,6 @@ struct HomeView: View {
                                systemImage: "viewfinder", prominent: true, disabled: !DeviceCapabilities.hasLiDAR) {
                         router.start(.scan(.quick))
                     }
-                    HomeTile(title: "Measure",
-                               subtitle: DeviceCapabilities.hasLiDAR ? "AR tape, LiDAR accurate" : (DeviceCapabilities.supportsWorldTracking ? "AR tape, estimated without LiDAR" : "Needs AR camera"),
-                               systemImage: "ruler", disabled: !DeviceCapabilities.supportsWorldTracking) {
-                        router.start(.measure(.quick))
-                    }
                     HomeTile(title: "Viewfinder", subtitle: DeviceCapabilities.hasCamera ? "Cinema lens frame lines" : "Needs a camera",
                                systemImage: "camera.aperture", disabled: !DeviceCapabilities.hasCamera) {
                         router.start(.viewfinder(.quick))
@@ -33,6 +31,23 @@ struct HomeView: View {
                                subtitle: ObjectCaptureModel.isSupported ? "Prop → textured 3D model" : "Needs a LiDAR iPhone",
                                systemImage: "cube", disabled: !ObjectCaptureModel.isSupported) {
                         router.start(.objectScan(projectID: nil))
+                    }
+                    HomeTile(title: "Measure",
+                               subtitle: DeviceCapabilities.hasLiDAR ? "AR tape, LiDAR accurate" : (DeviceCapabilities.supportsWorldTracking ? "AR tape, estimated without LiDAR" : "Needs AR camera"),
+                               systemImage: "ruler", disabled: !DeviceCapabilities.supportsWorldTracking) {
+                        router.start(.measure(.quick))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HomeSectionHeader(title: "No scan? Start another way")
+                    HStack(spacing: 12) {
+                        HomeTile(title: "Draw a plan", subtitle: "Pick a shape, set sizes, get 3D", systemImage: "pencil.and.ruler", compact: true) {
+                            showDrawRoom = true
+                        }
+                        HomeTile(title: "Import", subtitle: "A project backup (ZIP)", systemImage: "square.and.arrow.down", compact: true) {
+                            showImporter = true
+                        }
                     }
                 }
 
@@ -79,12 +94,22 @@ struct HomeView: View {
             .padding(.bottom, 32)
         }
         .fsScreen()
-        .navigationTitle("FrameScout")
+        .navigationTitle("FrameScan")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button { night.toggle() } label: {
+                    Label(night ? "Day" : "Night", systemImage: night ? "sun.max" : "moon")
+                        .labelStyle(.titleAndIcon)
+                        .font(HomeStyle.button)
+                        .foregroundStyle(HomeStyle.accent)
+                }
+                .accessibilityHint(night ? "Back to the bright screen" : "Dim, dark screen for a dark set")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showImporter = true } label: { Label("Import Project Backup…", systemImage: "square.and.arrow.down") }
+                    Button { showSync = true } label: { Label("Sync with web & desktop…", systemImage: "arrow.triangle.2.circlepath") }
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
                 } label: {
                     Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(HomeStyle.accent)
@@ -101,6 +126,8 @@ struct HomeView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .sheet(isPresented: $showSync) { SyncSettingsView() }
+        .sheet(isPresented: $showDrawRoom) { DrawRoomView() }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.zip]) { result in
             importProject(result)
         }

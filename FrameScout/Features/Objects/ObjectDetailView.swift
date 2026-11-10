@@ -110,7 +110,7 @@ struct ObjectDetailView: View {
                     .font(.fsBody)
                     .lineLimit(2...6)
                     .padding(12)
-                    .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
             }
             .padding()
         }
@@ -137,7 +137,7 @@ struct ObjectDetailView: View {
         if hasModel {
             ModelPreview(url: usdz)
                 .frame(height: 340)
-                .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
             Text("Drag to orbit · pinch to zoom")
                 .font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 .frame(maxWidth: .infinity)
@@ -214,7 +214,7 @@ struct ModelPreview: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
-        view.backgroundColor = UIColor(Theme.background)
+        view.backgroundColor = Theme.uiBackground
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
         view.antialiasingMode = .multisampling4X
@@ -242,6 +242,6 @@ struct ObjectThumbnail: View {
                     .font(.fsMicro).foregroundStyle(Theme.textTertiary)
             }
         }
-        .overlay(Rectangle().stroke(Theme.hairline, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
     }
 }

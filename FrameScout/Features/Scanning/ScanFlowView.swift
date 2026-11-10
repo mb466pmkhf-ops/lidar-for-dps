@@ -20,18 +20,19 @@ struct ScanFlowView: View {
                 MeshScanScreen(target: target, onClose: close)
             }
         }
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
     }
 
-    private func close(_ saved: LocationRef?) {
+    private func close(_ saved: LocationRef?, openPlan: Bool) {
         dismiss()
         if let saved {
-            // Take the user straight to the location page with the new scan.
+            // Take the user straight to the location page with the new scan (and on into the plan if asked).
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 350_000_000)
                 router.popToRoot()
                 router.open(.project(saved.projectID))
                 router.open(.location(saved))
+                if openPlan { router.open(.lighting(saved)) }
             }
         }
     }
@@ -127,7 +128,7 @@ struct ScanModePicker: View {
 
 struct RoomScanScreen: View {
     let target: CaptureTarget
-    var onClose: (LocationRef?) -> Void
+    var onClose: (LocationRef?, _ openPlan: Bool) -> Void
     @StateObject private var model = RoomScanModel()
     @State private var confirmCancel = false
 
@@ -142,7 +143,7 @@ struct RoomScanScreen: View {
         }
         .statusBarHidden()
         .confirmationDialog("Discard this scan?", isPresented: $confirmCancel, titleVisibility: .visible) {
-            Button("Discard Scan", role: .destructive) { model.cancel(); onClose(nil) }
+            Button("Discard Scan", role: .destructive) { model.cancel(); onClose(nil, false) }
         }
         .sheet(isPresented: .constant(model.phase == .finished)) {
             if let result = model.result {
@@ -158,7 +159,7 @@ struct RoomScanScreen: View {
 
 struct MeshScanScreen: View {
     let target: CaptureTarget
-    var onClose: (LocationRef?) -> Void
+    var onClose: (LocationRef?, _ openPlan: Bool) -> Void
     @StateObject private var model = MeshScanModel()
     @State private var confirmCancel = false
 
@@ -173,7 +174,7 @@ struct MeshScanScreen: View {
         }
         .statusBarHidden()
         .confirmationDialog("Discard this scan?", isPresented: $confirmCancel, titleVisibility: .visible) {
-            Button("Discard Scan", role: .destructive) { model.cancel(); onClose(nil) }
+            Button("Discard Scan", role: .destructive) { model.cancel(); onClose(nil, false) }
         }
         .sheet(isPresented: .constant(model.phase == .finished)) {
             if let result = model.result {
@@ -341,7 +342,8 @@ struct ScanSaveView: View {
     let photos: [PendingPhoto]
     let northOffset: Double?
     let segmentCount: Int
-    var onDone: (LocationRef?) -> Void
+    /// The saved location (nil: discarded), and whether to go straight on into its lighting plan.
+    var onDone: (LocationRef?, _ openPlan: Bool) -> Void
 
     @EnvironmentObject private var store: ProjectStore
     @State private var locationName = ""
@@ -403,6 +405,16 @@ struct ScanSaveView: View {
                 if let error {
                     Section { Text(error).foregroundStyle(Theme.danger) }
                 }
+
+                Section {
+                    Button { save(openPlan: true) } label: {
+                        Label("Save and start the lighting plan", systemImage: "lightbulb")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(saving)
+                } footer: {
+                    Text("Opens the plan with the scan on it, ready to place a person, the camera and lights. “Save” goes to the location page instead.")
+                }
             }
             .fsScreen()
             .navigationTitle("Save Scan")
@@ -416,12 +428,12 @@ struct ScanSaveView: View {
                     if saving {
                         ProgressView()
                     } else {
-                        Button("Save", action: save).bold()
+                        Button("Save") { save(openPlan: false) }.bold()
                     }
                 }
             }
             .confirmationDialog("Discard this scan?", isPresented: $confirmDiscard, titleVisibility: .visible) {
-                Button("Discard", role: .destructive) { onDone(nil) }
+                Button("Discard", role: .destructive) { onDone(nil, false) }
             }
             .onAppear(perform: prefill)
         }
@@ -439,7 +451,7 @@ struct ScanSaveView: View {
         }
     }
 
-    private func save() {
+    private func save(openPlan: Bool) {
         saving = true
         error = nil
         let request = ScanSaver.Request(result: result, scanName: scanName.isEmpty ? result.kind.label : scanName,
@@ -454,7 +466,7 @@ struct ScanSaveView: View {
                         if loc.notes.isEmpty { loc.notes = notes }
                     }
                 }
-                onDone(ref)
+                onDone(ref, openPlan)
             } catch {
                 self.error = "Saving failed: \(error.localizedDescription)"
                 saving = false

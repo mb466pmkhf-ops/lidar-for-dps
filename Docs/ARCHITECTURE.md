@@ -97,8 +97,18 @@ ExportService ──► location/project package folder ──► ZipWriter ─�
   `Location` / `ScanRecord`, so older project files load.
 - `Core/Geometry/PlanSceneBuilder.swift` — builds 3D walls, windows and set pieces from the floor plan when a
   scan's geometry files are missing (also used by the Simulator demo).
-- `Features/Camera/PrevisScene.swift` — SceneKit: camera bodies with lens and frustum, figures, light heads
-  with barn-door leaves and gobo masks, beams, selection, moving and turning items, alignment.
+- `Core/Models/Rigging.swift` — stands (`LightSupport`: C-stand, combo, turtle base, MegaBoom…) and camera
+  supports (`CameraSupport`: O'Connor-style tripod, high hat, dolly…), optional on `LightFixture` / `CameraRig`
+  with an automatic pick from the unit and height, and `BeamClip` (drawn beams stop at walls). Same rules in
+  `web/src/model/rigging.ts`.
+- `Features/Camera/RigModels.swift` — the equipment drawn in 3D at real sizes: heads by fixture category and
+  modifier, yokes, stands, the cinema camera and its support.
+- `Features/Camera/PrevisScene.swift` — SceneKit scene: figures, lights (cached per unit by a hash of its
+  settings, so only changed units are rebuilt), beam rays traced to the first scan surface (rays that leave the
+  room aren't drawn), selection, moving and turning items, alignment. The orbit camera is driven by the app's
+  own gestures on the main thread (drag, two-finger slide, pinch, twist, double-tap to centre); SceneKit's
+  built-in camera control is off, and the wall cut-away is updated from the same place, never from the render
+  thread.
 - `Features/Plan/PlanEditorView.swift` — one editor for plan, split and 3D layouts; the plan and 3D view read
   the same `Location`, and one `LightingAnalysis` per update feeds the plan labels, 3D meter labels and panels.
 - The editor keeps an undo history of whole-`Location` snapshots (`EditHistory`); quick edits in a row merge into one step.
@@ -110,3 +120,12 @@ See D-006 for the model's assumptions and limits.
 ## Concurrency
 
 Swift 5 language mode. UI state is `@MainActor`; heavy work (encoding, mesh extraction, exports) runs in detached tasks on value copies. RoomPlan/ARKit delegate callbacks hop to the main actor.
+
+## Web & desktop planner and sync (D-007)
+
+`web/` holds the planner for browsers and the desktop (Tauri wraps the same build). `web/src/model` ports the
+lighting core; `web/src/sync` stores projects in IndexedDB and syncs them with Supabase. On the phone,
+`Features/Sync/CloudSync.swift` listens to `ProjectStore.onProjectWritten` / `onProjectDeleted`, uploads
+`project.json` plus each scan's `plan.json`, and applies other devices' changes with `ProjectStore.applyRemote`
+after a three-way merge (`Core/Sync/SyncMerge.swift`). Sync state lives in `Documents/Sync/state.json`; the
+sign-in token in the Keychain.

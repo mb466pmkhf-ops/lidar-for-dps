@@ -151,6 +151,10 @@ struct PlanOverlay {
     var showLightLabels = true
     var showPeopleLabels = true
     var showMeterLabels = true
+    /// Beams of every unit; off draws only the selected unit's beam.
+    var showAllBeams = true
+    /// Fields of view of every camera and shot; off draws only the selected one's.
+    var showAllCameraViews = true
     var selectedObject: UUID?
 }
 
@@ -168,7 +172,10 @@ struct FloorPlanCanvas: View {
     var body: some View {
         Canvas { context, size in
             let vp = viewport ?? PlanViewport.fit(fitBounds, in: size, padding: style == .thumbnail ? 4 : 28)
-            PlanRenderer(plan: plan, overlay: overlay, style: style, vp: vp, size: size).draw(in: &context)
+            // A small inset (the overhead map beside the 3D view) draws equipment and text smaller,
+            // so the room stays readable instead of being buried under icons.
+            let compact = style == .full && min(size.width, size.height) < 240
+            PlanRenderer(plan: plan, overlay: overlay, style: style, vp: vp, size: size, compact: compact).draw(in: &context)
         }
         .accessibilityLabel("Top-down floor plan")
     }
@@ -188,7 +195,12 @@ struct PlanRenderer {
     let style: PlanStyle
     let vp: PlanViewport
     let size: CGSize
+    var compact = false
 
+    /// Scale for equipment icons, which are drawn at a fixed screen size rather than to plan scale.
+    private var k: CGFloat { compact ? 0.6 : 1 }
+    /// Label size: two points smaller on a compact plan.
+    private func fs(_ points: CGFloat) -> CGFloat { compact ? points - 2 : points }
     private var full: Bool { style == .full }
     private func s(_ p: PlanPoint) -> CGPoint { vp.toScreen(p) }
     private func px(_ metres: Double) -> CGFloat { CGFloat(metres) * vp.scale }
@@ -236,7 +248,7 @@ struct PlanRenderer {
             path.addLine(to: s(PlanPoint(x: br.x, z: z)))
             z += step
         }
-        ctx.stroke(path, with: .color(.white.opacity(0.05)), lineWidth: 1)
+        ctx.stroke(path, with: .color(Theme.planGrid), lineWidth: 1)
     }
 
     private func drawFloors(_ ctx: inout GraphicsContext) {
@@ -277,9 +289,9 @@ struct PlanRenderer {
             path.closeSubpath()
             let selected = overlay.selectedObject == o.id
             ctx.fill(path, with: .color(Theme.planObject.opacity(selected ? 0.4 : 0.18)))
-            ctx.stroke(path, with: .color(selected ? Color.white : Theme.planObject), lineWidth: selected ? 1.5 : 1)
+            ctx.stroke(path, with: .color(selected ? Theme.accent : Theme.planObject), lineWidth: selected ? 1.5 : 1)
             if full && vp.scale > 40 && overlay.showObjectLabels {
-                labels.append(PlanLabel(text: Text(o.category).font(.poppins(.light, 9)).foregroundColor(Theme.textSecondary),
+                labels.append(PlanLabel(text: Text(o.category).font(.poppins(.light, fs(9))).foregroundColor(Theme.textSecondary),
                                         anchor: c, priority: .object))
             }
         }
@@ -366,7 +378,7 @@ struct PlanRenderer {
             let n = inwardNormal(w, centroid: centroid)
             let pos = s(w.midpoint + n * (14 / Double(vp.scale)))
             labels.append(PlanLabel(text: Text(UnitsFormatter.distance(w.length))
-                                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                        .font(.system(size: fs(10), weight: .regular, design: .monospaced))
                                         .foregroundColor(Theme.textSecondary),
                                     anchor: pos, priority: .dimension))
         }
@@ -395,19 +407,31 @@ struct PlanRenderer {
             for i in 0...steps {
                 let b = cam.rig.pan - half + Double(i) / Double(steps) * 2 * half
                 let d = PlanViewport.direction(b)
-                wedge.addLine(to: CGPoint(x: origin.x + d.dx * px(cam.reach), y: origin.y + d.dy * px(cam.reach)))
+                // The view stops at the walls too, so frames don't spill outside the room.
+                let r = px(BeamClip.planReach(from: cam.rig.position, bearing: b, limit: cam.reach, plan: plan.isEmpty ? nil : plan))
+                wedge.addLine(to: CGPoint(x: origin.x + d.dx * r, y: origin.y + d.dy * r))
             }
             wedge.closeSubpath()
-            ctx.fill(wedge, with: .color(color.opacity(cam.selected ? 0.28 : 0.12)))
-            ctx.stroke(wedge, with: .color(color.opacity(cam.selected ? 0.95 : 0.55)), lineWidth: cam.selected ? 1.5 : 1)
+            if overlay.showAllCameraViews || cam.selected {
+                ctx.fill(wedge, with: .color(color.opacity(cam.selected ? 0.28 : 0.12)))
+                ctx.stroke(wedge, with: .color(color.opacity(cam.selected ? 0.95 : 0.55)), lineWidth: cam.selected ? 1.5 : 1)
+            }
 
             // Camera body: rectangle rotated to the pan direction.
             let d = PlanViewport.direction(cam.rig.pan)
             let side = CGVector(dx: -d.dy, dy: d.dx)
             let bodyLength: CGFloat = 16, bodyWidth: CGFloat = 11
             func pt(_ f: CGFloat, _ l: CGFloat) -> CGPoint {
-                CGPoint(x: origin.x + d.dx * f + side.dx * l, y: origin.y + d.dy * f + side.dy * l)
+                CGPoint(x: origin.x + (d.dx * f + side.dx * l) * k, y: origin.y + (d.dy * f + side.dy * l) * k)
             }
+            // Tripod legs under the camera, so it reads as equipment rather than a box.
+            var legs = Path()
+            let feet: [(CGFloat, CGFloat)] = [(-13, -12), (-13, 12), (15, 0)]
+            for foot in feet {
+                legs.move(to: origin)
+                legs.addLine(to: pt(foot.0, foot.1))
+            }
+            ctx.stroke(legs, with: .color(Theme.planStand), style: StrokeStyle(lineWidth: 2 * k, lineCap: .round))
             var body = Path()
             body.move(to: pt(-bodyLength / 2, -bodyWidth / 2))
             body.addLine(to: pt(bodyLength / 2, -bodyWidth / 2))
@@ -417,14 +441,27 @@ struct PlanRenderer {
             body.addLine(to: pt(-bodyLength / 2, bodyWidth / 2))
             body.closeSubpath()
             ctx.fill(body, with: .color(color))
+            ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
+            // Battery on the back and the lens ring where the matte box starts.
+            var battery = Path()
+            battery.move(to: pt(-bodyLength / 2 - 5, -3.5))
+            battery.addLine(to: pt(-bodyLength / 2, -3.5))
+            battery.addLine(to: pt(-bodyLength / 2, 3.5))
+            battery.addLine(to: pt(-bodyLength / 2 - 5, 3.5))
+            battery.closeSubpath()
+            ctx.fill(battery, with: .color(Theme.planStand))
+            var ring = Path()
+            ring.move(to: pt(bodyLength / 2, -bodyWidth / 2))
+            ring.addLine(to: pt(bodyLength / 2, bodyWidth / 2))
+            ctx.stroke(ring, with: .color(Theme.surface), lineWidth: 1.5)
             if cam.selected {
-                ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - 18, y: origin.y - 18, width: 36, height: 36)),
-                           with: .color(.white), lineWidth: 1.5)
+                ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - 18 * k, y: origin.y - 18 * k, width: 36 * k, height: 36 * k)),
+                           with: .color(Theme.accent), lineWidth: 1.5)
             }
-            let labelPos = CGPoint(x: origin.x - d.dx * 22, y: origin.y - d.dy * 22)
+            let labelPos = CGPoint(x: origin.x - d.dx * 22 * k, y: origin.y - d.dy * 22 * k)
             guard overlay.showCameraLabels else { continue }
             labels.append(PlanLabel(text: Text("\(cam.label) · \(Optics.formatFocal(cam.rig.focalLength))")
-                                        .font(.poppins(.medium, 10))
+                                        .font(.poppins(.medium, fs(10)))
                                         .foregroundColor(color),
                                     anchor: labelPos, priority: .camera))
         }
@@ -440,21 +477,27 @@ struct PlanRenderer {
             let rgb = marker.tint ?? Kelvin.rgb(light.colorTemperature)
             let tint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
             let on = light.isOn
-            let halfWidth = max(px(light.width) / 2, 6)
+            let halfWidth = max(px(light.width) / 2, 6 * k)
+            // The same half width in icon units, for the parts drawn through `pt` (which scales by k).
+            let hw = halfWidth / k
 
             if light.kind.emits {
                 // Beam: wedge whose reach follows the dimmer, fading out.
-                if on {
+                if on && (overlay.showAllBeams || marker.selected) {
                     // Reach and spread come from the photometric model and barn doors when known.
-                    let reach = px(marker.reach ?? (1.5 + 3 * light.dimmer))
+                    let reachM = marker.reach ?? (1.5 + 3 * light.dimmer)
+                    let reach = px(reachM)
                     let half = min(light.beamAngle, 170) / 2
                     let left = marker.leftHalf ?? half, right = marker.rightHalf ?? half
+                    let walls: FloorPlan? = plan.isEmpty ? nil : plan
                     var beam = Path()
                     beam.move(to: CGPoint(x: origin.x + side.dx * halfWidth * 0.6, y: origin.y + side.dy * halfWidth * 0.6))
-                    for i in 0...16 {
-                        let b = light.pan - left + Double(i) / 16 * (left + right)
+                    // Each ray stops at the first wall, window or closed door: no beams outside the room.
+                    for i in 0...24 {
+                        let b = light.pan - left + Double(i) / 24 * (left + right)
                         let v = PlanViewport.direction(b)
-                        beam.addLine(to: CGPoint(x: origin.x + v.dx * reach, y: origin.y + v.dy * reach))
+                        let r = px(BeamClip.planReach(from: light.position, bearing: b, limit: reachM, plan: walls))
+                        beam.addLine(to: CGPoint(x: origin.x + v.dx * r, y: origin.y + v.dy * r))
                     }
                     beam.addLine(to: CGPoint(x: origin.x - side.dx * halfWidth * 0.6, y: origin.y - side.dy * halfWidth * 0.6))
                     beam.closeSubpath()
@@ -464,17 +507,44 @@ struct PlanRenderer {
                 }
                 // Unit body: rounded block across the beam, sized to the unit.
                 func pt(_ f: CGFloat, _ l: CGFloat) -> CGPoint {
-                    CGPoint(x: origin.x + d.dx * f + side.dx * l, y: origin.y + d.dy * f + side.dy * l)
+                    CGPoint(x: origin.x + (d.dx * f + side.dx * l) * k, y: origin.y + (d.dy * f + side.dy * l) * k)
                 }
                 let depth: CGFloat = light.kind == .tube ? 5 : 10
+                if light.kind != .practical {
+                    // Stand legs, then the lamp head behind the face of the unit.
+                    var legs = Path()
+                    let feet: [(CGFloat, CGFloat)] = [(-18, -10), (-18, 10), (2, 0)]
+                    for foot in feet {
+                        legs.move(to: pt(-depth / 2 - 3, 0))
+                        legs.addLine(to: pt(foot.0, foot.1))
+                    }
+                    ctx.stroke(legs, with: .color(Theme.planStand), style: StrokeStyle(lineWidth: 2 * k, lineCap: .round))
+                    if light.kind != .tube {
+                        var head = Path()
+                        head.move(to: pt(-depth / 2 - 8, -5))
+                        head.addLine(to: pt(-depth / 2, -min(hw, 8)))
+                        head.addLine(to: pt(-depth / 2, min(hw, 8)))
+                        head.addLine(to: pt(-depth / 2 - 8, 5))
+                        head.closeSubpath()
+                        ctx.fill(head, with: .color(Theme.planEquipment))
+                    }
+                    if light.kind == .fresnel || light.kind == .hmi {
+                        var doors = Path()
+                        doors.move(to: pt(depth / 2, -hw))
+                        doors.addLine(to: pt(depth / 2 + 6, -hw - 4))
+                        doors.move(to: pt(depth / 2, hw))
+                        doors.addLine(to: pt(depth / 2 + 6, hw + 4))
+                        ctx.stroke(doors, with: .color(Theme.planEquipment), style: StrokeStyle(lineWidth: 2 * k, lineCap: .round))
+                    }
+                }
                 var body = Path()
-                body.move(to: pt(-depth / 2, -halfWidth))
-                body.addLine(to: pt(depth / 2, -halfWidth))
-                body.addLine(to: pt(depth / 2, halfWidth))
-                body.addLine(to: pt(-depth / 2, halfWidth))
+                body.move(to: pt(-depth / 2, -hw))
+                body.addLine(to: pt(depth / 2, -hw))
+                body.addLine(to: pt(depth / 2, hw))
+                body.addLine(to: pt(-depth / 2, hw))
                 body.closeSubpath()
                 ctx.fill(body, with: .color(on ? tint : Theme.textTertiary))
-                ctx.stroke(body, with: .color(.black.opacity(0.6)), lineWidth: 1)
+                ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
             } else {
                 // Grip: a board across the facing direction. White bounce, black neg, grey flag,
                 // hatched diffusion.
@@ -490,27 +560,28 @@ struct PlanRenderer {
                 case .diffusion: color = Color(white: 0.85)
                 default: color = Color(white: 0.45)
                 }
-                if light.kind == .negative {
-                    ctx.stroke(board, with: .color(.white.opacity(0.7)), lineWidth: 7)
+                // An outline keeps a white bounce visible on paper and a black neg visible at night.
+                if light.kind == .negative || light.kind == .bounce {
+                    ctx.stroke(board, with: .color(Theme.ink.opacity(0.7)), lineWidth: 7 * k)
                 }
                 ctx.stroke(board, with: .color(color),
-                           style: StrokeStyle(lineWidth: 5, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
+                           style: StrokeStyle(lineWidth: 5 * k, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
                 // Small tick showing which side faces the action.
                 var face = Path()
                 face.move(to: origin)
-                face.addLine(to: CGPoint(x: origin.x + d.dx * 8, y: origin.y + d.dy * 8))
+                face.addLine(to: CGPoint(x: origin.x + d.dx * 8 * k, y: origin.y + d.dy * 8 * k))
                 ctx.stroke(face, with: .color(color.opacity(0.8)), lineWidth: 1.5)
             }
             if marker.selected {
-                let r = max(halfWidth + 6, 18)
+                let r = max(halfWidth + 6 * k, 18 * k)
                 ctx.stroke(Path(ellipseIn: CGRect(x: origin.x - r, y: origin.y - r, width: 2 * r, height: 2 * r)),
-                           with: .color(.white), lineWidth: 1.5)
+                           with: .color(Theme.accent), lineWidth: 1.5)
             }
-            let labelPos = CGPoint(x: origin.x - d.dx * 20, y: origin.y - d.dy * 20)
+            let labelPos = CGPoint(x: origin.x - d.dx * 20 * k, y: origin.y - d.dy * 20 * k)
             guard overlay.showLightLabels else { continue }
             let text = marker.label ?? (light.kind.emits && !light.power.isEmpty ? "\(light.name) · \(light.power)" : light.name)
-            labels.append(PlanLabel(text: Text(text).font(.poppins(.medium, 10))
-                                        .foregroundColor(light.kind.emits && on ? tint : Theme.textSecondary),
+            labels.append(PlanLabel(text: Text(text).font(.poppins(.medium, fs(10)))
+                                        .foregroundColor(light.kind.emits && on ? Theme.textPrimary : Theme.textSecondary),
                                     anchor: labelPos, priority: .light))
         }
     }
@@ -518,11 +589,11 @@ struct PlanRenderer {
     private func drawSubjects(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for subject in overlay.subjects {
             let c = s(subject.point)
-            let r: CGFloat = subject.selected ? 9 : 7
+            let r: CGFloat = (subject.selected ? 9 : 7) * k
             ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.danger))
             ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r - 3, y: c.y - r - 3, width: 2 * r + 6, height: 2 * r + 6)),
                        with: .color(Theme.danger.opacity(0.5)), lineWidth: 1)
-            labels.append(PlanLabel(text: Text(subject.label).font(.poppins(.medium, 10)).foregroundColor(Theme.danger),
+            labels.append(PlanLabel(text: Text(subject.label).font(.poppins(.medium, fs(10))).foregroundColor(Theme.danger),
                                     anchor: CGPoint(x: c.x, y: c.y + r + 10), priority: .subject))
         }
     }
@@ -545,7 +616,7 @@ struct PlanRenderer {
             let c = s(p.position)
             let d = PlanViewport.direction(p.facing)
             let side = CGVector(dx: -d.dy, dy: d.dx)
-            let hw = max(px(p.shoulderWidth / 2), 7), hd = max(px(p.depth / 2), 4)
+            let hw = max(px(p.shoulderWidth / 2), 7 * k), hd = max(px(p.depth / 2), 4 * k)
             // Shoulders: an ellipse across the facing direction.
             var body = Path()
             for i in 0...24 {
@@ -556,27 +627,27 @@ struct PlanRenderer {
             }
             body.closeSubpath()
             ctx.fill(body, with: .color(Color(white: p.selected ? 0.75 : 0.55)))
-            ctx.stroke(body, with: .color(.black.opacity(0.6)), lineWidth: 1)
-            let hr = max(px(p.headRadius), 4)
+            ctx.stroke(body, with: .color(Theme.surface), lineWidth: 1)
+            let hr = max(px(p.headRadius), 4 * k)
             let head = CGRect(x: c.x - hr, y: c.y - hr, width: 2 * hr, height: 2 * hr)
             ctx.fill(Path(ellipseIn: head), with: .color(Color(red: p.skin.r, green: p.skin.g, blue: p.skin.b)))
             // Nose: which way they face.
             var nose = Path()
             nose.move(to: CGPoint(x: c.x + d.dx * hr * 0.6 + side.dx * hr * 0.45, y: c.y + d.dy * hr * 0.6 + side.dy * hr * 0.45))
-            nose.addLine(to: CGPoint(x: c.x + d.dx * (hr + 6), y: c.y + d.dy * (hr + 6)))
+            nose.addLine(to: CGPoint(x: c.x + d.dx * (hr + 6 * k), y: c.y + d.dy * (hr + 6 * k)))
             nose.addLine(to: CGPoint(x: c.x + d.dx * hr * 0.6 - side.dx * hr * 0.45, y: c.y + d.dy * hr * 0.6 - side.dy * hr * 0.45))
             nose.closeSubpath()
             ctx.fill(nose, with: .color(Color(red: p.skin.r, green: p.skin.g, blue: p.skin.b)))
             if p.selected {
                 let r = hw + 6
-                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(.white), lineWidth: 1.5)
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.accent), lineWidth: 1.5)
             }
             var parts: [String] = []
             if overlay.showPeopleLabels { parts.append(p.name) }
             if overlay.showMeterLabels, let reading = p.reading { parts.append(reading) }
             if !parts.isEmpty {
-                labels.append(PlanLabel(text: Text(parts.joined(separator: " · ")).font(.poppins(.medium, 10)).foregroundColor(.white),
-                                        anchor: CGPoint(x: c.x - d.dx * (hw + 12), y: c.y - d.dy * (hw + 12)), priority: .subject))
+                labels.append(PlanLabel(text: Text(parts.joined(separator: " · ")).font(.poppins(.medium, fs(10))).foregroundColor(Theme.ink),
+                                        anchor: CGPoint(x: c.x - d.dx * (hw + 12 * k), y: c.y - d.dy * (hw + 12 * k)), priority: .subject))
             }
         }
     }
@@ -584,19 +655,19 @@ struct PlanRenderer {
     private func drawMeters(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
         for m in overlay.meters {
             let c = s(m.position)
-            let r: CGFloat = m.selected ? 8 : 6
-            ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(.white))
+            let r: CGFloat = (m.selected ? 8 : 6) * k
+            ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .color(Theme.ink))
             var cross = Path()
-            cross.move(to: CGPoint(x: c.x - r - 4, y: c.y)); cross.addLine(to: CGPoint(x: c.x + r + 4, y: c.y))
-            cross.move(to: CGPoint(x: c.x, y: c.y - r - 4)); cross.addLine(to: CGPoint(x: c.x, y: c.y + r + 4))
-            ctx.stroke(cross, with: .color(.white.opacity(0.7)), lineWidth: 1)
+            cross.move(to: CGPoint(x: c.x - r - 4 * k, y: c.y)); cross.addLine(to: CGPoint(x: c.x + r + 4 * k, y: c.y))
+            cross.move(to: CGPoint(x: c.x, y: c.y - r - 4 * k)); cross.addLine(to: CGPoint(x: c.x, y: c.y + r + 4 * k))
+            ctx.stroke(cross, with: .color(Theme.surface), lineWidth: 1)
             if m.selected {
-                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 14, y: c.y - 14, width: 28, height: 28)), with: .color(.white), lineWidth: 1.5)
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 14 * k, y: c.y - 14 * k, width: 28 * k, height: 28 * k)), with: .color(Theme.accent), lineWidth: 1.5)
             }
             guard overlay.showMeterLabels else { continue }
-            labels.append(PlanLabel(text: Text("\(m.name) · \(m.reading)").font(.poppins(.medium, 10))
-                                        .foregroundColor(m.onKey ? Color(red: 0.45, green: 0.85, blue: 0.55) : .white),
-                                    anchor: CGPoint(x: c.x, y: c.y + 18), priority: .subject))
+            labels.append(PlanLabel(text: Text(m.reading.isEmpty ? m.name : "\(m.name) · \(m.reading)").font(.poppins(.medium, fs(10)))
+                                        .foregroundColor(m.onKey ? Theme.success : Theme.ink),
+                                    anchor: CGPoint(x: c.x, y: c.y + 18 * k), priority: .subject))
         }
     }
 
@@ -658,13 +729,13 @@ struct PlanRenderer {
             var path = Path()
             path.move(to: a)
             path.addLine(to: b)
-            let color = m.live ? Color.white : Theme.accent
+            let color = m.live ? Theme.ink : Theme.accent
             ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 2, dash: m.live ? [6, 4] : []))
             for p in [a, b] {
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)), with: .color(color))
             }
             let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-            let text = Text(m.label).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundColor(.black)
+            let text = Text(m.label).font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundColor(Theme.onAccent)
             let resolved = ctx.resolve(text)
             let sz = resolved.measure(in: CGSize(width: 300, height: 40))
             let bg = CGRect(x: mid.x - sz.width / 2 - 5, y: mid.y - sz.height / 2 - 3, width: sz.width + 10, height: sz.height + 6)
@@ -702,19 +773,19 @@ struct PlanRenderer {
 
     private func drawNorth(_ ctx: inout GraphicsContext) {
         guard let north = overlay.northWorldBearing else { return }
-        let c = CGPoint(x: size.width - 30, y: 34)
+        let c = CGPoint(x: size.width - 30 * k, y: 34 * k)
         let d = PlanViewport.direction(north)
         let side = CGVector(dx: -d.dy, dy: d.dx)
         var arrow = Path()
-        arrow.move(to: CGPoint(x: c.x + d.dx * 16, y: c.y + d.dy * 16))
-        arrow.addLine(to: CGPoint(x: c.x - d.dx * 10 + side.dx * 8, y: c.y - d.dy * 10 + side.dy * 8))
-        arrow.addLine(to: CGPoint(x: c.x - d.dx * 4, y: c.y - d.dy * 4))
-        arrow.addLine(to: CGPoint(x: c.x - d.dx * 10 - side.dx * 8, y: c.y - d.dy * 10 - side.dy * 8))
+        arrow.move(to: CGPoint(x: c.x + d.dx * 16 * k, y: c.y + d.dy * 16 * k))
+        arrow.addLine(to: CGPoint(x: c.x - d.dx * 10 * k + side.dx * 8 * k, y: c.y - d.dy * 10 * k + side.dy * 8 * k))
+        arrow.addLine(to: CGPoint(x: c.x - d.dx * 4 * k, y: c.y - d.dy * 4 * k))
+        arrow.addLine(to: CGPoint(x: c.x - d.dx * 10 * k - side.dx * 8 * k, y: c.y - d.dy * 10 * k - side.dy * 8 * k))
         arrow.closeSubpath()
-        ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22, y: c.y - 22, width: 44, height: 44)), with: .color(.black.opacity(0.5)))
+        ctx.fill(Path(ellipseIn: CGRect(x: c.x - 22 * k, y: c.y - 22 * k, width: 44 * k, height: 44 * k)), with: .color(Theme.overlay))
         ctx.fill(arrow, with: .color(Theme.danger))
-        ctx.draw(Text("N").font(.poppins(.medium, 10)).foregroundColor(.white),
-                 at: CGPoint(x: c.x + d.dx * 27, y: c.y + d.dy * 27))
+        ctx.draw(Text("N").font(.poppins(.medium, fs(10))).foregroundColor(Theme.ink),
+                 at: CGPoint(x: c.x + d.dx * 27 * k, y: c.y + d.dy * 27 * k))
     }
 
     private func drawScaleBar(_ ctx: inout GraphicsContext) {
@@ -730,7 +801,7 @@ struct PlanRenderer {
         bar.move(to: CGPoint(x: origin.x + length, y: origin.y - 4))
         bar.addLine(to: CGPoint(x: origin.x + length, y: origin.y + 4))
         ctx.stroke(bar, with: .color(Theme.textSecondary), lineWidth: 1.5)
-        ctx.draw(Text(UnitsFormatter.distance(metres)).font(.system(size: 10, weight: .regular, design: .monospaced)).foregroundColor(Theme.textSecondary),
+        ctx.draw(Text(UnitsFormatter.distance(metres)).font(.system(size: fs(10), weight: .regular, design: .monospaced)).foregroundColor(Theme.textSecondary),
                  at: CGPoint(x: origin.x + length / 2, y: origin.y - 10))
     }
 }

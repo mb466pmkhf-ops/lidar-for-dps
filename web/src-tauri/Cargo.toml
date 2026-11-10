@@ -1,0 +1,21 @@
+[package]
+name = "framescan-planner"
+version = "0.1.0"
+description = "FrameScan lighting planner for desktop"
+edition = "2021"
+
+[lib]
+name = "framescan_planner_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
