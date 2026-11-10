@@ -4,7 +4,10 @@ import { readBackupZip } from '../sync/zip';
 import { demoBundle } from '../model/demo';
 import { newLocation, newProject, uuid } from '../model/factory';
 import type { ProjectBundle } from '../model/types';
+import { buildRoom, type RoomSpec } from '../model/room';
 import { Planner } from './Planner';
+import { Home } from './Home';
+import { RoomDialog } from './RoomDialog';
 import { Icon } from './icons';
 
 function useWorkspace() {
@@ -30,6 +33,23 @@ export function App() {
   const [drawer, setDrawer] = useState(false);
   const [message, setMessage] = useState<string>();
   const fileInput = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<'home' | 'plan'>('home');
+  const [drawOpen, setDrawOpen] = useState(false);
+  const [last, setLast] = useState<{ projectID: string; locationID: string } | undefined>(() => {
+    try { const [a, b] = (localStorage.getItem('framescan.last') ?? '').split('/'); return a && b ? { projectID: a, locationID: b } : undefined; } catch { return undefined; }
+  });
+  // Night mode: a dim, near-black screen for a dark set. Remembered on this device.
+  const [night, setNight] = useState(() => { try { return localStorage.getItem('framescan.theme') === 'night'; } catch { return false; } });
+  useEffect(() => {
+    document.documentElement.dataset.theme = night ? 'night' : 'day';
+    try { localStorage.setItem('framescan.theme', night ? 'night' : 'day'); } catch { /* private mode */ }
+  }, [night]);
+
+  const openLocation = (pid: string, lid: string) => {
+    setProjectID(pid); setLocationID(lid); setView('plan'); setDrawer(false);
+    setLast({ projectID: pid, locationID: lid });
+    try { localStorage.setItem('framescan.last', `${pid}/${lid}`); } catch { /* private mode */ }
+  };
 
   useEffect(() => { void workspace.load(); }, []);
 
@@ -47,7 +67,21 @@ export function App() {
   const bundle = projectID ? workspace.bundle(projectID) : undefined;
   const sync = syncLabel(workspace.state);
 
-  const addDemo = () => { const b = demoBundle(); workspace.add(b); setProjectID(b.project.id); setLocationID(b.project.locations[0].id); };
+  const addDemo = () => { const b = demoBundle(); workspace.add(b); openLocation(b.project.id, b.project.locations[0].id); };
+  const createRoom = (name: string, spec: RoomSpec, intoProject: string | undefined) => {
+    const { location: loc, scanID: sid, plan } = buildRoom(name, spec);
+    const target = intoProject ? workspace.bundle(intoProject) : undefined;
+    if (target) {
+      workspace.commitBundle({ project: { ...target.project, locations: [...target.project.locations, loc] }, plans: { ...target.plans, [sid]: plan } });
+      openLocation(target.project.id, loc.id);
+    } else {
+      const p = newProject('My rooms');
+      p.locations = [loc];
+      workspace.add({ project: p, plans: { [sid]: plan } });
+      openLocation(p.id, loc.id);
+    }
+    setDrawOpen(false);
+  };
   const addProject = () => {
     const name = prompt('Project name', 'New project');
     if (!name) return;
@@ -80,7 +114,7 @@ export function App() {
         b = { ...b, project: { ...b.project, id: uuid(), name: b.project.name + ' (Imported)' } };
       }
       workspace.add(b);
-      setProjectID(b.project.id); setLocationID(b.project.locations[0]?.id);
+      setProjectID(b.project.id); setLocationID(b.project.locations[0]?.id); setView('plan');
       setMessage(`Imported ${b.project.name}.`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -105,13 +139,26 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <button className="btn ghost small menu-btn" onClick={() => setDrawer(!drawer)} aria-label="Projects"><Icon name="menu" /></button>
-        <span className="brand">FrameScan</span>
-        <span className="crumbs">{project ? `${project.name}${location ? ' — ' + location.name : ''}` : 'Lighting planner'}</span>
+        {view === 'plan' && <button className="btn ghost small menu-btn" onClick={() => setDrawer(!drawer)} aria-label="Projects"><Icon name="menu" /></button>}
+        {view === 'plan'
+          ? <button className="btn small" onClick={() => setView('home')}><Icon name="home" /> Home</button>
+          : <span className="brand">FrameScan</span>}
+        <span className="crumbs">{view === 'plan' && project ? `${project.name}${location ? ' — ' + location.name : ''}` : ''}</span>
+        <button className="btn small" aria-pressed={night} onClick={() => setNight(!night)} title={night ? 'Back to the bright screen' : 'Dim, dark screen for a dark set'}>
+          <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
+        </button>
         <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings'}>
           <span className={'dot ' + sync.dot} /> {sync.text}
         </button>
       </header>
+      {view === 'home' ? (
+        <>
+          <Home projects={projects} plansFor={id => workspace.bundle(id)?.plans} last={last} loaded={workspace.loaded}
+            synced={!!workspace.client?.session} onOpen={openLocation} onDraw={() => setDrawOpen(true)}
+            onImport={() => fileInput.current?.click()} onSync={() => setSyncOpen(true)} onDemo={addDemo} />
+          <input ref={fileInput} type="file" accept=".zip,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />
+        </>
+      ) : (
       <div className={'main' + (location ? '' : ' no-inspector')}>
         <nav className={'sidebar' + (drawer ? ' open' : '')} aria-label="Projects">
           <div className="side-h"><span className="label">Projects</span><button className="btn small" onClick={addProject} title="New project"><Icon name="plus" /></button></div>
@@ -122,12 +169,13 @@ export function App() {
                 <span className="s">{p.locations.length} location{p.locations.length === 1 ? '' : 's'}{p.client ? ' · ' + p.client : ''}</span>
               </button>
               {p.id === projectID && p.locations.map(l => (
-                <button key={l.id} className={'row indent' + (l.id === locationID ? ' on' : '')} onClick={() => { setLocationID(l.id); setDrawer(false); }}>
+                <button key={l.id} className={'row indent' + (l.id === locationID ? ' on' : '')} onClick={() => openLocation(p.id, l.id)}>
                   <span className="t">{l.name}</span>
-                  <span className="s">{(l.lights ?? []).length} lights · {l.scans.length ? 'scanned' : 'no scan'}</span>
+                  <span className="s">{(l.lights ?? []).length} lights · {!l.scans.length ? 'no scan' : l.scans.every(x => x.name === 'Drawn by hand') ? 'drawn by hand' : 'scanned'}</span>
                 </button>
               ))}
               {p.id === projectID && <button className="row indent faint" onClick={addLocation}>+ Add location</button>}
+              {p.id === projectID && <button className="row indent faint" onClick={() => setDrawOpen(true)}>+ Draw a room</button>}
             </div>
           ))}
           <div className="panel" style={{ borderBottom: 0 }}>
@@ -160,6 +208,8 @@ export function App() {
           </div>
         )}
       </div>
+      )}
+      {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={createRoom} onClose={() => setDrawOpen(false)} />}
       {syncOpen && <SyncDialog onClose={() => setSyncOpen(false)} />}
     </div>
   );

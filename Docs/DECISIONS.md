@@ -51,6 +51,12 @@ Lux, stops and power draw come only from `Core/Models/Photometrics.swift`, `Expo
 - Exposure: incident-meter equation N²/t = E·S/C with C = 250, set in T-stops (T includes lens loss); the
   f-stop is shown as T × √transmission for reference. ND in stops. Key lux follows ISO, shutter, T-stop and ND.
 - Hiding a unit changes only the view; switching it off changes the light.
+- 2026-11-10 audit: formulas re-derived and tested by hand; library figures checked against published
+  maker tables and raised where they were a stop or more low (tungsten fresnels, COBs); a fresnel now
+  loses flux when spotted (flux ∝ (beam ÷ flood)^0.85, fitted to studio fresnel tables) instead of keeping
+  it; an HMI that can't dim to a target says so. CI compares every fixture configuration and exposure
+  between Swift and TypeScript (`web/tests/photometry-audit.test.ts`). Not modelled: tubes radiate all
+  round their axis (many real tubes are one-sided), and panels are fully diffuse (some have a ~50° lens).
 - Scan alignment is a stored correction (`ScanRecord.alignment`), applied to the whole 3D world (scan, cameras,
   lights, people) so positions stay consistent; the scan files and the 2D plan are not changed.
 
@@ -78,3 +84,17 @@ synced. Recommended on a decision card; built on this default while the owner co
   meters, shots…); a field changed on both sides keeps the device that is saving. `SyncMerge.swift` and
   `web/src/sync/merge.ts` implement the same rules and share test cases.
 - Polling every 5 s (web) / 10 s (phone) while open; no realtime socket yet.
+
+## D-008 · "Big buttons, daylight" look, with a night mode — 2026-11-10
+The owner compared three mockups (guided steps, big buttons in daylight, plan first) and picked the second,
+then asked for it to be built with a night switch for dark sets. This replaces D-005's dark hairline look.
+- **Day (default)**: light page (#F3F4F1), white cards, near-black text, one blue accent (#1F5FD1), Poppins at
+  regular/medium weights, rounded controls at least 44 px tall. No yellow or amber accent.
+- **Night**: near-black page, dimmed warm-grey text and a dim green-teal accent, so the screen puts as little light
+  as possible into a dark set. A switch in the top bar; remembered per device.
+- **Home**: a few big labelled tiles (continue, draw a room, open a file, sync), then recent locations.
+- **Draw a room**: a starting shape (box or L) plus typed sizes becomes the same `FloorPlan` a scan makes
+  (`web/src/model/room.ts`), stored as a scan named "Drawn by hand" so the plan, 3D view and lighting maths
+  work unchanged. Typed sizes are never presented as measured.
+- The 2D plan stays simple, but cameras and units are drawn as recognisable equipment (body, lens, matte box,
+  softbox, barn doors, stand legs). The 3D viewport keeps its dark studio backdrop in both modes.

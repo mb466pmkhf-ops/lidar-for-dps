@@ -1,6 +1,7 @@
 // The lighting planner for one location: toolbar, plan and inspector. Edits go straight into the
 // project (and so to the phone); undo/redo covers this session.
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useReadingUnit } from './format';
 import type { FloorPlan, LightKind, Location, PlanPoint, Project } from '../model/types';
 import { KIND_INFO, applyProfile, profileByID } from '../model/photometrics';
 import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISSION, planDist } from '../model/calculator';
@@ -51,6 +52,7 @@ function menuAnchor(el: HTMLElement) {
 }
 
 export function Planner({ project, location, plans, commit }: { project: Project; location: Location; plans: Record<string, FloorPlan>; commit(p: Project): void }) {
+  useReadingUnit(); // redraw the plan and the panels when the readings unit changes
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
   const calcPlan = plan && (plan.walls.length || plan.floorPolygons.length) ? plan : undefined;
