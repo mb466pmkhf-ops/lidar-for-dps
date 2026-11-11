@@ -8,7 +8,8 @@ import {
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
 } from '../model/photometrics';
 import { exposureTime, fStop, frameRates, isoPresets, keyLux, shutterAngles, speedLabel, stopLabel, stopsDelta, stopsForLux, tStops, trim } from '../model/exposure';
-import { solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
+import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
+import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups';
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
@@ -320,6 +321,15 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
   const set = (patch: Partial<PrevisCharacter>, undo = true) => p.edit(loc => ({ ...loc, characters: (loc.characters ?? []).map(x => (x.id === c.id ? { ...x, ...patch } : x)) }), undo);
   const remove = () => { p.edit(loc => ({ ...loc, characters: (loc.characters ?? []).filter(x => x.id !== c.id) })); p.select(undefined); };
   const r = p.readings.get('c:' + c.id);
+  const [setupNote, setSetupNote] = useState<{ id: string; text: string }>();
+  // Places a lighting setup round this person, set for the camera's exposure (one undo step).
+  const lightWith = (id: LightingSetup, label: string) => {
+    const camera = cameraSeeing(c.position, meterCameras(p.location))?.position;
+    const built = buildSetup(id, c, camera, p.exposure, p.plan, p.windowTransmission);
+    if (!built.lights.length) return;
+    p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
+    setSetupNote({ id: c.id, text: `${label}${camera ? '' : ' (no camera yet: lit from where they face)'}. ${built.notes.join(' · ')}. Undo removes it.` });
+  };
   return (
     <div>
       <section className="panel">
@@ -335,6 +345,12 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
           <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>
         </div>
       </section>
+      <Panel title="Light this person">
+        <div className="chips">
+          {LIGHTING_SETUPS.map(s => <button key={s.id} className="chip" title={s.summary} onClick={() => lightWith(s.id, s.label)}>{s.label}</button>)}
+        </div>
+        <p className="note">{setupNote?.id === c.id ? <>{setupNote.text} <Badge /></> : 'Adds a starting setup round them, levelled for the set stop. Hover a setup to see what it places.'}</p>
+      </Panel>
       <Panel title="Person">
         <div className="chips" style={{ marginBottom: 10 }}>
           {(['man', 'woman', 'girl', 'boy'] as CharacterType[]).map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} onClick={() => set({ type: t, height: characterDefaults[t] })}>{t[0].toUpperCase() + t.slice(1)}</button>)}

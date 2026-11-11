@@ -71,10 +71,20 @@ function cookie(pm: ResolvedPhotometrics, l: LightFixture, half: number): THREE.
   return tex;
 }
 
+/** Free what a removed part of the scene held on the graphics card. */
+function dispose(root: THREE.Object3D) {
+  root.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) { m.geometry.dispose(); const mm = m.material as THREE.Material; if (!mm.userData.shared) mm.dispose(); }
+    const s = o as THREE.SpotLight;
+    if (s.isSpotLight) { s.map?.dispose(); s.shadow.map?.dispose(); }
+  });
+}
+
 interface Api {
   renderer: THREE.WebGLRenderer; composer: EffectComposer; gtao: GTAOPass; bloom: UnrealBloomPass;
   scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
-  room: THREE.Group; items: THREE.Group; walls: WallRecord[]; wallGroups: THREE.Object3D[];
+  room: THREE.Group; items: THREE.Group; marks: THREE.Group; walls: WallRecord[]; wallGroups: THREE.Object3D[];
   ambient: THREE.HemisphereLight; grid: THREE.Mesh;
   centre: THREE.Vector3; span: number;
   tags: { el: HTMLElement; at: THREE.Vector3 }[];
@@ -94,6 +104,9 @@ export function Scene3D(p: Props) {
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
   const [noLight, setNoLight] = useState(false);
+  // What is already built, by item: a change to one light leaves the others (and their shadow maps) alone.
+  const built = useRef(new Map<string, { key: string; obj: THREE.Object3D }>());
+  const roomGen = useRef(0);
 
   // Renderer, camera, controls: once.
   useEffect(() => {
@@ -102,6 +115,7 @@ export function Scene3D(p: Props) {
     renderer.setClearColor(0x070707);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap; // honours each light's shadow radius: soft sources, soft shadows
+    renderer.shadowMap.autoUpdate = false; // shadows are redrawn when the plan changes, not on every frame of an orbit
     renderer.toneMapping = THREE.NeutralToneMapping; // keeps the colour of the light honest in the highlights
     renderer.toneMappingExposure = 1;
     el.appendChild(renderer.domElement);
@@ -127,8 +141,9 @@ export function Scene3D(p: Props) {
     controls.screenSpacePanning = false;
     const grid = ground();
     scene.add(grid);
-    const room = new THREE.Group(), items = new THREE.Group();
-    scene.add(room, items);
+    const room = new THREE.Group(), items = new THREE.Group(), marks = new THREE.Group();
+    scene.add(room, items, marks);
+    built.current = new Map();
 
     // Picture pipeline: multisampled HDR target → contact shading → glow round bright faces → tone map.
     const target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
@@ -169,7 +184,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, walls: [], wallGroups: [], ambient, grid, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -248,8 +263,10 @@ export function Scene3D(p: Props) {
   // The room, from the floor plan.
   useEffect(() => {
     const a = api.current!;
-    a.room.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); if (!(m.material as THREE.Material).userData.shared) (m.material as THREE.Material).dispose(); } });
+    dispose(a.room);
     a.room.clear();
+    roomGen.current++;
+    a.renderer.shadowMap.needsUpdate = true;
     const built = buildRoom(p.plan);
     a.room.add(built.group);
     a.walls = built.walls; a.centre = built.centre; a.span = built.span;
@@ -260,16 +277,23 @@ export function Scene3D(p: Props) {
     resetView();
   }, [p.plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Everything placed on the plan; rebuilt on every change (cheap at this size).
+  // Everything placed on the plan. Only what changed is rebuilt; the rest keeps its meshes, beam and shadow map.
   useEffect(() => {
     const a = api.current!;
-    a.items.traverse(o => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) { m.geometry.dispose(); const mm = m.material as THREE.Material; if (!mm.userData.shared) mm.dispose(); }
-      const s = o as THREE.SpotLight;
-      if (s.isSpotLight) { s.map?.dispose(); s.shadow.map?.dispose(); }
-    });
-    a.items.clear();
+    const old = built.current, next = new Map<string, { key: string; obj: THREE.Object3D }>();
+    const keep = (id: string, key: string, make: () => THREE.Object3D) => {
+      const had = old.get(id);
+      let obj = had?.key === key ? had.obj : undefined;
+      if (!obj) {
+        obj = make();
+        obj.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noShadow; m.receiveShadow = !m.userData.noShadow; } });
+        a.items.add(obj);
+      }
+      next.set(id, { key, obj });
+      return obj;
+    };
+    dispose(a.marks);
+    a.marks.clear();
     const { location: loc, scanID, selection } = p;
     const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase();
     const isSel = (kind: string, id: string) => selection?.kind === kind && selection.id === id;
@@ -283,12 +307,13 @@ export function Scene3D(p: Props) {
       const m = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.035, 64), new THREE.MeshBasicMaterial({ color: accent.clone().multiplyScalar(1.6), transparent: true, opacity: 0.95, depthWrite: false }));
       m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, z);
       m.userData.noShadow = true; m.userData.noAO = true; m.raycast = () => {};
-      a.items.add(m);
+      a.marks.add(m);
     };
 
     // One scale for every unit turns the calculator's candela into screen brightness: an incident
     // reading of `reference` lux puts a mid-grey card at mid-grey.
-    const lit = p.lights.filter(l => KIND_INFO[l.kind].emits && l.isOn && !hidden.has('lights')).map(l => ({ l, pm: photometrics(l) })).filter(x => x.pm.peakIntensity > 0);
+    const pms = new Map(p.lights.filter(l => KIND_INFO[l.kind].emits).map(l => [l.id, photometrics(l)]));
+    const lit = p.lights.filter(l => l.isOn && !hidden.has('lights') && (pms.get(l.id)?.peakIntensity ?? 0) > 0).map(l => ({ l, pm: pms.get(l.id)! }));
     const measured = [...(p.readings?.values() ?? [])].filter(x => x > 0);
     const brightest = measured.length ? Math.max(...measured) : Math.max(0, ...lit.map(x => illuminanceOnAxis(x.pm, 3)));
     // Fitted to the screen, the brightest reading sits a little over mid-grey.
@@ -304,17 +329,26 @@ export function Scene3D(p: Props) {
     for (const l of p.lights) {
       const info = KIND_INFO[l.kind];
       if (info.emits ? hidden.has('lights') : hidden.has('grip')) continue;
-      const pan = new THREE.Group();
-      pan.position.set(l.position.x, l.height, l.position.z);
-      pan.rotation.y = -rad(l.pan);
-      pan.userData.sel = { kind: 'light', id: l.id } satisfies Selection;
-      const tilt = new THREE.Group();
-      tilt.rotation.x = rad(l.tilt);
-      pan.add(tilt);
-      const support = lightSupport(l);
-      if (isSel('light', l.id)) ring(l.position.x, l.position.z, 0.5);
-      if (info.emits) {
-        const pm = photometrics(l);
+      const selected = isSel('light', l.id);
+      if (selected) ring(l.position.x, l.position.z, 0.5);
+      const pm = pms.get(l.id);
+      // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
+      const showBeam = !!p.beams || selected;
+      const hasMap = shadowed.has(l.id);
+      const pan = keep(`light:${l.id}`, `${JSON.stringify(l)}|${hasMap}|${showBeam ? roomGen.current : ''}`, () => {
+        const pan = new THREE.Group();
+        pan.position.set(l.position.x, l.height, l.position.z);
+        pan.rotation.y = -rad(l.pan);
+        pan.userData.sel = { kind: 'light', id: l.id } satisfies Selection;
+        const tilt = new THREE.Group();
+        tilt.rotation.x = rad(l.tilt);
+        pan.add(tilt);
+        const support = lightSupport(l);
+        if (!pm) {
+          const h = board(l, tilt);
+          if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
+          return pan;
+        }
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
         const size = head(l, pm, color, tilt);
         if (fixtureProfile(l).category === 'practical') {
@@ -324,76 +358,71 @@ export function Scene3D(p: Props) {
           const stud = yoke(size.half, size.below, support === 'overhead' || support === 'megaBoom', pan);
           stand(support, l.height, stud, pan);
         }
-        if (l.isOn && pm.peakIntensity > 0) {
-          const directional = pm.distribution === 'beam' || pm.distribution === 'lambertian';
-          const z = -(size.front + 0.02);
-          if (directional) {
-            const hasMap = shadowed.has(l.id);
-            // With the calculator's falloff projected, the cone only needs to be wide enough to hold it.
-            const half = pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.82, 80) : 78;
-            const spot = new THREE.SpotLight(color, pm.peakIntensity * scale, 0, rad(hasMap ? half : pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.66, 80) : 80), hasMap ? 0 : pm.distribution === 'beam' ? 0.7 : 1, 2);
-            spot.position.set(0, 0, z);
-            spot.target.position.set(0, 0, z - 2);
-            tilt.add(spot.target);
-            if (hasMap) {
-              spot.map = cookie(pm, l, half);
-              spot.castShadow = true;
-              const soft = Math.min(1, pm.emitterRadius / 0.5); // 0 = a point, 1 = a big soft source
-              const res = soft > 0.5 ? 1024 : 2048;
-              spot.shadow.mapSize.set(res, res);
-              spot.shadow.camera.near = 0.12; spot.shadow.camera.far = 18;
-              spot.shadow.bias = -0.0006; spot.shadow.normalBias = 0.025;
-              spot.shadow.radius = 1.2 + soft * 3.2;
-            }
-            tilt.add(spot);
-          } else {
-            const point = new THREE.PointLight(color, pm.peakIntensity * scale, 0, 2);
-            point.position.set(0, 0, 0);
-            tilt.add(point);
+        if (!l.isOn || pm.peakIntensity <= 0) return pan;
+        const z = -(size.front + 0.02);
+        if (pm.distribution === 'beam' || pm.distribution === 'lambertian') {
+          // With the calculator's falloff projected, the cone only needs to be wide enough to hold it.
+          const half = pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.82, 80) : 78;
+          const spot = new THREE.SpotLight(color, 0, 0, rad(hasMap ? half : pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.66, 80) : 80), hasMap ? 0 : pm.distribution === 'beam' ? 0.7 : 1, 2);
+          spot.position.set(0, 0, z);
+          spot.target.position.set(0, 0, z - 2);
+          tilt.add(spot.target);
+          if (hasMap) {
+            spot.map = cookie(pm, l, half);
+            spot.castShadow = true;
+            const soft = Math.min(1, pm.emitterRadius / 0.5); // 0 = a point, 1 = a big soft source
+            const res = soft > 0.5 ? 1024 : 2048;
+            spot.shadow.mapSize.set(res, res);
+            spot.shadow.camera.near = 0.12; spot.shadow.camera.far = 18;
+            spot.shadow.bias = -0.0006; spot.shadow.normalBias = 0.025;
+            spot.shadow.radius = 1.2 + soft * 3.2;
           }
+          tilt.add(spot);
+          pan.userData.lamp = spot;
+        } else {
+          const point = new THREE.PointLight(color, 0, 0, 2);
+          tilt.add(point);
+          pan.userData.lamp = point;
+        }
+        if (showBeam) {
           pan.updateMatrixWorld(true);
           const origin = new THREE.Vector3(0, 0, z).applyMatrix4(tilt.matrixWorld);
           const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
-          // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
-          const b = p.beams || isSel('light', l.id) ? beam(l, pm, origin, q, color, surfaces) : undefined;
+          const b = beam(l, pm, origin, q, color, surfaces);
           if (b) { b.position.set(0, 0, z); tilt.add(b); }
         }
-      } else {
-        const h = board(l, tilt);
-        if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
-      }
-      a.items.add(pan);
+        return pan;
+      });
+      // Brightness follows the shared scale without rebuilding the unit.
+      const lamp = pan.userData.lamp as THREE.Light | undefined;
+      if (lamp && pm) lamp.intensity = pm.peakIntensity * scale;
     }
 
     if (!hidden.has('people')) for (const c of loc.characters ?? []) {
       if (!inScan(c.scanID)) continue;
-      const g = person(c);
-      g.userData.sel = { kind: 'character', id: c.id } satisfies Selection;
+      keep(`character:${c.id}`, JSON.stringify(c), () => { const g = person(c); g.userData.sel = { kind: 'character', id: c.id } satisfies Selection; return g; });
       if (isSel('character', c.id)) ring(c.position.x, c.position.z, 0.42);
-      a.items.add(g);
     }
 
     if (!hidden.has('cameras')) {
       const add = (kind: 'camera' | 'shot', id: string, rig: CameraRig) => {
-        const g = cameraModel(rig);
-        g.userData.sel = { kind, id } satisfies Selection;
-                // You don't see the camera you are looking through (nor a shot set up on the very same spot).
+        const g = keep(`${kind}:${id}`, JSON.stringify(rig), () => { const g = cameraModel(rig); g.userData.sel = { kind, id } satisfies Selection; return g; });
+        // You don't see the camera you are looking through (nor a shot set up on the very same spot).
         const e = eyeRef.current;
         g.visible = !e || Math.hypot(rig.position.x - e.x, rig.position.z - e.z) > 0.08;
         if (isSel(kind, id)) ring(rig.position.x, rig.position.z, 0.48);
-        a.items.add(g);
       };
       for (const cam of loc.cameraPositions) if (inScan(cam.scanID)) add('camera', cam.id, cam.rig);
       for (const s of loc.shots) if (inScan(s.scanID)) add('shot', s.id, s.rig);
     }
     if (!hidden.has('meters')) for (const m of loc.meters ?? []) {
       if (!inScan(m.scanID)) continue;
-      const g = meterModel(m);
-      g.userData.sel = { kind: 'meter', id: m.id } satisfies Selection;
+      keep(`meter:${m.id}`, JSON.stringify(m), () => { const g = meterModel(m); g.userData.sel = { kind: 'meter', id: m.id } satisfies Selection; return g; });
       if (isSel('meter', m.id)) ring(m.position.x, m.position.z, 0.22);
-      a.items.add(g);
     }
-    a.items.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noShadow; m.receiveShadow = !m.userData.noShadow; } });
+    for (const [id, e] of old) if (next.get(id)?.obj !== e.obj) { a.items.remove(e.obj); dispose(e.obj); }
+    built.current = next;
+    a.renderer.shadowMap.needsUpdate = true;
 
     // Reading tags: the calculator's figures, in the unit chosen in the panel.
     const tagEl = tagHost.current!;

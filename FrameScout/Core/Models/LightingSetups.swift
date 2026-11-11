@@ -10,6 +10,10 @@ enum LightingSetup: String, CaseIterable, Identifiable {
     case softSide
     /// Soft key close to the lens axis, one stop of fill from the same side: flat and flattering.
     case beauty
+    /// One hard unit high from the side and nothing else: deep shadows, a low-key look.
+    case hardSingle
+    /// Soft key from the front side, a hard edge from behind on the other side, one stop over.
+    case keyAndEdge
 
     var id: String { rawValue }
     var label: String {
@@ -17,6 +21,8 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         case .threePoint: return "Three-point"
         case .softSide: return "Soft side light"
         case .beauty: return "Soft front (beauty)"
+        case .hardSingle: return "Hard single source"
+        case .keyAndEdge: return "Key and edge"
         }
     }
     var summary: String {
@@ -24,6 +30,8 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         case .threePoint: return "Key, fill 2 stops under, back light"
         case .softSide: return "Big soft key from the side, neg fill"
         case .beauty: return "Soft key near the lens, gentle fill"
+        case .hardSingle: return "One fresnel high from the side, no fill"
+        case .keyAndEdge: return "Soft key, hard edge 1 stop over"
         }
     }
 
@@ -69,6 +77,11 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         case .beauty:
             specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d"], modifier: "softbox-90", offset: 20, distance: 1.8, rise: 0.5, stopsUnderKey: 0),
                      Spec(name: "Fill", role: .fill, profiles: ["mat-2x2-bi", "mat-4x4-bi"], modifier: nil, offset: -10, distance: 2.0, rise: -0.4, stopsUnderKey: 1)]
+        case .hardSingle:
+            specs = [Spec(name: "Key", role: .key, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d"], modifier: nil, offset: 60, distance: 2.6, rise: 1.0, stopsUnderKey: 0)]
+        case .keyAndEdge:
+            specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d", "cob-1200-d"], modifier: "softbox-90", offset: 50, distance: 2.0, rise: 0.5, stopsUnderKey: 0),
+                     Spec(name: "Edge", role: .edge, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d"], modifier: nil, offset: -135, distance: 2.4, rise: 0.9, stopsUnderKey: -1, rim: true)]
         }
 
         // Key goes on whichever side of the camera axis has more room.

@@ -3,7 +3,7 @@
 // Colours are neutral on purpose: the scan knows shapes and sizes, not paint or upholstery.
 import * as THREE from 'three';
 import type { FloorPlan, PlanObject, PlanPoint, PlanSegment } from '../../model/types';
-import { CHROME, WOOD_LEG, cached, fabricBump, floorTextures, mat, mesh, plasterBump, rbox, v, bar } from './kit';
+import { CHROME, DARK, STEEL, WOOD_LEG, cached, fabricBump, floorTextures, mat, mesh, plasterBump, rbox, v, bar } from './kit';
 
 const T = 0.1; // wall thickness, m
 
@@ -144,12 +144,64 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
     const n = Math.max(1, Math.round(span / 0.5));
     for (let i = 0; i < n; i++) {
       const p = -span / 2 + (span / n) * (i + 0.5);
-      const door = mesh(rbox(alongX ? span / n - 0.012 : 0.018, h - 0.1, alongX ? 0.018 : span / n - 0.012, 0.004, 1), paint, g,
+      mesh(rbox(alongX ? span / n - 0.012 : 0.018, h - 0.1, alongX ? 0.018 : span / n - 0.012, 0.004, 1), paint, g,
         alongX ? v(p, 0.06 + (h - 0.08) / 2, front * (d / 2 + 0.006)) : v(front * (w / 2 + 0.006), 0.06 + (h - 0.08) / 2, p));
-      door.userData.noAO = false;
       const hx = (i % 2 ? -1 : 1) * (span / n / 2 - 0.05), hy = Math.min(h * 0.55, 1.05);
       if (alongX) bar(v(p + hx, hy - 0.06, front * (d / 2 + 0.03)), v(p + hx, hy + 0.06, front * (d / 2 + 0.03)), 0.005, CHROME, g);
       else bar(v(front * (w / 2 + 0.03), hy - 0.06, p + hx), v(front * (w / 2 + 0.03), hy + 0.06, p + hx), 0.005, CHROME, g);
+    }
+  } else if (/stove|oven|dishwasher|washer|dryer/.test(kind)) {
+    // Kitchen and laundry machines: a white box on a plinth with a dark door and a bar handle on the room side.
+    const f = -back, dark = mat(0x16181a, { roughness: 0.25, metalness: 0.4 });
+    mesh(rbox(w, h - 0.08, d, 0.008, 1), paint, g, v(0, 0.08 + (h - 0.08) / 2, 0));
+    mesh(new THREE.BoxGeometry(w - 0.04, 0.08, d - 0.06), DARK, g, v(0, 0.04, 0));
+    if (kind.includes('washer') || kind.includes('dryer')) {
+      const port = mesh(new THREE.CylinderGeometry(Math.min(w, h) * 0.28, Math.min(w, h) * 0.28, 0.03, 40), dark, g, v(0, h * 0.5, f * (d / 2 + 0.012)));
+      port.rotation.x = Math.PI / 2;
+    } else {
+      mesh(rbox(w - 0.08, h * 0.5, 0.012, 0.004, 1), dark, g, v(0, 0.14 + h * 0.25, f * (d / 2 + 0.006)));
+      bar(v(-w / 2 + 0.07, h * 0.5 + 0.2, f * (d / 2 + 0.035)), v(w / 2 - 0.07, h * 0.5 + 0.2, f * (d / 2 + 0.035)), 0.008, STEEL, g);
+    }
+    if (kind.includes('stove')) {
+      mesh(rbox(w - 0.02, 0.008, d - 0.02, 0.003, 1), dark, g, v(0, h + 0.004, 0));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        const ring = mesh(new THREE.TorusGeometry(Math.min(w, d) * 0.14, 0.006, 8, 36), STEEL, g, v(sx * w * 0.23, h + 0.01, sz * d * 0.23));
+        ring.rotation.x = Math.PI / 2;
+      }
+    }
+  } else if (kind.includes('sink')) {
+    // A worktop unit with a steel bowl and a tap at the wall side.
+    mesh(rbox(w, h - 0.04, d, 0.006, 1), paint, g, v(0, (h - 0.04) / 2, 0));
+    mesh(rbox(w + 0.02, 0.04, d + 0.02, 0.008, 1), mat(0x4a4a4c, { roughness: 0.4 }), g, v(0, h - 0.02, 0));
+    mesh(rbox(Math.min(w * 0.7, 0.6), 0.012, d * 0.6, 0.004, 1), STEEL, g, v(0, h + 0.002, -back * d * 0.06));
+    bar(v(0, h, back * d * 0.36), v(0, h + 0.24, back * d * 0.36), 0.011, CHROME, g);
+    bar(v(0, h + 0.24, back * d * 0.36), v(0, h + 0.2, back * d * 0.12), 0.009, CHROME, g);
+  } else if (kind.includes('bath')) {
+    const enamel = mat(0xe9e8e4, { roughness: 0.25, metalness: 0 });
+    mesh(rbox(w, h, d, 0.06, 4), enamel, g, v(0, h / 2, 0));
+    mesh(rbox(w - 0.14, 0.02, d - 0.14, 0.008, 2), mat(0xb9bcbd, { roughness: 0.2, metalness: 0 }), g, v(0, h - 0.004, 0));
+    bar(v(w / 2 - 0.09, h, 0), v(w / 2 - 0.09, h + 0.14, 0), 0.012, CHROME, g);
+    bar(v(w / 2 - 0.09, h + 0.14, 0), v(w / 2 - 0.2, h + 0.12, 0), 0.01, CHROME, g);
+  } else if (kind.includes('toilet')) {
+    const enamel = mat(0xe9e8e4, { roughness: 0.25, metalness: 0 });
+    const tank = Math.min(0.2, d * 0.3), seat = Math.min(0.42, h * 0.55);
+    mesh(rbox(w * 0.9, h - seat * 0.55, tank, 0.03, 3), enamel, g, v(0, seat * 0.55 + (h - seat * 0.55) / 2, back * (d / 2 - tank / 2)));
+    const bowl = mesh(new THREE.CylinderGeometry(0.5, 0.36, seat, 36), enamel, g, v(0, seat / 2, -back * tank / 2));
+    bowl.scale.set(w * 0.8, 1, d - tank);
+    const lid = mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.025, 36), enamel, g, v(0, seat + 0.0125, -back * tank / 2));
+    lid.scale.set(w * 0.84, 1, d - tank);
+  } else if (kind.includes('fireplace')) {
+    // A surround with a dark opening on the room side and a mantel shelf.
+    const f = -back, mouth = Math.min(h * 0.6, 0.8);
+    mesh(rbox(w, h, d, 0.01, 1), paint, g, v(0, h / 2, 0));
+    mesh(new THREE.BoxGeometry(w * 0.6, mouth, 0.02), mat(0x0b0b0b, { roughness: 1, metalness: 0 }), g, v(0, mouth / 2, f * (d / 2 + 0.002)));
+    mesh(rbox(w + 0.12, 0.05, d + 0.08, 0.01, 1), wood, g, v(0, h + 0.025, f * 0.04));
+  } else if (kind.includes('stair')) {
+    // Steps along the longer side, rising to the scanned height. Which end is the top isn't in the scan.
+    const alongX = w >= d, run = alongX ? w : d, n = Math.max(2, Math.round(h / 0.18));
+    for (let i = 0; i < n; i++) {
+      const y = (h / n) * (i + 1), at = -run / 2 + (run / n) * (i + 0.5);
+      mesh(new THREE.BoxGeometry(alongX ? run / n : w, y, alongX ? d : run / n), wood, g, alongX ? v(at, y / 2, 0) : v(0, y / 2, at));
     }
   } else {
     mesh(rbox(w, h, d, 0.02), mat(0x8a8a88, { roughness: 0.75, metalness: 0 }), g, v(0, h / 2, 0));
