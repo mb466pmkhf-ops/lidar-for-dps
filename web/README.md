@@ -17,7 +17,9 @@ stops. Everything syncs back to the phone. See `Docs/DECISIONS.md` D-007 for wha
 
 Sync is preset to FrameScan's own Supabase project (`nuprvuipspqmhsczdqrk`, region eu-west-2, schema from
 [`supabase/schema.sql`](supabase/schema.sql)). Create an account on one device and sign in with it on the
-others: web/desktop → *Sync* (top right); iPhone → Home → ⋯ → *Sync with web & desktop…*.
+others: web/desktop → *Sign in to sync* (top right); iPhone → Home → *Sign in to sync* (or the person icon,
+top right). Accounts can use Apple, Google or email; email accounts confirm their address first. Setting
+the providers up: [`Docs/SIGN_IN_SETUP.md`](../Docs/SIGN_IN_SETUP.md).
 
 The URL and anon key are in `src/sync/workspace.ts` (`BUILT_IN_SERVER`) and `CloudSync.builtIn` on iOS. The
 anon key is public by design; the data is protected by the row-level security in `schema.sql`. Build-time
