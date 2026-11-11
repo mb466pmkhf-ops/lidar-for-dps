@@ -102,6 +102,12 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .readout .v { font-family: var(--mono); font-size: 20px; font-weight: 500; }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--text2); border: 1px dashed var(--hair2); padding: 1px 8px; border-radius: 8px; }
 .note { font-size: 13px; color: var(--text3); line-height: 1.5; margin: 8px 0 0; }
+.quirks { margin: 8px 0 0; font-size: 13px; line-height: 1.5; }
+.quirks summary { cursor: pointer; color: var(--text2); font-weight: 500; }
+.quirks ul { margin: 6px 0 0; padding-left: 18px; }
+.quirks li { margin: 0 0 6px; }
+.quirks .muted { font-size: 12px; }
+.quirks a { color: inherit; }
 .meter-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--hair); }
 .meter-row:first-of-type { border-top: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -249,3 +255,9 @@ button.meter-row, .meter-row.row { width: 100%; margin: 0; border-radius: 0; }
 .dialog.listing .stack, .listing-found, .listing-photos { grid-template-columns: minmax(0, 1fr); }
 .listing-found li > span:last-child { flex: 1; overflow: hidden; }
 .listing-found .q { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* My presets: smaller steppers so a unit's settings fit together */
+.stepper.compact { padding: 4px 4px 4px 12px; border-radius: 12px; margin-top: 6px; font-size: 14px; }
+.stepper.compact .ctl button { width: 36px; height: 36px; border-radius: 10px; font-size: 20px; }
+.stepper.compact .ctl input { width: 60px; font-size: 15px; }
+.chip.mine { border-style: dashed; }

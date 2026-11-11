@@ -47,8 +47,28 @@ export const LIGHTING_SETUPS: { id: LightingSetup; label: string; summary: strin
   ] },
 ];
 
+/** Sets the unit's dimmer from a solved level and says what it was set to, or why it couldn't reach
+ *  it. Shared with the user's own presets (presets.ts). */
+export function levelNote(light: LightFixture, solution: IntensitySolution, name: string, target: number): string {
+  const pct = (o: number) => Math.round(o * 100);
+  switch (solution.kind) {
+    case 'output':
+      light.dimmer = solution.output;
+      return `${name}: ${fixtureProfile(light).name} at ${pct(solution.output)} % for ≈ ${Math.round(target)} lx`;
+    case 'tooDim':
+      light.dimmer = 1;
+      return `${name}: even at full ≈ ${Math.round(solution.maxLux)} lx, so move it closer or open the lens`;
+    case 'atMinimum':
+      light.dimmer = solution.output;
+      return `${name}: at its lowest (${pct(solution.output)} %) ≈ ${Math.round(solution.lux)} lx, over the target, so move it back or add ND`;
+    default:
+      light.dimmer = 0.5;
+      return `${name}: couldn't reach the face from here; check its aim`;
+  }
+}
+
 /** Free distance from `p` along a bearing before the nearest wall (8 m with no plan). */
-function room(p: PlanPoint, bearing: number, plan?: FloorPlan): number {
+export function room(p: PlanPoint, bearing: number, plan?: FloorPlan): number {
   if (!plan || !plan.walls.length) return 8;
   const far = planAdd(p, planScale(unitBearing(bearing), 8));
   let best = 8;
@@ -101,24 +121,7 @@ export function buildSetup(id: LightingSetup, person: PrevisCharacter, camera: P
     }
     if (!chosen) continue;
     const { light, solution } = chosen;
-    const pct = (o: number) => Math.round(o * 100);
-    switch (solution.kind) {
-      case 'output':
-        light.dimmer = solution.output;
-        notes.push(`${spec.name}: ${fixtureProfile(light).name} at ${pct(solution.output)} % for ≈ ${Math.round(target)} lx`);
-        break;
-      case 'tooDim':
-        light.dimmer = 1;
-        notes.push(`${spec.name}: even at full ≈ ${Math.round(solution.maxLux)} lx, so move it closer or open the lens`);
-        break;
-      case 'atMinimum':
-        light.dimmer = solution.output;
-        notes.push(`${spec.name}: at its lowest (${pct(solution.output)} %) ≈ ${Math.round(solution.lux)} lx, over the target, so move it back or add ND`);
-        break;
-      default:
-        light.dimmer = 0.5;
-        notes.push(`${spec.name}: couldn't reach the face from here; check its aim`);
-    }
+    notes.push(levelNote(light, solution, spec.name, target));
     lights.push(light);
   }
   return { lights, notes };
