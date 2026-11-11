@@ -53,13 +53,13 @@ jobs:
   core-tests:
     name: Core logic tests (Linux)
     runs-on: ubuntu-24.04
-    # Swift comes from the official image. The setup-swift action checks its download against a
-    # public keyserver, and the job could not start whenever that keyserver was down.
-    container: swift:6.1-noble
     steps:
       - uses: actions/checkout@v4
+      # Swift comes from the official image. The setup-swift action checks its download against a
+      # public keyserver, and the job could not start whenever that keyserver was down. Only this
+      # step runs in the image; the checks below use the runner's own Node and Python.
       - name: Run core tests
-        run: ./Tests/run_core_tests.sh
+        run: docker run --rm -v "$PWD":/src -v /tmp:/tmp -w /src swift:6.1-noble ./Tests/run_core_tests.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -83,11 +83,8 @@ jobs:
             }"
       - name: Validate USD with Pixar USD
         run: |
-          # The Swift image has no Python tools of its own.
-          apt-get update -qq && apt-get install -y -qq python3-venv > /dev/null
-          python3 -m venv /tmp/usd-venv
-          /tmp/usd-venv/bin/pip install --quiet usd-core
-          /tmp/usd-venv/bin/python -c "
+          pip install --quiet usd-core
+          python3 -c "
           from pxr import Usd, UsdGeom
           for f in ['test.usda', 'test.usdz']:
               s = Usd.Stage.Open('/tmp/framescout-core-tests/' + f)
