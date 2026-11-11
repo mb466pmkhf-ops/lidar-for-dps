@@ -3,11 +3,13 @@ import { BUILT_IN_SERVER, workspace, type SyncState } from '../sync/workspace';
 import { readBackupZip } from '../sync/zip';
 import { demoBundle } from '../model/demo';
 import { newLocation, newProject, uuid } from '../model/factory';
-import type { ProjectBundle } from '../model/types';
+import type { Location, ProjectBundle } from '../model/types';
 import { buildRoom, type RoomSpec } from '../model/room';
 import { Planner } from './Planner';
 import { Home } from './Home';
 import { RoomDialog } from './RoomDialog';
+import { ListingDialog, ListingPhotosDialog, type ListingFile } from './ListingDialog';
+import { listingPhotos } from '../sync/listingPhotos';
 import { Icon } from './icons';
 
 function useWorkspace() {
@@ -35,6 +37,9 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<'home' | 'plan'>('home');
   const [drawOpen, setDrawOpen] = useState(false);
+  const [listingOpen, setListingOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
+  const [photoCount, setPhotoCount] = useState(0);
   const [last, setLast] = useState<{ projectID: string; locationID: string } | undefined>(() => {
     try { const [a, b] = (localStorage.getItem('framescan.last') ?? '').split('/'); return a && b ? { projectID: a, locationID: b } : undefined; } catch { return undefined; }
   });
@@ -67,14 +72,32 @@ export function App() {
     if (l?.id !== locationID) setLocationID(l?.id);
   }, [projects, projectID, locationID]);
 
+  useEffect(() => {
+    if (!locationID) { setPhotoCount(0); return; }
+    let live = true;
+    listingPhotos.forLocation(locationID).then(p => { if (live) setPhotoCount(p.length); }).catch(() => { if (live) setPhotoCount(0); });
+    return () => { live = false; };
+  }, [locationID]);
+
   const project = projects.find(p => p.id === projectID);
   const location = project?.locations.find(l => l.id === locationID);
   const bundle = projectID ? workspace.bundle(projectID) : undefined;
   const sync = syncLabel(workspace.state);
 
   const addDemo = () => { const b = demoBundle(); workspace.add(b); openLocation(b.project.id, b.project.locations[0].id); };
-  const createRoom = (name: string, spec: RoomSpec, intoProject: string | undefined) => {
+  // Photos stay in this browser, keyed by location; the listing text goes in the location's notes, which sync.
+  const createFromListing = (name: string, spec: RoomSpec, intoProject: string | undefined, listing: string, photos: ListingFile[]) => {
+    const loc = createRoom(name, spec, intoProject, l => {
+      if (listing) l.notes = `From the listing:\n${listing}`;
+      const scan = l.scans[l.scans.length - 1];
+      if (scan) scan.notes = 'Built from a listing. Sizes were copied from the listing, not measured.';
+    });
+    setListingOpen(false);
+    if (photos.length) void listingPhotos.add(loc.id, photos).then(() => setPhotoCount(photos.length)).catch(e => setMessage(`Couldn't keep the photos: ${e instanceof Error ? e.message : String(e)}`));
+  };
+  const createRoom = (name: string, spec: RoomSpec, intoProject: string | undefined, adjust?: (l: Location) => void) => {
     const { location: loc, scanID: sid, plan } = buildRoom(name, spec);
+    adjust?.(loc);
     const target = intoProject ? workspace.bundle(intoProject) : undefined;
     if (target) {
       workspace.commitBundle({ project: { ...target.project, locations: [...target.project.locations, loc] }, plans: { ...target.plans, [sid]: plan } });
@@ -86,6 +109,7 @@ export function App() {
       openLocation(p.id, loc.id);
     }
     setDrawOpen(false);
+    return loc;
   };
   const addProject = () => {
     const name = prompt('Project name', 'New project');
@@ -149,6 +173,9 @@ export function App() {
           ? <button className="btn small" onClick={() => setView('home')}><Icon name="home" /> Home</button>
           : <span className="brand">FrameScan</span>}
         <span className="crumbs">{view === 'plan' && project ? `${project.name}${location ? ' — ' + location.name : ''}` : ''}</span>
+        {view === 'plan' && location && photoCount > 0 && (
+          <button className="btn small" onClick={() => setPhotosOpen(true)} title="Photos added with the listing (this browser only)">Photos ({photoCount})</button>
+        )}
         <button className="btn small" aria-pressed={night} onClick={() => setNight(!night)} title={night ? 'Back to the bright screen' : 'Dim, dark screen for a dark set'}>
           <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
         </button>
@@ -159,7 +186,7 @@ export function App() {
       {view === 'home' ? (
         <>
           <Home projects={projects} plansFor={id => workspace.bundle(id)?.plans} last={last} loaded={workspace.loaded}
-            synced={!!workspace.client?.session} onOpen={openLocation} onDraw={() => setDrawOpen(true)}
+            synced={!!workspace.client?.session} onOpen={openLocation} onDraw={() => setDrawOpen(true)} onListing={() => setListingOpen(true)}
             onImport={() => fileInput.current?.click()} onSync={() => setSyncOpen(true)} onDemo={addDemo} />
           <input ref={fileInput} type="file" accept=".zip,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />
         </>
@@ -181,6 +208,7 @@ export function App() {
               ))}
               {p.id === projectID && <button className="row indent faint" onClick={addLocation}>+ Add location</button>}
               {p.id === projectID && <button className="row indent faint" onClick={() => setDrawOpen(true)}>+ Draw a room</button>}
+              {p.id === projectID && <button className="row indent faint" onClick={() => setListingOpen(true)}>+ From a listing</button>}
             </div>
           ))}
           <div className="panel" style={{ borderBottom: 0 }}>
@@ -214,7 +242,9 @@ export function App() {
         )}
       </div>
       )}
-      {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={createRoom} onClose={() => setDrawOpen(false)} />}
+      {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={(n, sp, pid) => { createRoom(n, sp, pid); }} onClose={() => setDrawOpen(false)} />}
+      {listingOpen && <ListingDialog projects={projects} currentProjectID={projectID} onCreate={createFromListing} onClose={() => setListingOpen(false)} />}
+      {photosOpen && locationID && <ListingPhotosDialog locationID={locationID} onChange={setPhotoCount} onClose={() => setPhotosOpen(false)} />}
       {syncOpen && <SyncDialog initialError={authError} onClose={() => { setSyncOpen(false); setAuthError(undefined); }} />}
     </div>
   );

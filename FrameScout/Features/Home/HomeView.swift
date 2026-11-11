@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var showImporter = false
     @State private var showSync = false
     @State private var showDrawRoom = false
+    @State private var showListing = false
     @AppStorage(Theme.nightKey) private var night = false
     @State private var importMessage: String?
 
@@ -49,6 +50,9 @@ struct HomeView: View {
                         HomeTile(title: "Import", subtitle: "A project backup (ZIP)", systemImage: "square.and.arrow.down", compact: true) {
                             showImporter = true
                         }
+                    }
+                    HomeTile(title: "From a listing", subtitle: "Can't recce? Use the studio's photos and sizes", systemImage: "photo.on.rectangle.angled", compact: true) {
+                        showListing = true
                     }
                 }
 
@@ -143,6 +147,10 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showSync) { SyncSettingsView() }
         .sheet(isPresented: $showDrawRoom) { DrawRoomView() }
+        .sheet(isPresented: $showListing) { listingSheet }
+#if DEBUG
+        .onAppear { if DemoContent.isEnabled && DemoContent.screen == .listing { showListing = true } }
+#endif
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.zip]) { result in
             importProject(result)
         }
@@ -245,5 +253,19 @@ struct ProjectRow: View {
         if !project.objects.isEmpty { parts.append("\(project.objects.count) objects") }
         parts.append(project.modifiedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
+    }
+}
+
+private extension HomeView {
+    @ViewBuilder var listingSheet: some View {
+#if DEBUG
+        if DemoContent.isEnabled && DemoContent.screen == .listing {
+            BuildFromListingView(sampleText: BuildFromListingView.sampleListing)
+        } else {
+            BuildFromListingView()
+        }
+#else
+        BuildFromListingView()
+#endif
     }
 }
