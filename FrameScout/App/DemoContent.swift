@@ -10,6 +10,8 @@ enum DemoContent {
         case home, project, location, scan, measurements, plan, lighting, shots, sun
         /// The lighting editor in 3D with a person selected; the plan with the key light's panel.
         case previs, lightpanel
+        /// Home with "From a listing" open on a sample studio listing.
+        case listing
     }
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: "FSDemo") }
@@ -35,7 +37,7 @@ enum DemoContent {
 
     static var routes: [Route] {
         switch screen {
-        case .home: return []
+        case .home, .listing: return []
         case .project: return [.project(projectID)]
         case .location: return [.project(projectID), .location(ref)]
         case .scan: return [.project(projectID), .location(ref), .scanDetail(ref, scanID: scanID)]

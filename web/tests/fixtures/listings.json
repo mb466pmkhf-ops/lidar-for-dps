@@ -1,0 +1,110 @@
+{
+  "about": "Listing text cases read by both web/tests/listing.test.ts and Tests/CoreLogicTests (ListingReader.swift). Expected values are metres; omitted keys must be absent.",
+  "cases": [
+    {
+      "name": "metric studio with height to grid and a loading door",
+      "text": "Studio 2\nShooting space: 15m x 10m x 6m to grid.\nLoading door 3m x 4m. Blackout available. 3-phase power.",
+      "expect": {
+        "length": 15,
+        "width": 10,
+        "ceiling": 6,
+        "windows": 0,
+        "door": true,
+        "sizeSource": "listed",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "imperial with feet and inches and an area",
+      "text": "Stage A — 60' x 40' 6\", 24ft to the grid. 2,430 sq ft. Two large windows on the north wall.",
+      "expect": {
+        "length": 18.29,
+        "width": 12.34,
+        "ceiling": 7.32,
+        "area": 225.75,
+        "windows": 2,
+        "sizeSource": "listed",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "labelled length, width and ceiling",
+      "text": "Dimensions\nLength: 12.5 m\nWidth: 8,4 m\nCeiling height: 4.2 m\nNatural light from 4 windows",
+      "expect": {
+        "length": 12.5,
+        "width": 8.4,
+        "ceiling": 4.2,
+        "windows": 4,
+        "sizeSource": "listed",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "one line, unit only on the last number, cove size ignored",
+      "text": "Main studio 20 x 14 m with a white infinity cove 10 x 6 m, 7m high ceilings, no windows.",
+      "expect": {
+        "length": 20,
+        "width": 14,
+        "ceiling": 7,
+        "windows": 0,
+        "sizeSource": "listed",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "two studios, the bigger one wins",
+      "text": "Studio 1: 9m × 7m, ceiling 3.5m\nStudio 2: 18m × 12m × 8m\nGreen room 4m x 3m",
+      "expect": {
+        "length": 18,
+        "width": 12,
+        "ceiling": 8,
+        "sizeSource": "listed",
+        "alternatives": 1
+      }
+    },
+    {
+      "name": "area only becomes a square",
+      "text": "A bright daylight loft of 100 m² with exposed brick and a single window.",
+      "expect": {
+        "length": 10,
+        "width": 10,
+        "area": 100,
+        "windows": 1,
+        "sizeSource": "squareFromArea",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "area and one side",
+      "text": "Floor area 1,200 sq ft. The space is 40 ft long, 14ft ceilings. Roller shutter door.",
+      "expect": {
+        "length": 12.19,
+        "width": 9.14,
+        "ceiling": 4.27,
+        "area": 111.48,
+        "door": true,
+        "sizeSource": "fromArea",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "millimetres and compact 12x8m",
+      "text": "Room size 12x8m; height 3600 mm",
+      "expect": {
+        "length": 12,
+        "width": 8,
+        "ceiling": 3.6,
+        "sizeSource": "listed",
+        "alternatives": 0
+      }
+    },
+    {
+      "name": "nothing to read",
+      "text": "Lovely period house with a garden, close to the station. Parking for 2 vans.",
+      "expect": {
+        "sizeSource": "none",
+        "alternatives": 0
+      }
+    }
+  ]
+}
