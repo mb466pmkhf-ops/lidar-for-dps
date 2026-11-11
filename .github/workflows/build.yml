@@ -83,8 +83,11 @@ jobs:
             }"
       - name: Validate USD with Pixar USD
         run: |
-          pip install --quiet usd-core
-          python3 -c "
+          # The Swift image has no Python tools of its own.
+          apt-get update -qq && apt-get install -y -qq python3-venv > /dev/null
+          python3 -m venv /tmp/usd-venv
+          /tmp/usd-venv/bin/pip install --quiet usd-core
+          /tmp/usd-venv/bin/python -c "
           from pxr import Usd, UsdGeom
           for f in ['test.usda', 'test.usdz']:
               s = Usd.Stage.Open('/tmp/framescout-core-tests/' + f)
