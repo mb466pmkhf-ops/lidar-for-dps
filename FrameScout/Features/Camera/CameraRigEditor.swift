@@ -168,6 +168,8 @@ struct CameraRigForm: View {
             SensorPicker(sensorID: $rig.sensorID, customSensor: $rig.customSensor)
             if rig.sensorID == SensorLibrary.customID {
                 CustomSensorFields(sensor: $rig.customSensor)
+            } else {
+                QuirkList(quirks: KnownQuirks.sensor(rig.sensorID))
             }
             Picker("Frame lines", selection: $rig.aspect) {
                 ForEach(FrameAspect.allCases) { Text($0.label).tag($0) }
