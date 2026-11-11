@@ -12,6 +12,20 @@ export interface RemoteRow {
 export type RemoteHead = Pick<RemoteRow, 'id' | 'rev' | 'deleted'>;
 
 export const TABLE = 'framescan_projects';
+export type OAuthProvider = 'apple' | 'google';
+
+/// Plain words for the auth server's errors. Same wording as CloudSync.authMessage on iOS.
+export function authMessage(j: Record<string, any>, status: number): string {
+  switch (j.error_code) {
+    case 'email_not_confirmed': return 'Confirm your email first: click the link we sent, or enter its code under Create account.';
+    case 'invalid_credentials': return 'Wrong email or password.';
+    case 'user_already_exists': case 'email_exists': return "There's already an account with this email. Sign in instead.";
+    case 'weak_password': return 'Choose a longer password (at least 8 characters).';
+    case 'otp_expired': return 'That code has expired. Send a new email and use the newest code.';
+    case 'over_email_send_rate_limit': return 'Too many emails just now. Wait a minute and try again.';
+    default: return j.error_description || j.msg || j.message || `Sign-in failed (${status})`;
+  }
+}
 
 export class AuthError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -22,15 +36,21 @@ export class SupabaseClient {
 
   private base() { return this.config.url.replace(/\/+$/, ''); }
 
-  private async auth(path: string, body: unknown): Promise<Session> {
+  private async post(path: string, body: unknown): Promise<Record<string, any>> {
     const res = await fetch(`${this.base()}/auth/v1/${path}`, {
       method: 'POST',
       headers: { apikey: this.config.anonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new AuthError(j.error_description || j.msg || j.message || `Sign-in failed (${res.status})`, res.status);
-    if (!j.access_token) throw new Error('Check your email to confirm the account, then sign in.');
+    if (!res.ok) throw new AuthError(authMessage(j, res.status), res.status);
+    return j;
+  }
+
+  /// Returns undefined when the server answered without a session (a sign-up waiting for its email).
+  private async auth(path: string, body: unknown): Promise<Session | undefined> {
+    const j = await this.post(path, body);
+    if (!j.access_token) return undefined;
     const s: Session = {
       accessToken: j.access_token, refreshToken: j.refresh_token,
       expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, userID: j.user?.id, email: j.user?.email,
@@ -40,8 +60,41 @@ export class SupabaseClient {
     return s;
   }
 
-  signIn(email: string, password: string) { return this.auth('token?grant_type=password', { email, password }); }
+  private async mustAuth(path: string, body: unknown, failure = 'Sign-in failed'): Promise<Session> {
+    const s = await this.auth(path, body);
+    if (!s) throw new Error(failure);
+    return s;
+  }
+
+  signIn(email: string, password: string) { return this.mustAuth('token?grant_type=password', { email, password }); }
+  /// Undefined: the account waits for its confirmation email (link or code).
   signUp(email: string, password: string) { return this.auth('signup', { email, password }); }
+  verifySignup(email: string, code: string) {
+    return this.mustAuth('verify', { type: 'signup', email, token: code.replace(/\s+/g, '') },
+      "That code didn't work. Check the newest email, or click its link and then sign in.");
+  }
+  async resendSignup(email: string) { await this.post('resend', { type: 'signup', email }); }
+
+  /// Fails with plain words when the server hasn't switched the provider on (instead of a raw error
+  /// page in the browser). An unreadable answer lets the attempt go ahead.
+  async requireProvider(provider: OAuthProvider) {
+    let enabled: unknown;
+    try {
+      const res = await fetch(`${this.base()}/auth/v1/settings`, { headers: { apikey: this.config.anonKey } });
+      enabled = (await res.json())?.external?.[provider];
+    } catch { return; }
+    if (enabled === false) throw new Error(`${provider === 'apple' ? 'Apple' : 'Google'} sign-in isn't switched on for this server yet. Use email for now.`);
+  }
+
+  /// The provider's sign-in page (through Supabase). PKCE: only the holder of the verifier can use the code.
+  authorizeURL(provider: OAuthProvider, redirectTo: string, challenge: string) {
+    const q = new URLSearchParams({ provider, redirect_to: redirectTo, code_challenge: challenge, code_challenge_method: 's256' });
+    return `${this.base()}/auth/v1/authorize?${q}`;
+  }
+  exchangeCode(code: string, verifier: string) {
+    return this.mustAuth('token?grant_type=pkce', { auth_code: code, code_verifier: verifier });
+  }
+
   signOut() { this.session = undefined; this.onSession?.(undefined); }
 
   private async token(): Promise<string> {

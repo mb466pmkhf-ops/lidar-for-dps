@@ -3,7 +3,8 @@
 import type { Project, ProjectBundle, UUID } from '../model/types';
 import { isoNow } from '../model/factory';
 import { localStore, type StoredProject } from './localStore';
-import { SupabaseClient, type Session, type SyncConfig, type RemoteRow } from './supabase';
+import { SupabaseClient, type OAuthProvider, type Session, type SyncConfig, type RemoteRow } from './supabase';
+import { finishRedirect, startOAuth } from './oauth';
 import { deepEqual, mergeDocuments } from './merge';
 
 export type SyncState =
@@ -156,11 +157,45 @@ export class Workspace {
     this.setState({ kind: 'local' });
   }
 
-  async signIn(email: string, password: string, create: boolean) {
+  private need(): SupabaseClient {
     if (!this.client) throw new Error('Set up sync first');
-    if (create) await this.client.signUp(email, password); else await this.client.signIn(email, password);
-    // Revisions belong to the account (and server) they came from. After a sign-in every project
-    // starts over: it is uploaded, or merged with the account's copy if one already exists.
+    return this.client;
+  }
+
+  async signIn(email: string, password: string) {
+    await this.need().signIn(email, password);
+    await this.afterSignIn();
+  }
+
+  /// 'confirm': the account exists but waits for its confirmation email (link or code).
+  async createAccount(email: string, password: string): Promise<'signedIn' | 'confirm'> {
+    const s = await this.need().signUp(email, password);
+    if (!s) return 'confirm';
+    await this.afterSignIn();
+    return 'signedIn';
+  }
+
+  async verifyEmail(email: string, code: string) {
+    await this.need().verifySignup(email, code);
+    await this.afterSignIn();
+  }
+
+  resendConfirmation(email: string) { return this.need().resendSignup(email); }
+
+  /// Apple or Google. On the web this leaves the page and finishes in completeRedirect.
+  async signInWith(provider: OAuthProvider) {
+    const s = await startOAuth(this.need(), provider);
+    if (s) await this.afterSignIn();
+  }
+
+  /// Web: called once at start-up to pick up a sign-in the provider redirected back from.
+  async completeRedirect() {
+    if (this.client && await finishRedirect(this.client)) await this.afterSignIn();
+  }
+
+  // Revisions belong to the account (and server) they came from. After a sign-in every project
+  // starts over: it is uploaded, or merged with the account's copy if one already exists.
+  private async afterSignIn() {
     for (const e of this.entries.values()) {
       if (e.deleted) { this.entries.delete(e.id); void localStore.remove(e.id); continue; }
       e.rev = undefined; e.base = undefined; e.dirty = true; e.version++;

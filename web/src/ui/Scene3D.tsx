@@ -2,7 +2,7 @@
 // cameras, meters). Like the phone's 3D view: units on their stands, beams that stop where they
 // meet the room, walls between you and the room cut away.
 //
-// What the picture is, and isn't (Docs/DECISIONS.md D-006, D-010): each unit's brightness, colour,
+// What the picture is, and isn't (Docs/DECISIONS.md D-006, D-011): each unit's brightness, colour,
 // beam shape and barn-door cut come from the same photometric model as the readings, and shadows
 // are real. It shows direct light only: no light bouncing round the room, no daylight. So it is a
 // preview of the look, and the readings stay the figures to work from.

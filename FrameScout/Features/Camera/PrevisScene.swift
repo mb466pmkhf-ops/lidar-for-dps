@@ -841,7 +841,7 @@ final class VirtualSceneModel: ObservableObject {
     /// Lighting units: a head shaped by type and modifier on its yoke and stand, a SceneKit light set
     /// from the unit's colour and its output relative to the brightest unit, barn doors as leaves and
     /// a projected mask, and beam rays that stop at the room. Viewport brightness is a visual guide
-    /// only (D-010); lux comes from `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
+    /// only (D-011); lux comes from `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
     /// doesn't rebuild (and re-shadow) the whole rig every frame.
     func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false) {
         var anyOn = false

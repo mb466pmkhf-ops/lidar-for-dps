@@ -114,7 +114,20 @@ From a whole-app audit (security, bugs, performance).
   Desktop installers are unsigned (macOS will warn on first open) until the owner has signing certificates.
 
 
-## D-010 · What the 3D picture is allowed to claim — 2026-11-11
+## D-010 · Sign in with Apple, Google or email — 2026-11-11
+Owner asked for Google and Apple sign-in, a password confirmation and email verification, on the
+phone and the desktop.
+- **One flow everywhere**: Apple and Google go through Supabase's web sign-in with PKCE, not the native
+  Sign in with Apple capability, because the owner signs with a free Personal Team (no capabilities).
+  Apple still needs the paid Developer Program on the server side (Services ID + key). Setup steps:
+  `Docs/SIGN_IN_SETUP.md`.
+- **Desktop**: providers block embedded web views, so the Tauri app opens the system browser and catches
+  the redirect once on a fixed loopback port (127.0.0.1:53682–53684, listed in Supabase). No new crates.
+- **Email accounts**: password typed twice, at least 8 characters; the address is confirmed by link or by
+  the code in the email before the account gets a session.
+- **Findable on the phone**: Home has a *Sign in to sync* card and a person icon; it was only in the ⋯ menu.
+
+## D-011 · What the 3D picture is allowed to claim — 2026-11-11
 The 3D view was rebuilt for picture quality (HDR, soft shadows, contact shading, glow, modelled equipment,
 furniture and people). Better pictures look more trustworthy, so the rules of D-006 are restated for it.
 - **From the photometric model**: each unit's colour, its brightness relative to the other units, and (web and
