@@ -495,6 +495,68 @@ do {
     check(edge.lights.count == 2 && edge.lights[1].role == .edge, "key and edge places a soft key and an edge light")
 }
 
+// MARK: Lighting presets (same cases as web/tests/presets.test.ts)
+do {
+    let person = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1), facing: 0)
+    var exp = ExposureSettings(); exp.iso = 800; exp.tStop = 2.8
+    func faceLux(_ lights: [LightFixture], _ id: UUID, _ who: PrevisCharacter, _ bearing: Double, _ e: ExposureSettings = exp) -> Double {
+        let face = LightingCalculator.Point(who.position, height: who.eyeHeight - 0.03)
+        return LightingCalculator.reading(at: face, normal: LightingCalculator.direction(bearing: bearing, tilt: 0),
+                                          scene: LightingCalculator.Scene(lights: lights, plan: demoPlan))
+            .contributions.filter { $0.lightID == id }.reduce(0) { $0 + $1.lux }
+    }
+    let original = LightingSetup.threePoint.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    let preset = LightingPreset.capture(name: "My three-point", lights: original.lights, person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(preset.units.map(\.light.name) == ["Key", "Fill", "Back"], "preset keeps unit names without the person (\(preset.units.map(\.light.name)))")
+    check(preset.units[0].angle > 0 && abs((preset.units[1].stopsUnderKey ?? 9) - 2) < 0.5, "preset saves the key on + and the fill ≈ 2 stops under")
+    let again = preset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    let same = zip(again.lights, original.lights).allSatisfy { a, b in
+        a.position.distance(to: b.position) < 0.02 && abs(a.height - b.height) < 0.02 && a.name == b.name && a.profileID == b.profileID
+    }
+    check(again.lights.count == 3 && same, "saved three-point used again lands where it was")
+    check(abs(log2(faceLux(again.lights, again.lights[0].id, person, 0) / exp.keyLux)) < 0.2, "used again, the key is at the set stop")
+
+    let mine = LightingPreset.capture(name: "Mine", lights: LightingSetup.keyAndEdge.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights,
+                                      person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    var leo = PrevisCharacter(name: "Leo", type: .man, position: P(1.5, 0), facing: 270)
+    leo.scanID = nil
+    var brighter = exp; brighter.tStop = 4
+    let moved = mine.build(for: leo, camera: P(-1.5, 0), exposure: brighter, plan: demoPlan)
+    check(moved.lights.map(\.name) == ["Key · Leo", "Edge · Leo"], "preset names units after the new person")
+    check(moved.lights.allSatisfy { abs($0.position.x) < 3 && abs($0.position.z) < 2 }, "preset units stay inside the room")
+    check(abs(log2(faceLux(moved.lights, moved.lights[0].id, leo, 270) / brighter.keyLux)) < 0.2, "preset follows the person, camera and stop")
+
+    let single = LightingPreset.capture(name: "Side", lights: LightingSetup.hardSingle.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights,
+                                        person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    var nearWall = person; nearWall.position = P(2.4, 0)
+    let auto = single.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
+    var keep = single; keep.keepSides = true
+    let kept = keep.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
+    check(auto.position.x < 2.4 && kept.position.x > auto.position.x, "preset mirrors to the roomier side unless sides are kept")
+
+    let w = demoPlan.windows[0]
+    let out = demoPlan.outwardBearing(of: w)
+    let dir = PlanPoint.unit(bearing: out)
+    var sun = LightFixture(name: "Sun", kind: .hmi, position: w.midpoint + dir * 3, pan: (out + 180).truncatingRemainder(dividingBy: 360))
+    sun.height = 3; sun.tilt = -25; sun.dimmer = 0.8
+    let bounce = LightFixture(name: "Bounce", kind: .bounce, position: w.midpoint + dir * -0.5, pan: out)
+    let windowPreset = LightingPreset.capture(name: "Sun through window", lights: [sun, bounce], window: w, plan: demoPlan)
+    check(abs(windowPreset.units[0].out - 3) < 0.01 && abs(windowPreset.units[0].panOffset) < 0.1 && abs(windowPreset.units[1].out + 0.5) < 0.01,
+          "window preset saves out from the glass and aim (\(windowPreset.units.map(\.out)))")
+    let atWindow = windowPreset.build(at: w, plan: demoPlan, scanID: nil)
+    check(atWindow.lights[0].position.distance(to: sun.position) < 0.02 && atWindow.lights[0].dimmer == 0.8 && atWindow.lights[0].tilt == -25,
+          "window preset used again lands where it was, at its dimmer")
+    check(windowPreset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights.count == 2
+          && windowPreset.build(for: person, camera: nil, exposure: exp, plan: nil).notes.first?.contains("needs a window") == true,
+          "window preset from a person uses the nearest window, or says it needs one")
+
+    let text = LightingPreset.encode([mine])
+    check(LightingPreset.decode(text) == [mine], "presets round-trip through the shared JSON")
+    check(LightingPreset.decode("hello") == nil, "presets refuse other text")
+    let fromWeb = #"{"framescanPresets":1,"presets":[{"id":"5f0c2a5e-8a7b-4f4e-9a40-1d2b3c4d5e6f","name":"Web","anchor":"person","keepSides":false,"units":[{"light":{"id":"0a0b0c0d-0e0f-4a1b-8c2d-3e4f5a6b7c8d","name":"Key","kind":"fresnel","position":{"x":0,"z":0},"height":2,"pan":0,"tilt":-20,"beamAngle":35,"width":0.3,"power":"","colorTemperature":5600,"gel":"","modifier":"","dimmer":1,"isOn":true,"notes":""},"angle":45,"distance":2,"rise":0.5,"along":0,"out":0,"height":1.5,"panOffset":0,"stopsUnderKey":0}]}]}"#
+    check(LightingPreset.decode(fromWeb)?.first?.units.first?.angle == 45, "a preset copied from the planner opens on the phone")
+}
+
 // MARK: Sync merge (same cases as web/tests/merge.test.ts)
 do {
     func j(_ s: String) -> Any { try! JSONSerialization.jsonObject(with: Data(s.utf8)) }

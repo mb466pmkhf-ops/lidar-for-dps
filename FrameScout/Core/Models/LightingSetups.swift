@@ -85,12 +85,12 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         }
 
         // Key goes on whichever side of the camera axis has more room.
-        let side: Double = room(from: p, bearing: towardCamera + 60, plan: plan) >= room(from: p, bearing: towardCamera - 60, plan: plan) ? 1 : -1
+        let side: Double = Self.room(from: p, bearing: towardCamera + 60, plan: plan) >= Self.room(from: p, bearing: towardCamera - 60, plan: plan) ? 1 : -1
         var lights: [LightFixture] = []
         var notes: [String] = []
         for spec in specs {
             let bearing = towardCamera + side * spec.offset
-            let d = min(spec.distance, max(0.6, room(from: p, bearing: bearing, plan: plan) - 0.4))
+            let d = min(spec.distance, max(0.6, Self.room(from: p, bearing: bearing, plan: plan) - 0.4))
             let at = p + PlanPoint.unit(bearing: bearing) * d
             let pan = PlanGeometry.bearing(from: at, to: p)
             guard spec.kind == nil, !spec.profiles.isEmpty else {
@@ -122,28 +122,34 @@ enum LightingSetup: String, CaseIterable, Identifiable {
             }
             guard let pick = chosen else { continue }
             var light = pick.0
-            let solution = pick.1
-            switch solution {
-            case .output(let o):
-                light.dimmer = o
-                notes.append("\(spec.name): \(light.profile.name) at \(Int((o * 100).rounded())) % for ≈ \(Int(target.rounded())) lx")
-            case .tooDim(let maxLux, _):
-                light.dimmer = 1
-                notes.append("\(spec.name): even at full ≈ \(Int(maxLux.rounded())) lx — move it closer or open the lens")
-            case .atMinimum(let o, let lux):
-                light.dimmer = o
-                notes.append("\(spec.name): at its lowest (\(Int((o * 100).rounded())) %) ≈ \(Int(lux.rounded())) lx, over the target — move it back or add ND")
-            case .othersTooBright, .noContribution:
-                light.dimmer = 0.5
-                notes.append("\(spec.name): couldn't reach the face from here; check its aim")
-            }
+            notes.append(Self.level(&light, with: pick.1, name: spec.name, target: target))
             lights.append(light)
         }
         return Result(lights: lights, notes: notes)
     }
 
+    /// Sets the unit's dimmer from a solved level and says what it was set to, or why it couldn't
+    /// reach it. Shared with the user's own presets (`LightingPreset`).
+    static func level(_ light: inout LightFixture, with solution: LightingCalculator.IntensitySolution,
+                      name: String, target: Double) -> String {
+        switch solution {
+        case .output(let o):
+            light.dimmer = o
+            return "\(name): \(light.profile.name) at \(Int((o * 100).rounded())) % for ≈ \(Int(target.rounded())) lx"
+        case .tooDim(let maxLux, _):
+            light.dimmer = 1
+            return "\(name): even at full ≈ \(Int(maxLux.rounded())) lx — move it closer or open the lens"
+        case .atMinimum(let o, let lux):
+            light.dimmer = o
+            return "\(name): at its lowest (\(Int((o * 100).rounded())) %) ≈ \(Int(lux.rounded())) lx, over the target — move it back or add ND"
+        case .othersTooBright, .noContribution:
+            light.dimmer = 0.5
+            return "\(name): couldn't reach the face from here; check its aim"
+        }
+    }
+
     /// Free distance from `p` along a bearing before the nearest wall (8 m with no plan).
-    func room(from p: PlanPoint, bearing: Double, plan: FloorPlan?) -> Double {
+    static func room(from p: PlanPoint, bearing: Double, plan: FloorPlan?) -> Double {
         guard let plan, !plan.walls.isEmpty else { return 8 }
         let far = p + PlanPoint.unit(bearing: bearing) * 8
         var best = 8.0
