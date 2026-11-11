@@ -21,9 +21,6 @@ extension View {
             .scrollContentBackground(.hidden)
     }
 
-    /// The site's spaced small-caps-free label treatment.
-    func fsTracked(_ amount: CGFloat = Theme.tracking) -> some View { tracking(amount) }
-
     /// For screens named after something the user typed (projects, locations): the bar keeps the
     /// title for the back button and VoiceOver but shows none, and `ScreenHeading` draws it in the
     /// content where it can wrap instead of being cut off like a long large title.

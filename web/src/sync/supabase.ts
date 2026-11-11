@@ -13,6 +13,10 @@ export type RemoteHead = Pick<RemoteRow, 'id' | 'rev' | 'deleted'>;
 
 export const TABLE = 'framescan_projects';
 
+export class AuthError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 export class SupabaseClient {
   constructor(readonly config: SyncConfig, public session?: Session, private onSession?: (s?: Session) => void) {}
 
@@ -25,7 +29,7 @@ export class SupabaseClient {
       body: JSON.stringify(body),
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || `Sign-in failed (${res.status})`);
+    if (!res.ok) throw new AuthError(j.error_description || j.msg || j.message || `Sign-in failed (${res.status})`, res.status);
     if (!j.access_token) throw new Error('Check your email to confirm the account, then sign in.');
     const s: Session = {
       accessToken: j.access_token, refreshToken: j.refresh_token,
@@ -43,7 +47,13 @@ export class SupabaseClient {
   private async token(): Promise<string> {
     if (!this.session) throw new Error('Not signed in');
     if (Date.now() > this.session.expiresAt - 60_000) {
-      await this.auth('token?grant_type=refresh_token', { refresh_token: this.session.refreshToken });
+      try {
+        await this.auth('token?grant_type=refresh_token', { refresh_token: this.session.refreshToken });
+      } catch (e) {
+        // A revoked or expired refresh token never recovers: sign out instead of retrying forever.
+        if (e instanceof AuthError && e.status >= 400 && e.status < 500) { this.signOut(); throw new Error('Signed out — sign in again'); }
+        throw e;
+      }
     }
     return this.session!.accessToken;
   }

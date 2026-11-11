@@ -172,6 +172,13 @@ let raw = try Data(contentsOf: outDir.appendingPathComponent("test.usdz"))
 let dataStart = header + 30 + (Int(raw[header + 26]) | Int(raw[header + 27]) << 8) + (Int(raw[header + 28]) | Int(raw[header + 29]) << 8)
 check(dataStart % 64 == 0, "USDZ payload is 64-byte aligned")
 check(CRC32.checksum(Data("123456789".utf8)) == 0xCBF43926, "CRC-32 check value")
+// A central directory whose name runs past the end of the file is rejected, not read out of bounds.
+var truncated = raw
+let cdStart = (16..<20).reduce(0) { $0 | Int(raw[raw.count - 22 + $1]) << (8 * ($1 - 16)) }
+truncated[cdStart + 28] = 0xFF; truncated[cdStart + 29] = 0xFF
+check((try? ZipReader(data: truncated)) == nil, "ZIP with an overlong entry name is rejected")
+check(StoragePaths.contained("../../Library/x.jpg") == "x.jpg" && StoragePaths.contained("..") == "_"
+      && StoragePaths.contained("A.jpg") == "A.jpg", "photo file names stay inside their folder")
 
 print("Artifacts in \(outDir.path)")
 // MARK: Persistence compatibility

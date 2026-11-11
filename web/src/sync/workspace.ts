@@ -50,6 +50,7 @@ export class Workspace {
   private saveTimers = new Map<UUID, ReturnType<typeof setTimeout>>();
   private syncTimer?: ReturnType<typeof setInterval>;
   private syncing = false;
+  private listening = false;
   private snapshot: Project[] = [];
   client?: SupabaseClient;
   state: SyncState = { kind: 'local' };
@@ -139,7 +140,8 @@ export class Workspace {
     this.setState(session ? { kind: 'syncing' } : { kind: 'signedOut' });
     clearInterval(this.syncTimer);
     this.syncTimer = setInterval(() => { if (document.visibilityState === 'visible') void this.sync(); }, 5000);
-    if (typeof window !== 'undefined') {
+    if (!this.listening && typeof window !== 'undefined') {
+      this.listening = true;
       window.addEventListener('online', () => void this.sync());
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void this.sync(); });
     }
@@ -157,6 +159,14 @@ export class Workspace {
   async signIn(email: string, password: string, create: boolean) {
     if (!this.client) throw new Error('Set up sync first');
     if (create) await this.client.signUp(email, password); else await this.client.signIn(email, password);
+    // Revisions belong to the account (and server) they came from. After a sign-in every project
+    // starts over: it is uploaded, or merged with the account's copy if one already exists.
+    for (const e of this.entries.values()) {
+      if (e.deleted) { this.entries.delete(e.id); void localStore.remove(e.id); continue; }
+      e.rev = undefined; e.base = undefined; e.dirty = true; e.version++;
+      this.persist(e, true);
+    }
+    this.emit();
     await this.sync();
   }
 

@@ -37,7 +37,7 @@ enum StoragePaths {
     }
 
     static func photoURL(_ ref: LocationRef, _ photo: ReferencePhoto) -> URL {
-        photosDir(ref).appendingPathComponent(photo.fileName)
+        photosDir(ref).appendingPathComponent(contained(photo.fileName))
     }
 
     static func scanDir(_ ref: LocationRef, scanID: UUID) -> URL {
@@ -77,6 +77,13 @@ enum StoragePaths {
     static func objectFile(_ projectID: UUID, objectID: UUID, _ file: ObjectFile) -> URL {
         objectDir(projectID, objectID: objectID).appendingPathComponent(file.rawValue,
                                                                          isDirectory: file == .images || file == .checkpoint)
+    }
+
+    /// A file name from project.json (which may have been imported or synced) reduced to one path
+    /// component, so it can't point outside its folder.
+    static func contained(_ fileName: String) -> String {
+        let last = fileName.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        return last.isEmpty || last == "." || last == ".." ? "_" : last
     }
 
     static func ensureDirectory(_ url: URL) {

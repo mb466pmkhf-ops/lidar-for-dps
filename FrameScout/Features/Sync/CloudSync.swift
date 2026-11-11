@@ -130,6 +130,8 @@ final class CloudSync: ObservableObject {
     func configure(url: String, anonKey: String) {
         let c = Config(url: url.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/")),
                        anonKey: anonKey.trimmingCharacters(in: .whitespacesAndNewlines))
+        // A session and revisions from another server mean nothing here.
+        if c != config { signOut() }
         config = c
         UserDefaults.standard.set(try? JSONEncoder().encode(c), forKey: "sync.config")
         UserDefaults.standard.removeObject(forKey: "sync.off")
@@ -363,7 +365,7 @@ final class CloudSync: ObservableObject {
     }
 }
 
-/// Minimal Keychain storage for the sign-in token.
+/// Keychain storage for the sign-in token. Kept on this device only: not in backups or on a new phone.
 enum Keychain {
     private static let service = "FrameScout.sync"
 
@@ -371,7 +373,7 @@ enum Keychain {
         delete(key)
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: key, kSecValueData as String: data,
-                                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
+                                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         SecItemAdd(q as CFDictionary, nil)
     }
 

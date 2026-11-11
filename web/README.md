@@ -25,7 +25,8 @@ variables `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (repository variables `
 `SUPABASE_ANON_KEY` in CI) override it.
 
 To use your own server instead: create a free project at <https://supabase.com>, run `schema.sql` in its SQL
-editor, optionally turn off *Confirm email* (Authentication → Providers → Email), then enter the Project URL
+editor, keep *Confirm email* on (Authentication → Providers → Email) so nobody can sign up with an address
+that isn't theirs, then enter the Project URL
 and anon key under *Sync → Server…* on each device.
 
 ## Develop

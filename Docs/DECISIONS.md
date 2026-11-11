@@ -17,10 +17,10 @@ Changing only `CFBundleDisplayName` is a cheap, safe first step when ready.
 UI shows a badge with icon + word (not colour alone); PDF uses ≈ / ✎ markers; CSV has a `provenance` column;
 `measurements.json` gains optional `provenanceOverride`.
 
-## D-003 · Build on the latest branch — 2026-10-20
-The newest work (Object Capture, viewfinder rebuild, Poppins theme) is on `claude/dreamy-archimedes-lo0whf`
-and is not merged into the default branch `claude/framescout-ios-app-pbswdo`. New work branches from
-`claude/dreamy-archimedes-lo0whf` to avoid conflicts; the owner should decide which branch becomes `main`.
+## D-003 · Build on the latest branch — 2026-10-20 · superseded 2026-11-10
+New work used to branch from `claude/dreamy-archimedes-lo0whf` because the default branch was behind. PR #11
+brought the default branch `claude/framescout-ios-app-pbswdo` up to date, so new work branches from the
+default branch again. Renaming it to `main` is still the owner's call.
 
 ## D-004 · Docs folder is `Docs/`
 The repository already uses `Docs/`. `Docs/ARCHITECTURE.md` serves as the technical guide.
@@ -98,3 +98,18 @@ then asked for it to be built with a night switch for dark sets. This replaces D
   work unchanged. Typed sizes are never presented as measured.
 - The 2D plan stays simple, but cameras and units are drawn as recognisable equipment (body, lens, matte box,
   softbox, barn doors, stand legs). The 3D viewport keeps its dark studio backdrop in both modes.
+
+## D-009 · Security baseline — 2026-11-10
+From a whole-app audit (security, bugs, performance).
+- **Sync server**: the anon key in the apps is public by design; access control is row-level security.
+  `framescan_projects` is keyed by (owner, id), so one account can't block another by taking a project id.
+  Signed-out requests have no table privileges at all; signed-in users get select/insert/update/delete only.
+  Rows are capped (doc 5 MB, plans 20 MB) so one account can't fill the database.
+- **Tokens**: on the phone the session is in the Keychain, this device only (not in backups). On web and
+  desktop it is in localStorage, protected by a strict Content Security Policy (scripts from the app only,
+  network to HTTPS only). A refresh token the server rejects signs the user out instead of retrying.
+- **Imported files**: backups and synced documents are untrusted. ZIP entries and photo file names can't
+  point outside the project folder, and the ZIP reader rejects truncated or oversized entries.
+- **Builds**: npm and Cargo lockfiles are committed; third-party GitHub Actions are pinned to a commit.
+  Desktop installers are unsigned (macOS will warn on first open) until the owner has signing certificates.
+
