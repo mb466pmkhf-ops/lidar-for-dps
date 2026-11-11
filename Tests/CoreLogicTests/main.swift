@@ -661,8 +661,8 @@ do {
     check(all.allSatisfy { !$0.source.isEmpty && $0.text.count <= 170 && ($0.url?.hasPrefix("https://") ?? true) }, "quirks are short and sourced")
     let cats = FixtureLibrary.profiles.map(\.category)
     let order = FixtureCategory.allCases
-    check(zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
-    check(zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
+    check(Swift.zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
+    check(Swift.zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
           "fixtures listed small to large within a family")
     check(SensorLibrary.manufacturers == ["ARRI", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
     check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
