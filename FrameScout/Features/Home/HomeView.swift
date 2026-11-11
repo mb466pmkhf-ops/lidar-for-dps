@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct HomeView: View {
     @EnvironmentObject private var store: ProjectStore
     @EnvironmentObject private var router: AppRouter
+    @ObservedObject private var sync = CloudSync.shared
     @AppStorage(UnitsFormatter.imperialKey) private var useImperial = false
     @State private var showNewProject = false
     @State private var newProjectName = ""
@@ -50,6 +51,13 @@ struct HomeView: View {
                         }
                     }
                 }
+
+                HomeMenuRow(title: syncTitle, subtitle: syncSubtitle,
+                            systemImage: sync.email == nil ? "person.crop.circle.badge.plus" : "checkmark.icloud") {
+                    showSync = true
+                }
+                .homeCard()
+                .accessibilityHint("Sign in or create an account to sync with the web and desktop planner")
 
                 VStack(spacing: 0) {
                     HomeMenuRow(title: "Export", subtitle: "Unreal · USD · OBJ · GLB · ZIP", systemImage: "square.and.arrow.up") {
@@ -107,9 +115,16 @@ struct HomeView: View {
                 .accessibilityHint(night ? "Back to the bright screen" : "Dim, dark screen for a dark set")
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showSync = true } label: {
+                    Image(systemName: sync.email == nil ? "person.crop.circle" : "person.crop.circle.badge.checkmark")
+                        .font(.title3).foregroundStyle(HomeStyle.accent)
+                }
+                .accessibilityLabel(sync.email == nil ? "Sign in" : "Account and sync")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showImporter = true } label: { Label("Import Project Backup…", systemImage: "square.and.arrow.down") }
-                    Button { showSync = true } label: { Label("Sync with web & desktop…", systemImage: "arrow.triangle.2.circlepath") }
+                    Button { showSync = true } label: { Label("Account & sync…", systemImage: "person.crop.circle") }
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
                 } label: {
                     Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(HomeStyle.accent)
@@ -136,6 +151,17 @@ struct HomeView: View {
         } message: {
             Text(importMessage ?? "")
         }
+    }
+
+    private var syncTitle: String {
+        if sync.config == nil { return "Sync is off" }
+        return sync.email == nil ? "Sign in to sync" : "Synced with web & desktop"
+    }
+
+    private var syncSubtitle: String {
+        if sync.config == nil { return "Turn it on to continue on your computer" }
+        guard let email = sync.email else { return "Apple, Google or email · continue on your computer" }
+        return "\(email) · \(sync.status.label)"
     }
 
     @ViewBuilder

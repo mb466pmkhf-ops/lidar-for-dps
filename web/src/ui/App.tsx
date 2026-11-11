@@ -51,7 +51,12 @@ export function App() {
     try { localStorage.setItem('framescan.last', `${pid}/${lid}`); } catch { /* private mode */ }
   };
 
-  useEffect(() => { void workspace.load(); }, []);
+  const [authError, setAuthError] = useState<string>();
+  useEffect(() => {
+    void workspace.load()
+      .then(() => workspace.completeRedirect())
+      .catch(e => { setAuthError(e instanceof Error ? e.message : String(e)); setSyncOpen(true); });
+  }, []);
 
   // Keep a valid selection as projects arrive or disappear.
   useEffect(() => {
@@ -210,19 +215,26 @@ export function App() {
       </div>
       )}
       {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={createRoom} onClose={() => setDrawOpen(false)} />}
-      {syncOpen && <SyncDialog onClose={() => setSyncOpen(false)} />}
+      {syncOpen && <SyncDialog initialError={authError} onClose={() => { setSyncOpen(false); setAuthError(undefined); }} />}
     </div>
   );
 }
 
-function SyncDialog({ onClose }: { onClose(): void }) {
+const MIN_PASSWORD = 8;
+
+function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?: string }) {
   const client = workspace.client;
   const [url, setUrl] = useState(client?.config.url ?? '');
   const [key, setKey] = useState(client?.config.anonKey ?? '');
+  const [mode, setMode] = useState<'signIn' | 'create'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [code, setCode] = useState('');
+  const [pending, setPending] = useState<string>();   // address waiting for its confirmation email
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | undefined>(initialError);
+  const [notice, setNotice] = useState<string>();
   const [editServer, setEditServer] = useState(!client);
   useWorkspace();
 
@@ -231,11 +243,25 @@ function SyncDialog({ onClose }: { onClose(): void }) {
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 
+  const address = email.trim();
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address);
+  const passwordProblem = password.length < MIN_PASSWORD ? `At least ${MIN_PASSWORD} characters.`
+    : !confirm ? 'Type the password again to confirm it.'
+    : confirm !== password ? "The passwords don't match." : undefined;
+
+  const signIn = () => run(async () => { await workspace.signIn(address, password); setPassword(''); });
+  const create = () => run(async () => {
+    const r = await workspace.createAccount(address, password);
+    setPassword(''); setConfirm('');
+    if (r === 'confirm') { setPending(address); setCode(''); }
+  });
+  const switchMode = (m: 'signIn' | 'create') => { setMode(m); setConfirm(''); setError(undefined); };
+
   const session = workspace.client?.session;
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="Sync" onClick={e => e.stopPropagation()}>
-        <h2>Sync</h2>
+      <div className="dialog" role="dialog" aria-modal="true" aria-label="Account and sync" onClick={e => e.stopPropagation()}>
+        <h2>Account &amp; sync</h2>
         <p>Keeps the lighting plan the same on your iPhone, this browser and the desktop app. Scan meshes and photos stay on the phone; only the plan, lights, people, meters and the 2D floor plan sync.</p>
         {session && !editServer ? (
           <>
@@ -261,23 +287,64 @@ function SyncDialog({ onClose }: { onClose(): void }) {
               <button className="btn primary" disabled={!url || !key} onClick={() => { workspace.connect({ url: url.trim(), anonKey: key.trim() }); setEditServer(false); }}>Save</button>
               <button className="btn" onClick={() => { workspace.connect(BUILT_IN_SERVER); setUrl(BUILT_IN_SERVER.url); setKey(BUILT_IN_SERVER.anonKey); setEditServer(false); }}>Use FrameScan server</button>
               {client && <button className="btn danger" onClick={() => { workspace.disconnect(); }}>Stop syncing</button>}
+              {client && <button className="btn ghost" onClick={() => setEditServer(false)}>Back</button>}
             </div>
+          </>
+        ) : pending ? (
+          <>
+            <h3 className="auth-h">Confirm your email</h3>
+            <p>We sent an email to <strong>{pending}</strong>. Click the link in it, or type the code from it here.</p>
+            <div className="stack">
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="Code from the email" value={code}
+                onChange={e => setCode(e.target.value)} aria-label="Code from the email"
+                onKeyDown={e => { if (e.key === 'Enter') void run(async () => { await workspace.verifyEmail(pending, code); setPending(undefined); }); }} />
+            </div>
+            <div className="actions">
+              <button className="btn primary" disabled={busy || code.replace(/\D/g, '').length < 6}
+                onClick={() => run(async () => { await workspace.verifyEmail(pending, code); setPending(undefined); setNotice(undefined); })}>Confirm</button>
+              <button className="btn" onClick={() => { setEmail(pending); setPending(undefined); setMode('signIn'); setNotice(undefined); }}>I clicked the link — sign in</button>
+              <button className="btn ghost" disabled={busy} onClick={() => run(async () => { await workspace.resendConfirmation(pending); setNotice('Sent. Use the code from the newest email.'); })}>Send again</button>
+            </div>
+            <p className="note"><button className="linkish" onClick={() => { setPending(undefined); setNotice(undefined); }}>Use another email</button></p>
           </>
         ) : (
           <>
+            <div className="auth-providers">
+              <button className="btn provider apple" disabled={busy} onClick={() => run(() => workspace.signInWith('apple'))}>
+                Continue with Apple
+              </button>
+              <button className="btn provider" disabled={busy} onClick={() => run(() => workspace.signInWith('google'))}>
+                <span className="g" aria-hidden="true">G</span>
+                Continue with Google
+              </button>
+            </div>
+            <div className="auth-or"><span>or use email</span></div>
+            <div className="segmented" role="tablist" aria-label="Email account">
+              <button role="tab" aria-selected={mode === 'signIn'} className={mode === 'signIn' ? 'on' : ''} onClick={() => switchMode('signIn')}>Sign in</button>
+              <button role="tab" aria-selected={mode === 'create'} className={mode === 'create' ? 'on' : ''} onClick={() => switchMode('create')}>Create account</button>
+            </div>
             <div className="stack">
               <input type="email" placeholder="Email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} aria-label="Email" />
-              <input type="password" placeholder="Password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} aria-label="Password"
-                onKeyDown={e => { if (e.key === 'Enter') void run(() => workspace.signIn(email, password, false)); }} />
+              <input type="password" placeholder="Password" autoComplete={mode === 'create' ? 'new-password' : 'current-password'} value={password}
+                onChange={e => setPassword(e.target.value)} aria-label="Password"
+                onKeyDown={e => { if (e.key === 'Enter' && mode === 'signIn' && validEmail && password) void signIn(); }} />
+              {mode === 'create' && (
+                <input type="password" placeholder="Confirm password" autoComplete="new-password" value={confirm}
+                  onChange={e => setConfirm(e.target.value)} aria-label="Confirm password"
+                  onKeyDown={e => { if (e.key === 'Enter' && validEmail && !passwordProblem) void create(); }} />
+              )}
             </div>
+            {mode === 'create' && passwordProblem && (password || confirm) && <p className="note">{passwordProblem}</p>}
             <div className="actions">
-              <button className="btn primary" disabled={busy || !email || !password} onClick={() => run(() => workspace.signIn(email, password, false))}>Sign in</button>
-              <button className="btn" disabled={busy || !email || password.length < 6} onClick={() => run(() => workspace.signIn(email, password, true))}>Create account</button>
+              {mode === 'signIn'
+                ? <button className="btn primary" disabled={busy || !validEmail || !password} onClick={signIn}>Sign in</button>
+                : <button className="btn primary" disabled={busy || !validEmail || !!passwordProblem} onClick={create}>Create account</button>}
               <button className="btn ghost" onClick={() => setEditServer(true)}>Server…</button>
             </div>
-            <p className="note">Use the same account in the iPhone app (Home → ⋯ → Sync with web &amp; desktop…).</p>
+            <p className="note">{mode === 'create' ? "We'll email you to confirm the address before the account can sync. " : ''}Use the same account in the iPhone app (Home → Sign in to sync).</p>
           </>
         )}
+        {notice && <p className="note">{notice}</p>}
         {error && <p className="error">{error}</p>}
         <div style={{ marginTop: 16, textAlign: 'right' }}><button className="btn ghost" onClick={onClose}>Close</button></div>
       </div>

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 import SwiftUI
@@ -146,10 +147,95 @@ final class CloudSync: ObservableObject {
         status = .off
     }
 
-    func signIn(email: String, password: String, createAccount: Bool) async throws {
-        let path = createAccount ? "signup" : "token?grant_type=password"
-        try await authenticate(path: path, body: ["email": email, "password": password])
-        // A new account (or a different one) uploads everything on this phone.
+    func signIn(email: String, password: String) async throws {
+        guard try await authenticate(path: "token?grant_type=password", body: ["email": email, "password": password]) else {
+            throw SyncError.server("Sign-in failed")
+        }
+        await didSignIn()
+    }
+
+    /// Creates an email account. Returns false when the server wants the email confirmed first: the
+    /// user then taps the link in the email or types its code into `verifyEmail`.
+    func createAccount(email: String, password: String) async throws -> Bool {
+        guard try await authenticate(path: "signup", body: ["email": email, "password": password]) else { return false }
+        await didSignIn()
+        return true
+    }
+
+    /// Confirms a new account with the code from the confirmation email, which also signs in.
+    func verifyEmail(email: String, code: String) async throws {
+        let token = code.filter { !$0.isWhitespace }
+        guard try await authenticate(path: "verify", body: ["type": "signup", "email": email, "token": token]) else {
+            throw SyncError.server("That code didn't work. Check the newest email, or tap its link and then sign in.")
+        }
+        await didSignIn()
+    }
+
+    func resendConfirmation(email: String) async throws {
+        _ = try await post(path: "resend", body: ["type": "signup", "email": email])
+    }
+
+    // MARK: Apple and Google
+
+    enum Provider: String { case apple, google }
+
+    /// Where the sign-in page sends the browser back to. Must be listed under Supabase → Authentication
+    /// → URL Configuration → Redirect URLs. ASWebAuthenticationSession catches it, so the scheme needs
+    /// no Info.plist entry and works with a free personal team.
+    static let callbackScheme = "framescan"
+    static let callbackURL = "framescan://auth-callback"
+
+    struct OAuthStart { let url: URL; let verifier: String }
+
+    /// The provider's sign-in page, through Supabase, with a PKCE challenge so only this app can use
+    /// the code that comes back.
+    func oauthStart(_ provider: Provider) async throws -> OAuthStart {
+        guard let config else { throw SyncError.notConfigured }
+        try await requireProvider(provider, config: config)
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw SyncError.server("Couldn't start sign-in") }
+        let verifier = Data(bytes).base64URL
+        let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL
+        var c = URLComponents(string: "\(config.url)/auth/v1/authorize")
+        c?.queryItems = [URLQueryItem(name: "provider", value: provider.rawValue),
+                         URLQueryItem(name: "redirect_to", value: Self.callbackURL),
+                         URLQueryItem(name: "code_challenge", value: challenge),
+                         URLQueryItem(name: "code_challenge_method", value: "s256")]
+        guard let url = c?.url else { throw SyncError.notConfigured }
+        return OAuthStart(url: url, verifier: verifier)
+    }
+
+    /// Fails with plain words when the server hasn't switched the provider on, instead of the raw
+    /// error page the sign-in sheet would otherwise show. Unknown answers let the attempt go ahead.
+    private func requireProvider(_ provider: Provider, config: Config) async throws {
+        guard let url = URL(string: "\(config.url)/auth/v1/settings") else { return }
+        var req = URLRequest(url: url)
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let external = json["external"] as? [String: Any],
+              let enabled = external[provider.rawValue] as? Bool else { return }
+        if !enabled {
+            throw SyncError.server("\(provider == .apple ? "Apple" : "Google") sign-in isn't switched on for this server yet. Use email for now.")
+        }
+    }
+
+    /// Takes the callback URL the sign-in page redirected to and swaps its code for a session.
+    func oauthFinish(callback: URL, verifier: String) async throws {
+        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        if let error = value("error_description") ?? value("error") {
+            throw SyncError.server(error.replacingOccurrences(of: "+", with: " "))
+        }
+        guard let code = value("code") else { throw SyncError.server("Sign-in was cancelled.") }
+        guard try await authenticate(path: "token?grant_type=pkce", body: ["auth_code": code, "code_verifier": verifier]) else {
+            throw SyncError.server("Sign-in failed")
+        }
+        await didSignIn()
+    }
+
+    /// A new account (or a different one) uploads everything on this phone.
+    private func didSignIn() async {
         if let store { for p in store.projects { meta[p.id] = Meta(dirty: true) } }
         saveMeta()
         await sync()
@@ -164,7 +250,7 @@ final class CloudSync: ObservableObject {
         if config != nil { status = .signedOut }
     }
 
-    private func authenticate(path: String, body: [String: String]) async throws {
+    private func post(path: String, body: [String: String]) async throws -> [String: Any] {
         guard let config, let url = URL(string: "\(config.url)/auth/v1/\(path)") else { throw SyncError.notConfigured }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -174,13 +260,30 @@ final class CloudSync: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: req)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let message = json["error_description"] as? String ?? json["msg"] as? String ?? json["message"] as? String ?? "Sign-in failed"
             if (response as? HTTPURLResponse)?.statusCode == 400 && path.hasPrefix("token?grant_type=refresh") { signOut() }
-            throw SyncError.server(message)
+            throw SyncError.server(Self.authMessage(json))
         }
-        guard let access = json["access_token"] as? String, let refresh = json["refresh_token"] as? String else {
-            throw SyncError.server("Check your email to confirm the account, then sign in.")
+        return json
+    }
+
+    /// Plain words for the auth server's errors.
+    static func authMessage(_ json: [String: Any]) -> String {
+        switch json["error_code"] as? String {
+        case "email_not_confirmed": return "Confirm your email first: tap the link we sent, or enter its code under Create account."
+        case "invalid_credentials": return "Wrong email or password."
+        case "user_already_exists", "email_exists": return "There's already an account with this email. Sign in instead."
+        case "weak_password": return "Choose a longer password (at least 8 characters)."
+        case "otp_expired": return "That code has expired. Send a new email and use the newest code."
+        case "over_email_send_rate_limit": return "Too many emails just now. Wait a minute and try again."
+        default: return json["error_description"] as? String ?? json["msg"] as? String ?? json["message"] as? String ?? "Sign-in failed"
         }
+    }
+
+    /// Returns false when the server answered without a session (a sign-up waiting for its email).
+    @discardableResult
+    private func authenticate(path: String, body: [String: String]) async throws -> Bool {
+        let json = try await post(path: path, body: body)
+        guard let access = json["access_token"] as? String, let refresh = json["refresh_token"] as? String else { return false }
         let user = json["user"] as? [String: Any]
         let s = Session(accessToken: access, refreshToken: refresh,
                         expiresAt: Date().addingTimeInterval(json["expires_in"] as? Double ?? 3600),
@@ -188,12 +291,13 @@ final class CloudSync: ObservableObject {
         session = s
         email = s.email
         Keychain.write("sync.session", try JSONEncoder().encode(s))
+        return true
     }
 
     private func token() async throws -> String {
         guard let s = session else { throw SyncError.signedOut }
         if s.expiresAt.timeIntervalSinceNow < 60 {
-            try await authenticate(path: "token?grant_type=refresh_token", body: ["refresh_token": s.refreshToken])
+            guard try await authenticate(path: "token?grant_type=refresh_token", body: ["refresh_token": s.refreshToken]) else { throw SyncError.signedOut }
         }
         return session!.accessToken
     }
@@ -362,6 +466,12 @@ final class CloudSync: ObservableObject {
             case .server(let m): return m
             }
         }
+    }
+}
+
+private extension Data {
+    var base64URL: String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
 
