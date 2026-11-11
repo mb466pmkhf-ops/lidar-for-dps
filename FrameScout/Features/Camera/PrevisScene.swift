@@ -307,7 +307,7 @@ enum SceneKitBuilder {
     /// unit in the scene (from the photometric model), so units keep their true ratio to each other
     /// while the picture as a whole is fitted to the screen. Never used for lux.
     static func viewportIntensity(share: Double) -> CGFloat {
-        CGFloat(1500 * min(max(share, 0.004), 1))
+        CGFloat(800 * min(max(share, 0.004), 1))
     }
 
     /// A small top-to-bottom gradient, for the backdrop and for reflections in metal and glass.
@@ -328,8 +328,8 @@ enum SceneKitBuilder {
         camera.wantsHDR = true
         camera.wantsExposureAdaptation = false
         camera.exposureOffset = 0
-        camera.bloomThreshold = 0.92
-        camera.bloomIntensity = 0.45
+        camera.bloomThreshold = 1.0
+        camera.bloomIntensity = 0.25
         camera.bloomBlurRadius = 10
         camera.screenSpaceAmbientOcclusionIntensity = 0.9
         camera.screenSpaceAmbientOcclusionRadius = 0.35
