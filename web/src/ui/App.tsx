@@ -194,7 +194,7 @@ export function App() {
           </div>
         </nav>
         {project && location && bundle ? (
-          <Planner key={location.id} project={project} location={location} plans={bundle.plans} commit={p => workspace.commit(p)} />
+          <Planner key={location.id} project={project} location={location} plans={bundle.plans} commit={p => workspace.commit(p)} commitPlan={(sid, plan) => workspace.commitPlan(project.id, sid, plan)} />
         ) : (
           <div className="empty">
             <div>

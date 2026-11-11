@@ -7,6 +7,8 @@ import SwiftUI
 /// sets up (Docs/DECISIONS.md D-007). Plain REST over URLSession, no SDK.
 ///
 /// What leaves the phone: project.json and each scan's plan.json (walls, openings, set pieces).
+/// Plans merge like projects (doors, windows and set pieces by id), so set pieces added by hand on
+/// the desktop and on the phone both survive.
 /// Scan meshes, textures and photos never do. Off until the user signs in under Sync.
 ///
 /// Each project keeps the copy last agreed with the server (the merge base) and the server's
@@ -56,6 +58,8 @@ final class CloudSync: ObservableObject {
         var rev: Int?
         var base: Data?          // project JSON as last synced
         var planIDs: [String] = []
+        /// The plans (scan id → plan JSON) as last synced: the merge base for set-piece edits.
+        var planBase: Data?
         var dirty = false
         var deleted = false
     }
@@ -378,36 +382,60 @@ final class CloudSync: ObservableObject {
         }
         var project = try SyncMerge.project(from: result)
         project.id = id
-        writePlans(row["plans"] as? [String: Any] ?? [:], for: project)
+        let remotePlans = Self.upperKeys(row["plans"] as? [String: Any] ?? [:])
+        let basePlans = m.planBase.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        let ownPlans = localPlans(store.project(id) ?? project, store: store)
+        let plans = SyncMerge.merge(base: basePlans, local: ownPlans, remote: remotePlans) as? [String: Any] ?? remotePlans
         store.applyRemote(project)
+        writePlans(plans, local: ownPlans, for: project, store: store)
         m.rev = rev
         m.base = try JSONSerialization.data(withJSONObject: doc)
-        m.planIDs = Array((row["plans"] as? [String: Any] ?? [:]).keys)
+        m.planIDs = Array(remotePlans.keys)
+        m.planBase = try? JSONSerialization.data(withJSONObject: remotePlans)
+        // Set pieces edited here and not on the server yet go up on the next push.
+        if !SyncMerge.equal(plans, remotePlans) { m.dirty = true }
         meta[id] = m
     }
 
-    /// Plans from other devices (only ever the phone's own scans) go where the plan editor reads them.
-    private func writePlans(_ plans: [String: Any], for project: Project) {
+    /// Plans keyed by scan id in upper case, as `UUID.uuidString` writes them.
+    static func upperKeys(_ plans: [String: Any]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (k, v) in plans { out[k.uppercased()] = v }
+        return out
+    }
+
+    /// Merged plans go where the plan editor reads them, replacing this phone's copy when it differs.
+    private func writePlans(_ plans: [String: Any], local: [String: Any], for project: Project, store: ProjectStore) {
         for location in project.locations {
             let ref = LocationRef(projectID: project.id, locationID: location.id)
             for scan in location.scans {
-                let url = StoragePaths.scanFile(ref, scanID: scan.id, .plan)
-                guard !FileManager.default.fileExists(atPath: url.path),
-                      let plan = plans[scan.id.uuidString] ?? plans[scan.id.uuidString.lowercased()],
+                let key = scan.id.uuidString
+                guard let plan = plans[key], !SyncMerge.equal(plan, local[key]),
                       let data = try? JSONSerialization.data(withJSONObject: plan) else { continue }
-                StoragePaths.ensureDirectory(url.deletingLastPathComponent())
-                try? data.write(to: url, options: .atomic)
+                if let decoded = try? JSONCoding.decoder.decode(FloorPlan.self, from: data) {
+                    store.applyRemotePlan(decoded, ref, scanID: scan.id)
+                } else {
+                    // Not readable as a plan by this build: keep it as it came, but never over our own.
+                    let url = StoragePaths.scanFile(ref, scanID: scan.id, .plan)
+                    guard !FileManager.default.fileExists(atPath: url.path) else { continue }
+                    StoragePaths.ensureDirectory(url.deletingLastPathComponent())
+                    try? data.write(to: url, options: .atomic)
+                }
             }
         }
     }
 
-    private func localPlans(_ project: Project) -> [String: Any] {
+    /// This phone's plans, including edits made by hand that are still waiting to be written.
+    private func localPlans(_ project: Project, store: ProjectStore) -> [String: Any] {
         var out: [String: Any] = [:]
         for location in project.locations {
             let ref = LocationRef(projectID: project.id, locationID: location.id)
             for scan in location.scans {
-                let url = StoragePaths.scanFile(ref, scanID: scan.id, .plan)
-                if let data = try? Data(contentsOf: url), let json = try? JSONSerialization.jsonObject(with: data) {
+                if let plan = store.floorPlan(ref, scanID: scan.id), let data = try? JSONCoding.encoder.encode(plan),
+                   let json = try? JSONSerialization.jsonObject(with: data) {
+                    out[scan.id.uuidString] = json
+                } else if let data = try? Data(contentsOf: StoragePaths.scanFile(ref, scanID: scan.id, .plan)),
+                          let json = try? JSONSerialization.jsonObject(with: data) {
                     out[scan.id.uuidString] = json
                 }
             }
@@ -429,20 +457,25 @@ final class CloudSync: ObservableObject {
         }
         guard let project = store.project(id) else { meta[id] = nil; return }
         let doc = try SyncMerge.jsonObject(project)
-        let plans = localPlans(project)
+        let plans = localPlans(project, store: store)
         let planIDs = plans.keys.sorted()
+        let basePlans = m.planBase.flatMap { try? JSONSerialization.jsonObject(with: $0) }
         let sent = { (rev: Int) in
             m.rev = rev
             m.base = try? JSONSerialization.data(withJSONObject: doc)
             m.planIDs = planIDs
+            m.planBase = try? JSONSerialization.data(withJSONObject: plans)
             // Edits made while this was uploading keep the project marked for the next round.
-            m.dirty = (try? SyncMerge.jsonObject(store.project(id) ?? project)).map { !SyncMerge.equal($0, doc) } ?? false
+            let now = store.project(id) ?? project
+            let projectChanged = (try? SyncMerge.jsonObject(now)).map { !SyncMerge.equal($0, doc) } ?? false
+            m.dirty = projectChanged || !SyncMerge.equal(self.localPlans(now, store: store), plans)
             self.meta[id] = m
         }
         if let rev = m.rev {
             var body: [String: Any] = ["name": project.name, "doc": doc, "rev": rev + 1, "deleted": false,
                                        "updated_by": device, "updated_at": ISO8601DateFormatter().string(from: Date())]
-            if planIDs != m.planIDs.sorted() { body["plans"] = plans }
+            // Plans go up whenever they changed since the last sync (a set piece moved, a door added).
+            if basePlans == nil || !SyncMerge.equal(plans, basePlans) { body["plans"] = plans }
             let rows = try await rest("PATCH", "id=eq.\(id.uuidString)&rev=eq.\(rev)&select=id", body: body, prefer: "return=representation") as? [Any]
             if rows?.count == 1 { sent(rev + 1) } else if let row = try await fetchRow(id) { try absorb(row, id: id, store: store); again = true }
         } else {

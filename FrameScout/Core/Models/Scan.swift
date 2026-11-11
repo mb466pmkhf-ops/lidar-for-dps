@@ -146,6 +146,8 @@ struct PlanSegment: Codable, Hashable, Identifiable {
     /// Bottom edge height above floor.
     var bottom: Double
     var isOpen: Bool = false
+    /// Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items.
+    var byHand: Bool? = nil
 
     var length: Double { a.distance(to: b) }
     var midpoint: PlanPoint { PlanPoint(x: (a.x + b.x) / 2, z: (a.z + b.z) / 2) }
@@ -160,6 +162,8 @@ struct PlanObject: Codable, Hashable, Identifiable {
     var height: Double
     /// Rotation of the object's local X axis in the plan, radians (screen space: x right, z down).
     var rotation: Double
+    /// Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items.
+    var byHand: Bool? = nil
 }
 
 struct FloorPlan: Codable, Hashable {

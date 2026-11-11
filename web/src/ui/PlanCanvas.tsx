@@ -10,6 +10,7 @@ import { cssRGB } from '../model/kelvin';
 import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
 import { readingShort, stopColor, stopLegend } from './format';
+import { setPieceName } from '../model/setPieces';
 
 export type Selection =
   | { kind: 'light'; id: string }
@@ -17,7 +18,9 @@ export type Selection =
   | { kind: 'meter'; id: string }
   | { kind: 'shot'; id: string }
   | { kind: 'camera'; id: string }
-  | { kind: 'object'; id: string };
+  | { kind: 'object'; id: string }
+  /** A door, window or opening in a wall. */
+  | { kind: 'opening'; id: string };
 
 export type DragTarget = Selection & { part: 'body' | 'rotate' };
 
@@ -67,7 +70,7 @@ export function PlanCanvas(props: Props) {
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const gesture = useRef<{ kind: 'pan'; start: View; x: number; y: number; moved: boolean } | { kind: 'drag'; target: DragTarget } | { kind: 'pinch'; start: View; dist: number; mid: { x: number; y: number } } | null>(null);
+  const gesture = useRef<{ kind: 'pan'; start: View; x: number; y: number; moved: boolean; tap?: Selection } | { kind: 'drag'; target: DragTarget } | { kind: 'pinch'; start: View; dist: number; mid: { x: number; y: number } } | null>(null);
 
   const bounds = useMemo(() => contentBounds(location, plan, lights), [location.id, plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -129,7 +132,8 @@ export function PlanCanvas(props: Props) {
 
   // MARK: Pointer handling
 
-  const down = (e: RPointerEvent, target?: DragTarget) => {
+  /** `tap`: what a click (no drag) selects, for set pieces that only move once selected. */
+  const down = (e: RPointerEvent, target?: DragTarget, tap?: Selection) => {
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     wrap.current?.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -145,7 +149,7 @@ export function PlanCanvas(props: Props) {
       props.onDragStart(target);
       gesture.current = { kind: 'drag', target };
     } else {
-      gesture.current = { kind: 'pan', start: v, x: e.clientX, y: e.clientY, moved: false };
+      gesture.current = { kind: 'pan', start: v, x: e.clientX, y: e.clientY, moved: false, tap };
     }
   };
 
@@ -177,7 +181,7 @@ export function PlanCanvas(props: Props) {
     if (g?.kind === 'drag') props.onDragEnd();
     if (g?.kind === 'pan' && !g.moved) {
       if (props.placing) props.onPlace(toPlan(e.clientX, e.clientY));
-      else props.onSelect(undefined);
+      else props.onSelect(g.tap);
     }
   };
 
@@ -397,22 +401,45 @@ export function PlanCanvas(props: Props) {
         {plan && !hidden.has('furniture') && plan.objects.map(o => {
           const s: Selection = { kind: 'object', id: o.id };
           const sel = sameSel(selection, s);
+          // A set piece is selected by a click and moved once selected, so dragging across a
+          // room full of furniture still pans the plan.
           return (
-            <g key={o.id} transform={`translate(${sx(o.center.x)},${sy(o.center.z)}) rotate(${o.rotation * 180 / Math.PI})`} onPointerDown={e => { e.stopPropagation(); props.onSelect(s); }}>
-              <rect x={-o.width / 2 * v.scale} y={-o.depth / 2 * v.scale} width={o.width * v.scale} height={o.depth * v.scale} fill="var(--floor)" stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} />
+            <g key={o.id} transform={`translate(${sx(o.center.x)},${sy(o.center.z)}) rotate(${o.rotation * 180 / Math.PI})`}
+              style={{ cursor: sel ? 'move' : 'pointer' }} onPointerDown={e => down(e, sel ? { ...s, part: 'body' } : undefined, s)}>
+              <rect x={-o.width / 2 * v.scale} y={-o.depth / 2 * v.scale} width={o.width * v.scale} height={o.depth * v.scale} fill="var(--floor)"
+                stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={o.byHand && !sel ? '5 3' : undefined} />
             </g>
           );
         })}
-        {plan && !hidden.has('furniture') && layers.has('names') && plan.objects.map(o => <g key={'ol' + o.id}>{labelFor(o.category, o.center, 4)}</g>)}
+        {plan && !hidden.has('furniture') && plan.objects.map(o => (layers.has('names') || sameSel(selection, { kind: 'object', id: o.id })) && <g key={'ol' + o.id}>{labelFor(setPieceName(o), o.center, 4, sameSel(selection, { kind: 'object', id: o.id }))}</g>)}
         {plan && !hidden.has('walls') && plan.walls.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--wall)" strokeWidth={Math.max(3, 0.1 * v.scale)} strokeLinecap="square" pointerEvents="none" />)}
         {plan && !hidden.has('windows') && plan.windows.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--window)" strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
         {plan && !hidden.has('doors') && [...plan.doors, ...plan.openings].map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke={w.kind === 'door' ? 'var(--door)' : 'var(--paper)'} strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
+        {plan && [...(hidden.has('windows') ? [] : plan.windows), ...(hidden.has('doors') ? [] : [...plan.doors, ...plan.openings])].map(w => {
+          // A wide invisible stroke to click; selected, it gets an accent outline and moves along the walls.
+          const s: Selection = { kind: 'opening', id: w.id };
+          const sel = sameSel(selection, s);
+          return (
+            <g key={'hit' + w.id}>
+              {sel && <line x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--accent)" strokeWidth={Math.max(4, 0.1 * v.scale) + 6} strokeOpacity={0.45} strokeLinecap="round" pointerEvents="none" />}
+              <line x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="transparent" strokeWidth={16}
+                style={{ cursor: sel ? 'move' : 'pointer' }} onPointerDown={e => down(e, sel ? { ...s, part: 'body' } : undefined, s)} />
+            </g>
+          );
+        })}
         {plan && layers.has('dimensions') && plan.walls.map(w => {
           const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
           if (len < 1 || v.scale < 40) return null;
           const mid = { x: (w.a.x + w.b.x) / 2, z: (w.a.z + w.b.z) / 2 };
           return <g key={'d' + w.id}>{labelFor(`${len.toFixed(2)} m`, mid, 4)}</g>;
         })}
+        {plan && selection?.kind === 'object' && (() => {
+          const o = plan.objects.find(x => x.id === selection.id);
+          if (!o) return null;
+          // Handle on the piece's long axis (its width), a little past the end.
+          const bearing = 90 + o.rotation * 180 / Math.PI;
+          return rotateHandle(selection, o.center, bearing, o.width / 2 + 0.35);
+        })()}
         {!hidden.has('cameras') && location.cameraPositions.filter(c => inScan(c.scanID) && !location.shots.some(s => planDist(c.rig.position, s.rig.position) < 0.05 && Math.abs(c.rig.pan - s.rig.pan) < 1)).map(c => drawRig({ kind: 'camera', id: c.id }, c.rig, `${c.name} · ${Math.round(c.rig.focalLength)}mm`))}
         {!hidden.has('cameras') && location.shots.filter(s => inScan(s.scanID)).map(s => {
           // A shot taken from a saved camera position is drawn once, with both names.

@@ -1,11 +1,11 @@
 // The app's data layer: projects in memory, persisted to IndexedDB, synced to Supabase when the
 // user has signed in. Works fully offline; sync catches up when the connection is back.
-import type { Project, ProjectBundle, UUID } from '../model/types';
+import type { FloorPlan, Project, ProjectBundle, UUID } from '../model/types';
 import { isoNow } from '../model/factory';
 import { localStore, type StoredProject } from './localStore';
 import { SupabaseClient, type OAuthProvider, type Session, type SyncConfig, type RemoteRow } from './supabase';
 import { finishRedirect, startOAuth } from './oauth';
-import { deepEqual, mergeDocuments } from './merge';
+import { deepEqual, mergeDocuments, upperKeys } from './merge';
 
 export type SyncState =
   | { kind: 'local' }                 // no sync set up
@@ -100,6 +100,18 @@ export class Workspace {
     const e = this.entries.get(bundle.project.id);
     if (!e) return;
     e.bundle = { project: { ...bundle.project, modifiedAt: isoNow() }, plans: bundle.plans };
+    e.dirty = true;
+    e.version++;
+    this.persist(e);
+    this.emit();
+  }
+
+  /// Replaces one scan's 2D plan (doors, windows, set pieces edited by hand). Marks it for upload.
+  commitPlan(projectID: UUID, scanID: UUID, plan: FloorPlan) {
+    const e = this.entries.get(projectID);
+    if (!e) return;
+    const key = Object.keys(e.bundle.plans).find(k => k.toUpperCase() === scanID.toUpperCase()) ?? scanID.toUpperCase();
+    e.bundle = { project: { ...e.bundle.project, modifiedAt: isoNow() }, plans: { ...e.bundle.plans, [key]: plan } };
     e.dirty = true;
     e.version++;
     this.persist(e);
@@ -244,7 +256,7 @@ export class Workspace {
 
   /// Takes a server copy: replaces an unchanged local copy, or merges with local edits.
   private absorb(row: RemoteRow) {
-    const remote: ProjectBundle = { project: row.doc, plans: row.plans ?? {} };
+    const remote: ProjectBundle = { project: row.doc, plans: upperKeys(row.plans ?? {}) };
     const local = this.entries.get(row.id);
     if (!local) {
       const e: Entry = { id: row.id, bundle: remote, base: remote, rev: row.rev, dirty: false, version: 0 };
@@ -255,7 +267,9 @@ export class Workspace {
     if (local.dirty) {
       local.bundle = {
         project: mergeDocuments(local.base?.project, local.bundle.project, remote.project),
-        plans: { ...local.bundle.plans, ...remote.plans },
+        // Plans merge like the project: set pieces, doors and windows by id, so a piece added on the
+        // phone and one added here both survive (the phone's CloudSync does the same).
+        plans: mergeDocuments(local.base ? upperKeys(local.base.plans) : undefined, upperKeys(local.bundle.plans), remote.plans),
       };
       local.version++;
     } else {
