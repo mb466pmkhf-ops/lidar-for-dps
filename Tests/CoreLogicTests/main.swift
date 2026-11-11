@@ -651,5 +651,22 @@ do {
     check(ReadingUnit(rawValue: "tStop") == .tStop && ReadingUnit.allCases.first == .tStop, "T-stop is the first, default unit")
 }
 
+// MARK: Known quirks and library order (same rules as web/tests/quirks.test.ts)
+do {
+    check(FixtureLibrary.profiles.allSatisfy { !KnownQuirks.fixture($0.id).isEmpty }, "every fixture type has things to know")
+    check(SensorLibrary.presets.allSatisfy { !KnownQuirks.sensor($0.id).isEmpty }, "every camera format has things to know")
+    check(Set(KnownQuirks.fixtures.keys) == Set(FixtureLibrary.profiles.map(\.id))
+          && Set(KnownQuirks.sensors.keys) == Set(SensorLibrary.presets.map(\.id)), "quirks only for units in the library")
+    let all = KnownQuirks.fixtures.values.flatMap { $0 } + KnownQuirks.sensors.values.flatMap { $0 }
+    check(all.allSatisfy { !$0.source.isEmpty && $0.text.count <= 170 && ($0.url?.hasPrefix("https://") ?? true) }, "quirks are short and sourced")
+    let cats = FixtureLibrary.profiles.map(\.category)
+    let order = FixtureCategory.allCases
+    check(zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
+    check(zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
+          "fixtures listed small to large within a family")
+    check(SensorLibrary.manufacturers == ["ARRI", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
+    check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

@@ -13,6 +13,7 @@ import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
+import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
 import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
 import type { ReadingUnit } from './format';
 import { Icon } from './icons';
@@ -136,7 +137,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
   const currentMod = fixtureModifier(l);
   const usesRGB = profile.color.rgb && l.colorMode === 'rgb';
   const filterIDs = l.filterIDs ?? [];
-  const categories = [...new Set(profiles.map(x => x.category))] as FixtureCategory[];
+  const categories = (Object.keys(categoryLabel) as FixtureCategory[]).filter(c => profiles.some(x => x.category === c));
 
   const atMeters = p.meters.map(m => {
     const r = calcReading(m.point, m.normal, p.scene);
@@ -162,6 +163,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
             {categories.map(cat => <optgroup key={cat} label={categoryLabel[cat]}>{profiles.filter(x => x.category === cat).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</optgroup>)}
           </select><span />
         </label>
+        <Quirks items={quirksForFixture(profile.id)} />
         <label className="field"><span>Role</span>
           <select value={l.role ?? ''} onChange={e => { const v = e.target.value as LightRole | ''; const n = { ...l }; if (v) n.role = v; else delete n.role; replace(n); }} aria-label="Role">
             <option value="">None</option>
@@ -441,12 +443,34 @@ function CameraInspector(p: InspectorProps) {
         {cameraSupportWarning(rig) && <p className="note">{cameraSupportWarning(rig)}</p>}
         <label className="field"><span>Sensor</span>
           <select value={rig.sensorID} onChange={e => setRig({ sensorID: e.target.value })}>
-            {sensorPresets.map(x => <option key={x.id} value={x.id}>{x.manufacturer ? x.manufacturer + ' ' : ''}{x.name}</option>)}
+            {[...new Set(sensorPresets.map(x => x.manufacturer))].map(maker => (
+              <optgroup key={maker || 'generic'} label={maker || 'Generic'}>
+                {sensorPresets.filter(x => x.manufacturer === maker).map(x => <option key={x.id} value={x.id}>{x.manufacturer ? x.manufacturer + ' ' : ''}{x.name}</option>)}
+              </optgroup>
+            ))}
           </select><span />
         </label>
+        <Quirks items={quirksForSensor(rig.sensorID)} />
         <p className="note">Cameras and shots are planned on the phone; moving one here moves it there too.</p>
       </Panel>
     </div>
+  );
+}
+
+/** "Things to know" about a fixture type or recording format, collapsed by default. */
+function Quirks({ items }: { items: UnitQuirk[] }) {
+  if (!items.length) return null;
+  return (
+    <details className="quirks">
+      <summary>Things to know ({items.length})</summary>
+      <ul>
+        {items.map(q => (
+          <li key={q.text}>{q.text}{' '}
+            <span className="muted">Source: {q.url ? <a href={q.url} target="_blank" rel="noreferrer">{q.source}</a> : q.source}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
