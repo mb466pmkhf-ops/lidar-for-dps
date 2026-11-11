@@ -510,9 +510,14 @@ do {
     check(preset.units.map(\.light.name) == ["Key", "Fill", "Back"], "preset keeps unit names without the person (\(preset.units.map(\.light.name)))")
     check(preset.units[0].angle > 0 && abs((preset.units[1].stopsUnderKey ?? 9) - 2) < 0.5, "preset saves the key on + and the fill ≈ 2 stops under")
     let again = preset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
-    let same = zip(again.lights, original.lights).allSatisfy { a, b in
-        a.position.distance(to: b.position) < 0.02 && abs(a.height - b.height) < 0.02 && a.name == b.name && a.profileID == b.profileID
+    func sameUnit(_ a: LightFixture, _ b: LightFixture) -> Bool {
+        let near: Bool = a.position.distance(to: b.position) < 0.02
+        let level: Bool = abs(a.height - b.height) < 0.02
+        let named: Bool = a.name == b.name
+        let unit: Bool = a.profileID == b.profileID
+        return near && level && named && unit
     }
+    let same = zip(again.lights, original.lights).allSatisfy { sameUnit($0, $1) }
     check(again.lights.count == 3 && same, "saved three-point used again lands where it was")
     check(abs(log2(faceLux(again.lights, again.lights[0].id, person, 0) / exp.keyLux)) < 0.2, "used again, the key is at the set stop")
 
@@ -523,7 +528,7 @@ do {
     var brighter = exp; brighter.tStop = 4
     let moved = mine.build(for: leo, camera: P(-1.5, 0), exposure: brighter, plan: demoPlan)
     check(moved.lights.map(\.name) == ["Key · Leo", "Edge · Leo"], "preset names units after the new person")
-    check(moved.lights.allSatisfy { abs($0.position.x) < 3 && abs($0.position.z) < 2 }, "preset units stay inside the room")
+    check(moved.lights.allSatisfy { l in abs(l.position.x) < 3 && abs(l.position.z) < 2 }, "preset units stay inside the room")
     check(abs(log2(faceLux(moved.lights, moved.lights[0].id, leo, 270) / brighter.keyLux)) < 0.2, "preset follows the person, camera and stop")
 
     let single = LightingPreset.capture(name: "Side", lights: LightingSetup.hardSingle.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights,
@@ -532,7 +537,8 @@ do {
     let auto = single.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
     var keep = single; keep.keepSides = true
     let kept = keep.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
-    check(auto.position.x < 2.4 && kept.position.x > auto.position.x, "preset mirrors to the roomier side unless sides are kept")
+    let mirroredAway: Bool = auto.position.x < 2.4
+    check(mirroredAway && kept.position.x > auto.position.x, "preset mirrors to the roomier side unless sides are kept")
 
     let w = demoPlan.windows[0]
     let out = demoPlan.outwardBearing(of: w)
@@ -541,13 +547,20 @@ do {
     sun.height = 3; sun.tilt = -25; sun.dimmer = 0.8
     let bounce = LightFixture(name: "Bounce", kind: .bounce, position: w.midpoint + dir * -0.5, pan: out)
     let windowPreset = LightingPreset.capture(name: "Sun through window", lights: [sun, bounce], window: w, plan: demoPlan)
-    check(abs(windowPreset.units[0].out - 3) < 0.01 && abs(windowPreset.units[0].panOffset) < 0.1 && abs(windowPreset.units[1].out + 0.5) < 0.01,
+    let outOK: Bool = abs(windowPreset.units[0].out - 3) < 0.01
+    let aimOK: Bool = abs(windowPreset.units[0].panOffset) < 0.1
+    let insideOK: Bool = abs(windowPreset.units[1].out + 0.5) < 0.01
+    check(outOK && aimOK && insideOK,
           "window preset saves out from the glass and aim (\(windowPreset.units.map(\.out)))")
     let atWindow = windowPreset.build(at: w, plan: demoPlan, scanID: nil)
-    check(atWindow.lights[0].position.distance(to: sun.position) < 0.02 && atWindow.lights[0].dimmer == 0.8 && atWindow.lights[0].tilt == -25,
+    let placed = atWindow.lights[0]
+    let placedOK: Bool = placed.position.distance(to: sun.position) < 0.02
+    check(placedOK && placed.dimmer == 0.8 && placed.tilt == -25,
           "window preset used again lands where it was, at its dimmer")
-    check(windowPreset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights.count == 2
-          && windowPreset.build(for: person, camera: nil, exposure: exp, plan: nil).notes.first?.contains("needs a window") == true,
+    let viaPerson = windowPreset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    let noWindow = windowPreset.build(for: person, camera: nil, exposure: exp, plan: nil)
+    let saysSo: Bool = noWindow.notes.first?.contains("needs a window") == true
+    check(viaPerson.lights.count == 2 && saysSo,
           "window preset from a person uses the nearest window, or says it needs one")
 
     let text = LightingPreset.encode([mine])
