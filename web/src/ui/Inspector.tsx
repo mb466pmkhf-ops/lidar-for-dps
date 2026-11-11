@@ -10,6 +10,9 @@ import {
 import { exposureTime, fStop, frameRates, isoPresets, keyLux, shutterAngles, speedLabel, stopLabel, stopsDelta, stopsForLux, tStops, trim } from '../model/exposure';
 import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
 import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups';
+import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type LightingPreset } from '../model/presets';
+import { usePresets } from './presetStore';
+import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
@@ -332,6 +335,17 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
     p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
     setSetupNote({ id: c.id, text: `${label}${camera ? '' : ' (no camera yet: lit from where they face)'}. ${built.notes.join(' · ')}. Undo removes it.` });
   };
+  const presets = usePresets();
+  const [dialog, setDialog] = useState<'save' | 'manage'>();
+  // The user's own preset, placed the same way (one undo step).
+  const lightWithPreset = (preset: LightingPreset) => {
+    const camera = cameraSeeing(c.position, meterCameras(p.location))?.position;
+    const built = buildPreset(preset, c, camera, p.exposure, p.plan, p.windowTransmission);
+    if (!built.lights.length) { setSetupNote({ id: c.id, text: `${preset.name}: ${built.notes.join(' · ')}.` }); return; }
+    p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
+    const how = preset.anchor === 'window' ? ' (at the nearest window)' : camera ? '' : ' (no camera yet: lit from where they face)';
+    setSetupNote({ id: c.id, text: `${preset.name}${how}. ${built.notes.join(' · ')}. Undo removes it.` });
+  };
   return (
     <div>
       <section className="panel">
@@ -351,7 +365,23 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
         <div className="chips">
           {LIGHTING_SETUPS.map(s => <button key={s.id} className="chip" title={s.summary} onClick={() => lightWith(s.id, s.label)}>{s.label}</button>)}
         </div>
+        {presets.length > 0 && <>
+          <div className="label" style={{ margin: '12px 0 6px' }}>My presets</div>
+          <div className="chips">
+            {presets.map(s => <button key={s.id} className="chip mine" title={`${ANCHOR_LABEL[s.anchor]}: ${presetSummary(s)}`} onClick={() => lightWithPreset(s)}>{s.name}</button>)}
+          </div>
+        </>}
         <p className="note">{setupNote?.id === c.id ? <>{setupNote.text} <Badge /></> : 'Adds a starting setup round them, levelled for the set stop. Hover a setup to see what it places.'}</p>
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button className="btn small" disabled={!p.lights.length} onClick={() => setDialog('save')} title="Keep the lights round this person as your own setup">Save as my preset…</button>
+          {presets.length > 0 && <button className="btn small ghost" onClick={() => setDialog('manage')}>Edit my presets…</button>}
+        </div>
+        {dialog === 'save' && (
+          <SavePresetDialog person={c} lights={p.lights} camera={cameraSeeing(c.position, meterCameras(p.location))?.position} exposure={p.exposure}
+            plan={p.plan} windowTransmission={p.windowTransmission}
+            onClose={saved => { setDialog(undefined); if (saved) setSetupNote({ id: c.id, text: `Saved “${saved.name}” with ${saved.units.length} unit${saved.units.length === 1 ? '' : 's'}. It is under My presets on every person.` }); }} />
+        )}
+        {dialog === 'manage' && <ManagePresetsDialog onClose={() => setDialog(undefined)} />}
       </Panel>
       <Panel title="Person">
         <div className="chips" style={{ marginBottom: 10 }}>
@@ -516,6 +546,7 @@ function Overview(p: InspectorProps) {
         )) : <p className="note">No lights yet. Pick a unit in the toolbar and click the plan.</p>}
         {emitters.length > 0 && <p className="note">Total draw ≈ {watts(totalDraw)} (estimated from rated power and output).</p>}
       </Panel>
+      <WindowPresetsPanel {...p} />
       <Panel title="Light through windows" collapsible open={false}>
         <Slider label="Glass passes" value={p.windowTransmission} min={0} max={1} step={0.01} format={pct}
           onChange={v => p.edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), windowTransmission: v } }), false)} />
@@ -524,3 +555,29 @@ function Overview(p: InspectorProps) {
   );
 }
 
+/** Window presets can go in with nobody in the room yet: pick the preset and the window. */
+function WindowPresetsPanel(p: InspectorProps) {
+  const presets = usePresets().filter(x => x.anchor === 'window');
+  const windows = p.plan?.windows ?? [];
+  const [windowID, setWindowID] = useState<string>();
+  const [manage, setManage] = useState(false);
+  const [note, setNote] = useState<string>();
+  if (!presets.length || !windows.length || !p.plan) return null;
+  const w = windows.find(x => x.id === windowID) ?? windows[0];
+  const place = (preset: LightingPreset) => {
+    const built = buildPresetAtWindow(preset, w, p.plan!, p.location.primaryScanID ?? p.location.scans[p.location.scans.length - 1]?.id);
+    p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
+    setNote(`${preset.name}. ${built.notes.join(' · ')}. Undo removes it.`);
+  };
+  return (
+    <Panel title="My window presets">
+      {windows.length > 1 && (
+        <div className="field"><span>Window</span><select value={w.id} onChange={e => setWindowID(e.target.value)}>{windows.map((x, i) => <option key={x.id} value={x.id}>Window {i + 1} ({metres(Math.hypot(x.b.x - x.a.x, x.b.z - x.a.z))})</option>)}</select><span /></div>
+      )}
+      <div className="chips">{presets.map(s => <button key={s.id} className="chip mine" title={presetSummary(s)} onClick={() => place(s)}>{s.name}</button>)}</div>
+      <p className="note">{note ? <>{note} <Badge /></> : 'Places your saved units at this window, at the levels you saved.'}</p>
+      <div className="actions" style={{ marginTop: 8 }}><button className="btn small ghost" onClick={() => setManage(true)}>Edit my presets…</button></div>
+      {manage && <ManagePresetsDialog onClose={() => setManage(false)} />}
+    </Panel>
+  );
+}
