@@ -15,9 +15,13 @@ import {
 import { exposureTime, fStop, frameRates, isoPresets, keyLux, shutterAngles, speedLabel, stopLabel, stopsDelta, stopsForLux, tStops, trim } from '../model/exposure';
 import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
 import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups';
+import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type LightingPreset } from '../model/presets';
+import { usePresets } from './presetStore';
+import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
+import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
 import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
 import type { ReadingUnit } from './format';
 import { Icon } from './icons';
@@ -248,7 +252,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
   const currentMod = fixtureModifier(l);
   const usesRGB = profile.color.rgb && l.colorMode === 'rgb';
   const filterIDs = l.filterIDs ?? [];
-  const categories = [...new Set(profiles.map(x => x.category))] as FixtureCategory[];
+  const categories = (Object.keys(categoryLabel) as FixtureCategory[]).filter(c => profiles.some(x => x.category === c));
 
   const atMeters = p.meters.map(m => {
     const r = calcReading(m.point, m.normal, p.scene);
@@ -274,6 +278,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
             {categories.map(cat => <optgroup key={cat} label={categoryLabel[cat]}>{profiles.filter(x => x.category === cat).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</optgroup>)}
           </select><span />
         </label>
+        <Quirks items={quirksForFixture(profile.id)} />
         <label className="field"><span>Role</span>
           <select value={l.role ?? ''} onChange={e => { const v = e.target.value as LightRole | ''; const n = { ...l }; if (v) n.role = v; else delete n.role; replace(n); }} aria-label="Role">
             <option value="">None</option>
@@ -442,6 +447,17 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
     p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
     setSetupNote({ id: c.id, text: `${label}${camera ? '' : ' (no camera yet: lit from where they face)'}. ${built.notes.join(' · ')}. Undo removes it.` });
   };
+  const presets = usePresets();
+  const [dialog, setDialog] = useState<'save' | 'manage'>();
+  // The user's own preset, placed the same way (one undo step).
+  const lightWithPreset = (preset: LightingPreset) => {
+    const camera = cameraSeeing(c.position, meterCameras(p.location))?.position;
+    const built = buildPreset(preset, c, camera, p.exposure, p.plan, p.windowTransmission);
+    if (!built.lights.length) { setSetupNote({ id: c.id, text: `${preset.name}: ${built.notes.join(' · ')}.` }); return; }
+    p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
+    const how = preset.anchor === 'window' ? ' (at the nearest window)' : camera ? '' : ' (no camera yet: lit from where they face)';
+    setSetupNote({ id: c.id, text: `${preset.name}${how}. ${built.notes.join(' · ')}. Undo removes it.` });
+  };
   return (
     <div>
       <section className="panel">
@@ -461,7 +477,23 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
         <div className="chips">
           {LIGHTING_SETUPS.map(s => <button key={s.id} className="chip" title={s.summary} onClick={() => lightWith(s.id, s.label)}>{s.label}</button>)}
         </div>
+        {presets.length > 0 && <>
+          <div className="label" style={{ margin: '12px 0 6px' }}>My presets</div>
+          <div className="chips">
+            {presets.map(s => <button key={s.id} className="chip mine" title={`${ANCHOR_LABEL[s.anchor]}: ${presetSummary(s)}`} onClick={() => lightWithPreset(s)}>{s.name}</button>)}
+          </div>
+        </>}
         <p className="note">{setupNote?.id === c.id ? <>{setupNote.text} <Badge /></> : 'Adds a starting setup round them, levelled for the set stop. Hover a setup to see what it places.'}</p>
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button className="btn small" disabled={!p.lights.length} onClick={() => setDialog('save')} title="Keep the lights round this person as your own setup">Save as my preset…</button>
+          {presets.length > 0 && <button className="btn small ghost" onClick={() => setDialog('manage')}>Edit my presets…</button>}
+        </div>
+        {dialog === 'save' && (
+          <SavePresetDialog person={c} lights={p.lights} camera={cameraSeeing(c.position, meterCameras(p.location))?.position} exposure={p.exposure}
+            plan={p.plan} windowTransmission={p.windowTransmission}
+            onClose={saved => { setDialog(undefined); if (saved) setSetupNote({ id: c.id, text: `Saved “${saved.name}” with ${saved.units.length} unit${saved.units.length === 1 ? '' : 's'}. It is under My presets on every person.` }); }} />
+        )}
+        {dialog === 'manage' && <ManagePresetsDialog onClose={() => setDialog(undefined)} />}
       </Panel>
       <Panel title="Person">
         <div className="chips" style={{ marginBottom: 10 }}>
@@ -553,12 +585,34 @@ function CameraInspector(p: InspectorProps) {
         {cameraSupportWarning(rig) && <p className="note">{cameraSupportWarning(rig)}</p>}
         <label className="field"><span>Sensor</span>
           <select value={rig.sensorID} onChange={e => setRig({ sensorID: e.target.value })}>
-            {sensorPresets.map(x => <option key={x.id} value={x.id}>{x.manufacturer ? x.manufacturer + ' ' : ''}{x.name}</option>)}
+            {[...new Set(sensorPresets.map(x => x.manufacturer))].map(maker => (
+              <optgroup key={maker || 'generic'} label={maker || 'Generic'}>
+                {sensorPresets.filter(x => x.manufacturer === maker).map(x => <option key={x.id} value={x.id}>{x.manufacturer ? x.manufacturer + ' ' : ''}{x.name}</option>)}
+              </optgroup>
+            ))}
           </select><span />
         </label>
+        <Quirks items={quirksForSensor(rig.sensorID)} />
         <p className="note">Cameras and shots are planned on the phone; moving one here moves it there too.</p>
       </Panel>
     </div>
+  );
+}
+
+/** "Things to know" about a fixture type or recording format, collapsed by default. */
+function Quirks({ items }: { items: UnitQuirk[] }) {
+  if (!items.length) return null;
+  return (
+    <details className="quirks">
+      <summary>Things to know ({items.length})</summary>
+      <ul>
+        {items.map(q => (
+          <li key={q.text}>{q.text}{' '}
+            <span className="muted">Source: {q.url ? <a href={q.url} target="_blank" rel="noreferrer">{q.source}</a> : q.source}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -604,6 +658,7 @@ function Overview(p: InspectorProps) {
         )) : <p className="note">No lights yet. Pick a unit in the toolbar and click the plan.</p>}
         {emitters.length > 0 && <p className="note">Total draw ≈ {watts(totalDraw)} (estimated from rated power and output).</p>}
       </Panel>
+      <WindowPresetsPanel {...p} />
       <Panel title="Light through windows" collapsible open={false}>
         <Slider label="Glass passes" value={p.windowTransmission} min={0} max={1} step={0.01} format={pct}
           onChange={v => p.edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), windowTransmission: v } }), false)} />
@@ -612,3 +667,29 @@ function Overview(p: InspectorProps) {
   );
 }
 
+/** Window presets can go in with nobody in the room yet: pick the preset and the window. */
+function WindowPresetsPanel(p: InspectorProps) {
+  const presets = usePresets().filter(x => x.anchor === 'window');
+  const windows = p.plan?.windows ?? [];
+  const [windowID, setWindowID] = useState<string>();
+  const [manage, setManage] = useState(false);
+  const [note, setNote] = useState<string>();
+  if (!presets.length || !windows.length || !p.plan) return null;
+  const w = windows.find(x => x.id === windowID) ?? windows[0];
+  const place = (preset: LightingPreset) => {
+    const built = buildPresetAtWindow(preset, w, p.plan!, p.location.primaryScanID ?? p.location.scans[p.location.scans.length - 1]?.id);
+    p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
+    setNote(`${preset.name}. ${built.notes.join(' · ')}. Undo removes it.`);
+  };
+  return (
+    <Panel title="My window presets">
+      {windows.length > 1 && (
+        <div className="field"><span>Window</span><select value={w.id} onChange={e => setWindowID(e.target.value)}>{windows.map((x, i) => <option key={x.id} value={x.id}>Window {i + 1} ({metres(Math.hypot(x.b.x - x.a.x, x.b.z - x.a.z))})</option>)}</select><span /></div>
+      )}
+      <div className="chips">{presets.map(s => <button key={s.id} className="chip mine" title={presetSummary(s)} onClick={() => place(s)}>{s.name}</button>)}</div>
+      <p className="note">{note ? <>{note} <Badge /></> : 'Places your saved units at this window, at the levels you saved.'}</p>
+      <div className="actions" style={{ marginTop: 8 }}><button className="btn small ghost" onClick={() => setManage(true)}>Edit my presets…</button></div>
+      {manage && <ManagePresetsDialog onClose={() => setManage(false)} />}
+    </Panel>
+  );
+}

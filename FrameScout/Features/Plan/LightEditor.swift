@@ -327,6 +327,7 @@ struct LightForm: View {
                 } label: {
                     LabeledContent("Fixture", value: pm.profile.name)
                 }
+                QuirkList(quirks: KnownQuirks.fixture(pm.profile.id))
             } else {
                 Picker("Type", selection: $light.kind) {
                     ForEach(LightKind.allCases.filter { !$0.emits }) { Label($0.label, systemImage: $0.symbol).tag($0) }

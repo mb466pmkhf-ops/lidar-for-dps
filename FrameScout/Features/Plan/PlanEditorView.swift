@@ -20,6 +20,18 @@ enum PlanSelection: Hashable {
     }
 }
 
+/// Which "My presets" sheet is open.
+enum PresetSheet: Identifiable, Hashable {
+    case save(UUID)
+    case manage
+    var id: String {
+        switch self {
+        case .save(let id): return "save-\(id)"
+        case .manage: return "manage"
+        }
+    }
+}
+
 enum PlanTool: String, CaseIterable, Identifiable {
     case select, add, aim, subject, measure
 
@@ -218,6 +230,9 @@ struct PlanEditorView: View {
     @State private var showExposure = false
     @State private var showAlignment = false
     @State private var showFixturePicker = false
+    /// "My presets": saving the lights round this person, or editing the saved ones.
+    @State private var presetSheet: PresetSheet?
+    @ObservedObject private var presetLibrary = LightingPresetLibrary.shared
     @State private var measurementKind: MeasurementKind = .wallToWall
     @State private var measurementLabel = ""
     @State private var sharedDiagram: SharedFile?
@@ -333,6 +348,7 @@ struct PlanEditorView: View {
             Text(measureDistance.map { UnitsFormatter.distance($0, precise: true) } ?? "")
         }
         .sheet(item: $sharedDiagram) { file in ShareSheet(items: [file.url]) }
+        .sheet(item: $presetSheet) { sheet in presetSheetView(sheet) }
         .onAppear {
             if scanID == nil { scanID = location?.primaryScan?.id }
             if fittedBounds == nil { fittedBounds = contentBounds() }
@@ -1189,6 +1205,39 @@ struct PlanEditorView: View {
             + result.notes.joined(separator: " · ") + ". Undo removes it."
     }
 
+    /// Places one of the user's own presets round a person (or at the window nearest them).
+    private func light(_ person: PrevisCharacter, with preset: LightingPreset) {
+        guard let location else { return }
+        let camera = MeterGeometry.camera(seeing: person.position, from: location.meterCameras)?.position
+        let result = preset.build(for: person, camera: camera, exposure: exposure, plan: plan.isEmpty ? nil : plan,
+                                  windowTransmission: display.windowTransmissionValue)
+        guard !result.lights.isEmpty else {
+            notice = "\(preset.name): \(result.notes.joined(separator: " · "))."
+            return
+        }
+        edit { $0.lightFixtures.append(contentsOf: result.lights) }
+        selection = .light(result.lights[0].id)
+        let how = preset.anchor == .window ? " (at the nearest window)" : camera == nil ? " (no camera yet: lit from where they face)" : ""
+        notice = "\(preset.name)\(how). " + result.notes.joined(separator: " · ") + ". Undo removes it."
+    }
+
+    @ViewBuilder
+    private func presetSheetView(_ sheet: PresetSheet) -> some View {
+        switch sheet {
+        case .manage:
+            ManagePresetsSheet()
+        case .save(let id):
+            if let location, let person = location.previsCharacters.first(where: { $0.id == id }) {
+                SavePresetSheet(person: person, lights: sceneLights,
+                                camera: MeterGeometry.camera(seeing: person.position, from: location.meterCameras)?.position,
+                                exposure: exposure, plan: plan.isEmpty ? nil : plan,
+                                windowTransmission: display.windowTransmissionValue) { saved in
+                    notice = "Saved “\(saved.name)” with \(saved.units.count) unit\(saved.units.count == 1 ? "" : "s"). It is in every person's Light menu."
+                }
+            }
+        }
+    }
+
     private func updateLight(_ id: UUID, _ mutate: @escaping (inout LightFixture) -> Void) {
         edit { loc in
             var lights = loc.lightFixtures
@@ -1496,7 +1545,11 @@ struct PlanEditorView: View {
                                        edit { $0.previsCharacters.removeAll { $0.id == id } }
                                        self.selection = nil
                                    },
-                                   onLight: { setup in light(person, with: setup) })
+                                   onLight: { setup in light(person, with: setup) },
+                                   presets: presetLibrary.presets,
+                                   onPreset: { preset in light(person, with: preset) },
+                                   onSavePreset: { presetSheet = .save(person.id) },
+                                   onManagePresets: { presetSheet = .manage })
                 }
             case .meter(let id):
                 if let meter = location.lightMeters.first(where: { $0.id == id }) {

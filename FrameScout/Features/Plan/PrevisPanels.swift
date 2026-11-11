@@ -23,6 +23,11 @@ struct CharacterPanel: View {
     var onDelete: () -> Void
     /// Places a lighting setup round this person.
     var onLight: ((LightingSetup) -> Void)? = nil
+    /// The user's own presets ("My presets"), placed the same way.
+    var presets: [LightingPreset] = []
+    var onPreset: ((LightingPreset) -> Void)? = nil
+    var onSavePreset: (() -> Void)? = nil
+    var onManagePresets: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -47,6 +52,19 @@ struct CharacterPanel: View {
                 Menu {
                     ForEach(LightingSetup.allCases) { setup in
                         Button { onLight(setup) } label: { Text("\(setup.label) — \(setup.summary)") }
+                    }
+                    if let onPreset, !presets.isEmpty {
+                        Section("My presets") {
+                            ForEach(presets) { preset in
+                                Button { onPreset(preset) } label: {
+                                    Text("\(preset.name) — \(preset.anchor == .window ? "at the nearest window" : "\(preset.units.count) unit\(preset.units.count == 1 ? "" : "s")")")
+                                }
+                            }
+                        }
+                    }
+                    Section {
+                        if let onSavePreset { Button { onSavePreset() } label: { Label("Save as my preset…", systemImage: "square.and.arrow.down") } }
+                        if let onManagePresets, !presets.isEmpty { Button { onManagePresets() } label: { Label("Edit my presets…", systemImage: "slider.horizontal.3") } }
                     }
                 } label: {
                     Label("Light this person…", systemImage: "lightbulb.2")

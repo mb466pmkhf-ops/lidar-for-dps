@@ -495,6 +495,81 @@ do {
     check(edge.lights.count == 2 && edge.lights[1].role == .edge, "key and edge places a soft key and an edge light")
 }
 
+// MARK: Lighting presets (same cases as web/tests/presets.test.ts)
+do {
+    let person = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1), facing: 0)
+    var exp = ExposureSettings(); exp.iso = 800; exp.tStop = 2.8
+    func faceLux(_ lights: [LightFixture], _ id: UUID, _ who: PrevisCharacter, _ bearing: Double, _ e: ExposureSettings = exp) -> Double {
+        let face = LightingCalculator.Point(who.position, height: who.eyeHeight - 0.03)
+        return LightingCalculator.reading(at: face, normal: LightingCalculator.direction(bearing: bearing, tilt: 0),
+                                          scene: LightingCalculator.Scene(lights: lights, plan: demoPlan))
+            .contributions.filter { $0.lightID == id }.reduce(0) { $0 + $1.lux }
+    }
+    let original = LightingSetup.threePoint.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    let preset = LightingPreset.capture(name: "My three-point", lights: original.lights, person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(preset.units.map(\.light.name) == ["Key", "Fill", "Back"], "preset keeps unit names without the person (\(preset.units.map(\.light.name)))")
+    check(preset.units[0].angle > 0 && abs((preset.units[1].stopsUnderKey ?? 9) - 2) < 0.5, "preset saves the key on + and the fill ≈ 2 stops under")
+    let again = preset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    func sameUnit(_ a: LightFixture, _ b: LightFixture) -> Bool {
+        let near: Bool = a.position.distance(to: b.position) < 0.02
+        let level: Bool = abs(a.height - b.height) < 0.02
+        let named: Bool = a.name == b.name
+        let unit: Bool = a.profileID == b.profileID
+        return near && level && named && unit
+    }
+    let same = Swift.zip(again.lights, original.lights).allSatisfy { sameUnit($0, $1) }
+    check(again.lights.count == 3 && same, "saved three-point used again lands where it was")
+    check(abs(log2(faceLux(again.lights, again.lights[0].id, person, 0) / exp.keyLux)) < 0.2, "used again, the key is at the set stop")
+
+    let mine = LightingPreset.capture(name: "Mine", lights: LightingSetup.keyAndEdge.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights,
+                                      person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    var leo = PrevisCharacter(name: "Leo", type: .man, position: P(1.5, 0), facing: 270)
+    leo.scanID = nil
+    var brighter = exp; brighter.tStop = 4
+    let moved = mine.build(for: leo, camera: P(-1.5, 0), exposure: brighter, plan: demoPlan)
+    check(moved.lights.map(\.name) == ["Key · Leo", "Edge · Leo"], "preset names units after the new person")
+    check(moved.lights.allSatisfy { l in abs(l.position.x) < 3 && abs(l.position.z) < 2 }, "preset units stay inside the room")
+    check(abs(log2(faceLux(moved.lights, moved.lights[0].id, leo, 270) / brighter.keyLux)) < 0.2, "preset follows the person, camera and stop")
+
+    let single = LightingPreset.capture(name: "Side", lights: LightingSetup.hardSingle.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan).lights,
+                                        person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    var nearWall = person; nearWall.position = P(2.4, 0)
+    let auto = single.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
+    var keep = single; keep.keepSides = true
+    let kept = keep.build(for: nearWall, camera: P(2.4, -1.8), exposure: exp, plan: demoPlan).lights[0]
+    let mirroredAway: Bool = auto.position.x < 2.4
+    check(mirroredAway && kept.position.x > auto.position.x, "preset mirrors to the roomier side unless sides are kept")
+
+    let w = demoPlan.windows[0]
+    let out = demoPlan.outwardBearing(of: w)
+    let dir = PlanPoint.unit(bearing: out)
+    var sun = LightFixture(name: "Sun", kind: .hmi, position: w.midpoint + dir * 3, pan: (out + 180).truncatingRemainder(dividingBy: 360))
+    sun.height = 3; sun.tilt = -25; sun.dimmer = 0.8
+    let bounce = LightFixture(name: "Bounce", kind: .bounce, position: w.midpoint + dir * -0.5, pan: out)
+    let windowPreset = LightingPreset.capture(name: "Sun through window", lights: [sun, bounce], window: w, plan: demoPlan)
+    let outOK: Bool = abs(windowPreset.units[0].out - 3) < 0.01
+    let aimOK: Bool = abs(windowPreset.units[0].panOffset) < 0.1
+    let insideOK: Bool = abs(windowPreset.units[1].out + 0.5) < 0.01
+    check(outOK && aimOK && insideOK,
+          "window preset saves out from the glass and aim (\(windowPreset.units.map(\.out)))")
+    let atWindow = windowPreset.build(at: w, plan: demoPlan, scanID: nil)
+    let placed = atWindow.lights[0]
+    let placedOK: Bool = placed.position.distance(to: sun.position) < 0.02
+    check(placedOK && placed.dimmer == 0.8 && placed.tilt == -25,
+          "window preset used again lands where it was, at its dimmer")
+    let viaPerson = windowPreset.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    let noWindow = windowPreset.build(for: person, camera: nil, exposure: exp, plan: nil)
+    let saysSo: Bool = noWindow.notes.first?.contains("needs a window") == true
+    check(viaPerson.lights.count == 2 && saysSo,
+          "window preset from a person uses the nearest window, or says it needs one")
+
+    let text = LightingPreset.encode([mine])
+    check(LightingPreset.decode(text) == [mine], "presets round-trip through the shared JSON")
+    check(LightingPreset.decode("hello") == nil, "presets refuse other text")
+    let fromWeb = #"{"framescanPresets":1,"presets":[{"id":"5f0c2a5e-8a7b-4f4e-9a40-1d2b3c4d5e6f","name":"Web","anchor":"person","keepSides":false,"units":[{"light":{"id":"0a0b0c0d-0e0f-4a1b-8c2d-3e4f5a6b7c8d","name":"Key","kind":"fresnel","position":{"x":0,"z":0},"height":2,"pan":0,"tilt":-20,"beamAngle":35,"width":0.3,"power":"","colorTemperature":5600,"gel":"","modifier":"","dimmer":1,"isOn":true,"notes":""},"angle":45,"distance":2,"rise":0.5,"along":0,"out":0,"height":1.5,"panOffset":0,"stopsUnderKey":0}]}]}"#
+    check(LightingPreset.decode(fromWeb)?.first?.units.first?.angle == 45, "a preset copied from the planner opens on the phone")
+}
+
 // MARK: Sync merge (same cases as web/tests/merge.test.ts)
 do {
     func j(_ s: String) -> Any { try! JSONSerialization.jsonObject(with: Data(s.utf8)) }
@@ -700,6 +775,23 @@ do {
                                  remote: try JSONSerialization.jsonObject(with: JSONEncoder().encode(["K": desk]))) as! [String: Any]
     let m = try JSONDecoder().decode(FloorPlan.self, from: JSONSerialization.data(withJSONObject: merged["K"]!))
     check(m.objects.count == 1 && m.windows.count == 1, "set pieces added on the phone and the desktop both survive a sync")
+}
+
+// MARK: Known quirks and library order (same rules as web/tests/quirks.test.ts)
+do {
+    check(FixtureLibrary.profiles.allSatisfy { !KnownQuirks.fixture($0.id).isEmpty }, "every fixture type has things to know")
+    check(SensorLibrary.presets.allSatisfy { !KnownQuirks.sensor($0.id).isEmpty }, "every camera format has things to know")
+    check(Set(KnownQuirks.fixtures.keys) == Set(FixtureLibrary.profiles.map(\.id))
+          && Set(KnownQuirks.sensors.keys) == Set(SensorLibrary.presets.map(\.id)), "quirks only for units in the library")
+    let all = KnownQuirks.fixtures.values.flatMap { $0 } + KnownQuirks.sensors.values.flatMap { $0 }
+    check(all.allSatisfy { !$0.source.isEmpty && $0.text.count <= 170 && ($0.url?.hasPrefix("https://") ?? true) }, "quirks are short and sourced")
+    let cats = FixtureLibrary.profiles.map(\.category)
+    let order = FixtureCategory.allCases
+    check(Swift.zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
+    check(Swift.zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
+          "fixtures listed small to large within a family")
+    check(SensorLibrary.manufacturers == ["ARRI", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
+    check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
 }
 
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
