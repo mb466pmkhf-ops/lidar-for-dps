@@ -47,7 +47,10 @@ enum RigModels {
         let m = SCNMaterial()
         m.lightingModel = .constant
         m.diffuse.contents = on ? color : UIColor(white: 0.32, alpha: 1)
-        if on { m.emission.contents = color }
+        if on {
+            m.emission.contents = color
+            m.emission.intensity = 2.5 // brighter than white, so the face blooms like a real source
+        }
         return m
     }
 

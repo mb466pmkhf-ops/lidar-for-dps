@@ -282,7 +282,7 @@ export function Planner({ project, location, plans, commit }: { project: Project
         </div>
         {view3D ? (
           <Suspense fallback={<div className="scene3d"><div className="scene3d-hint">Loading 3D…</div></div>}>
-            <Scene3D location={location} plan={plan} scanID={scanID} lights={lights} selection={selection} beams={layers.has('beams')} onSelect={s => setSelection(s)} />
+            <Scene3D location={location} plan={plan} scanID={scanID} lights={lights} selection={selection} beams={layers.has('beams')} meters={meters} readings={readings} showReadings={layers.has('readings')} exposure={exposure} onSelect={s => setSelection(s)} />
           </Suspense>
         ) : (
           <PlanCanvas

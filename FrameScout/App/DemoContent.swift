@@ -149,7 +149,7 @@ enum DemoContent {
         var maya = PrevisCharacter(name: "Maya", type: .woman, position: P(0.0, 1.8), facing: 330, scanID: scanID)
         maya.posture = .sitting; maya.skinTone = .tone4
         var leo = PrevisCharacter(name: "Leo", type: .boy, position: P(0.9, 1.8), facing: 340, scanID: scanID)
-        leo.skinTone = .tone2; leo.build = 0.4
+        leo.posture = .sitting; leo.skinTone = .tone2; leo.build = 0.4
         location.previsCharacters = [maya, leo]
         var meter = LightMeter(name: "Table", position: P(0.4, 0.4), height: 0.5, scanID: scanID)
         meter.facing = .up

@@ -157,12 +157,21 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 
 /* 3D view */
 .toolbar .seg { display: inline-flex; gap: 2px; }
-.scene3d { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #0d0d0d; touch-action: none; }
+.scene3d { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #070707; touch-action: none; }
 .scene3d canvas { display: block; width: 100%; height: 100%; }
-.scene3d-hint { position: absolute; left: 12px; bottom: 12px; max-width: 460px; padding: 8px 12px; background: var(--overlay); border: 1px solid var(--hair); border-radius: var(--radius); font-size: 14px; color: var(--text2); pointer-events: none; }
+.scene3d-hint { position: absolute; left: 12px; bottom: 12px; max-width: 520px; padding: 8px 12px; display: grid; gap: 2px; background: rgba(12,13,14,.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.12); border-radius: var(--radius); font-size: 13px; line-height: 1.4; color: rgba(255,255,255,.62); pointer-events: none; }
+.scene3d-hint .what { color: rgba(255,255,255,.86); }
 .scene3d-buttons { position: absolute; right: 12px; top: 12px; display: flex; gap: 4px; }
 .scene3d-buttons .tool { background: var(--overlay); border-color: var(--hair); }
-@media (max-width: 720px) { .scene3d-hint { display: none; } }
+.scene3d-buttons .tool.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.scene3d-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.scene3d-tag { position: absolute; left: 0; top: 0; display: flex; gap: 8px; align-items: baseline; padding: 4px 9px; white-space: nowrap; background: rgba(12,13,14,.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.16); border-radius: 999px; font-size: 12.5px; color: rgba(255,255,255,.66); will-change: transform; }
+.scene3d-tag b { font-family: var(--mono); font-weight: 500; color: #fff; }
+.scene3d-tag::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: rgba(255,255,255,.4); }
+.scene3d-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.scene3d-frame .lines { position: relative; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.75); box-shadow: 0 0 0 100vmax rgba(0,0,0,.5); }
+.scene3d-frame .lines span { position: absolute; left: 8px; top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.85); }
+@media (max-width: 720px) { .scene3d-hint .how { display: none; } .scene3d-hint { right: 12px; font-size: 12px; } }
 
 /* Home: big labelled tiles, then recent locations. */
 .home { overflow: auto; padding: 32px clamp(16px, 4vw, 56px) 48px; }

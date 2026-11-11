@@ -45,7 +45,7 @@ export function demoBundle(): ProjectBundle {
   const lamp = { ...aimed('Lamp', 'practical', P(2.6, 1.9), sofa, 'bulb-tungsten-100'), role: 'practical' as const, height: 1.4 };
 
   const maya = { ...newCharacter('woman', P(0, 1.8), 'Maya', scanID), facing: 330, posture: 'sitting' as const, skinTone: 4 };
-  const leo = { ...newCharacter('boy', P(0.9, 1.8), 'Leo', scanID), facing: 340, skinTone: 2, build: 0.4 };
+  const leo = { ...newCharacter('boy', P(0.9, 1.8), 'Leo', scanID), facing: 340, posture: 'sitting' as const, skinTone: 2, build: 0.4 };
   const meter = { ...newMeter(P(0.4, 0.4), 'Table', scanID), height: 0.5, facing: 'up' as const };
 
   const location = {

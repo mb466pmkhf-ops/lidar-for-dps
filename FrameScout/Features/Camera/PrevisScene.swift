@@ -35,7 +35,8 @@ enum SceneKitBuilder {
         material.diffuse.contents = UIColor(red: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1)
         material.transparency = CGFloat(c.w)
         material.lightingModel = .physicallyBased
-        material.roughness.contents = CGFloat(mesh.material.roughness)
+        // A floor has a little sheen, so a low light rakes across it the way it does on set.
+        material.roughness.contents = mesh.material.name == "Floor" ? 0.5 : CGFloat(mesh.material.roughness)
         material.metalness.contents = CGFloat(mesh.material.metallic)
         material.isDoubleSided = mesh.material.isTranslucent || mesh.material.name.hasPrefix("Mesh_")
         geometry.materials = [material]
@@ -302,10 +303,39 @@ enum SceneKitBuilder {
         return node
     }
 
-    /// Brightness for the viewport only: compresses the estimated flux so a practical and an HMI
-    /// can share a scene. Never used for lux.
-    static func viewportIntensity(flux: Double) -> CGFloat {
-        CGFloat(250 + 900 * log10(1 + max(flux, 0) / 500))
+    /// Brightness for the viewport only. `share` is the unit's on-axis output against the brightest
+    /// unit in the scene (from the photometric model), so units keep their true ratio to each other
+    /// while the picture as a whole is fitted to the screen. Never used for lux.
+    static func viewportIntensity(share: Double) -> CGFloat {
+        CGFloat(1500 * min(max(share, 0.004), 1))
+    }
+
+    /// A small top-to-bottom gradient, for the backdrop and for reflections in metal and glass.
+    static func gradient(top: CGFloat, bottom: CGFloat) -> UIImage {
+        let size = CGSize(width: 16, height: 256)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            let colors = [UIColor(white: top, alpha: 1).cgColor, UIColor(white: bottom, alpha: 1).cgColor] as CFArray
+            guard let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) else { return }
+            ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+        }
+    }
+
+    /// Picture settings shared by the orbit and viewfinder cameras: HDR with a fixed exposure (auto
+    /// exposure would hide how bright one setup is against another), a soft glow round bright
+    /// faces, and contact shading where surfaces meet.
+    static func film(_ camera: SCNCamera?) {
+        guard let camera else { return }
+        camera.wantsHDR = true
+        camera.wantsExposureAdaptation = false
+        camera.exposureOffset = 0
+        camera.bloomThreshold = 0.92
+        camera.bloomIntensity = 0.45
+        camera.bloomBlurRadius = 10
+        camera.screenSpaceAmbientOcclusionIntensity = 0.9
+        camera.screenSpaceAmbientOcclusionRadius = 0.35
+        camera.screenSpaceAmbientOcclusionBias = 0.03
+        camera.screenSpaceAmbientOcclusionDepthThreshold = 0.2
+        camera.screenSpaceAmbientOcclusionNormalThreshold = 0.3
     }
 }
 
@@ -427,6 +457,11 @@ final class VirtualSceneModel: ObservableObject {
     let wallFader = WallFader()
     /// Built nodes per item with the hash of what they were built from; unchanged items are reused.
     private var lightCache: [UUID: (key: Int, node: SCNNode)] = [:]
+    /// Each lit unit's SceneKit light with its on-axis output, so brightness can be re-fitted
+    /// without rebuilding the unit.
+    private var viewportLights: [UUID: (light: SCNLight, onAxis: Double)] = [:]
+    /// True while the sun has been placed from a real date and time (the viewfinder's sun study).
+    private var sunIsSet = false
     private var markerCache: [UUID: (key: Int, node: SCNNode)] = [:]
     private let subjectMarks = SCNNode()
     /// Bumped when the scan geometry changes, so beams are traced again against the new room.
@@ -446,12 +481,14 @@ final class VirtualSceneModel: ObservableObject {
         cameraNode.camera?.zNear = 0.03
         cameraNode.camera?.zFar = 500
         cameraNode.camera?.projectionDirection = .horizontal
+        SceneKitBuilder.film(cameraNode.camera)
         tiltNode.addChildNode(cameraNode)
         panNode.addChildNode(tiltNode)
 
         orbitCameraNode.camera = SCNCamera()
         orbitCameraNode.camera?.zNear = 0.05
         orbitCameraNode.camera?.zFar = 500
+        SceneKitBuilder.film(orbitCameraNode.camera)
         scene.rootNode.addChildNode(orbitCameraNode)
 
         ambientNode.light = SCNLight()
@@ -477,7 +514,10 @@ final class VirtualSceneModel: ObservableObject {
         selectionRing.geometry = ring
         selectionRing.isHidden = true
         selectionRing.castsShadow = false
-        scene.background.contents = UIColor(white: 0.05, alpha: 1)
+        scene.background.contents = SceneKitBuilder.gradient(top: 0.10, bottom: 0.02)
+        // A soft surround, mostly for reflections in stands, lenses and glass.
+        scene.lightingEnvironment.contents = SceneKitBuilder.gradient(top: 0.85, bottom: 0.2)
+        scene.lightingEnvironment.intensity = 0.6
     }
 
     /// Loads the scan. With `plan`, a scan whose geometry files are missing is built from the plan instead.
@@ -799,9 +839,9 @@ final class VirtualSceneModel: ObservableObject {
     }
 
     /// Lighting units: a head shaped by type and modifier on its yoke and stand, a SceneKit light set
-    /// from the unit's colour and (compressed) output, barn doors as leaves and a projected mask, and
-    /// beam rays that stop at the room. Viewport brightness is a visual guide only; lux comes from
-    /// `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
+    /// from the unit's colour and its output relative to the brightest unit, barn doors as leaves and
+    /// a projected mask, and beam rays that stop at the room. Viewport brightness is a visual guide
+    /// only (D-010); lux comes from `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
     /// doesn't rebuild (and re-shadow) the whole rig every frame.
     func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false) {
         var anyOn = false
@@ -824,6 +864,7 @@ final class VirtualSceneModel: ObservableObject {
             keep.insert(l.id)
             if let cached = lightCache[l.id], cached.key == key { continue }
             lightCache[l.id]?.node.removeFromParentNode()
+            viewportLights[l.id] = nil
             let node = buildLight(l, selected: l.id == selected, showLabels: showLabels, showBeams: showBeams, shadow: wantsShadow)
             lightRig.addChildNode(node)
             lightCache[l.id] = (key, node)
@@ -831,8 +872,18 @@ final class VirtualSceneModel: ObservableObject {
         for (id, cached) in lightCache where !keep.contains(id) {
             cached.node.removeFromParentNode()
             lightCache[id] = nil
+            viewportLights[id] = nil
         }
-        ambientNode.light?.intensity = anyOn ? 160 : 450
+        // Fit the picture to the brightest unit; every other unit keeps its true ratio to it.
+        let brightest = viewportLights.values.map(\.onAxis).max() ?? 0
+        for entry in viewportLights.values {
+            entry.light.intensity = SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1)
+        }
+        // With units on, the room keeps only a trace of work light so their shadows read; the
+        // stand-in sun is for an unlit room (or the viewfinder's sun study).
+        ambientNode.light?.intensity = anyOn ? 60 : 450
+        scene.lightingEnvironment.intensity = anyOn ? 0.25 : 0.6
+        if !sunIsSet { sunNode.light?.intensity = anyOn ? 0 : 900 }
     }
 
     private func buildLight(_ l: LightFixture, selected: Bool, showLabels: Bool, showBeams: Bool, shadow: Bool) -> SCNNode {
@@ -878,7 +929,7 @@ final class VirtualSceneModel: ObservableObject {
                     light.color = UIColor.white
                     light.temperature = CGFloat(pm.kelvin)
                 }
-                light.intensity = SceneKitBuilder.viewportIntensity(flux: pm.flux)
+                viewportLights[l.id] = (light, pm.illuminanceOnAxis(at: 3))
                 light.attenuationStartDistance = 0.3
                 light.attenuationEndDistance = 14
                 light.attenuationFalloffExponent = 2
@@ -887,9 +938,16 @@ final class VirtualSceneModel: ObservableObject {
                         light.gobo?.contents = SceneKitBuilder.barnDoorGobo(l.barnDoorSettings, outerAngle: Double(light.spotOuterAngle))
                     }
                     if shadow {
+                        // A shadow takes away this unit's light only, and a bigger source gives a softer edge.
+                        let soft = min(1, pm.emitterRadius / 0.5)
                         light.castsShadow = true
-                        light.shadowMode = .deferred
-                        light.shadowColor = UIColor.black.withAlphaComponent(0.55)
+                        light.shadowMode = .forward
+                        light.shadowColor = UIColor.black
+                        light.shadowMapSize = CGSize(width: 2048, height: 2048)
+                        light.shadowRadius = CGFloat(2 + soft * 9)
+                        light.shadowSampleCount = soft > 0.3 ? 24 : 12
+                        light.zNear = 0.1
+                        light.zFar = 18
                     }
                 }
                 let lightNode = SCNNode()
@@ -981,6 +1039,7 @@ final class VirtualSceneModel: ObservableObject {
     /// Points the directional light from the sun's world direction.
     func setSun(worldBearing: Double?, elevation: Double?) {
         let centre = worldPoint(roomCentre)
+        sunIsSet = worldBearing != nil && elevation != nil
         guard let worldBearing, let elevation else {
             sunNode.simdPosition = centre + SIMD3(3, 10, 4)
             sunNode.simdLook(at: centre)
