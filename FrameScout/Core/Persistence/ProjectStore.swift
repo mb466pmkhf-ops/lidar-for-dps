@@ -17,6 +17,8 @@ final class ProjectStore: ObservableObject {
 
     private var pendingSaves: [UUID: Task<Void, Never>] = [:]
     private var planCache: [UUID: FloorPlan] = [:]
+    /// Plans edited by hand that are waiting to be written (debounced like project saves).
+    private var pendingPlanSaves: [UUID: (ref: LocationRef, task: Task<Void, Never>)] = [:]
     private let fm = FileManager.default
 
     init() {
@@ -86,6 +88,11 @@ final class ProjectStore: ObservableObject {
 
     /// Flush any pending writes (called when the app goes to the background).
     func flush() {
+        for (scanID, pending) in pendingPlanSaves {
+            pending.task.cancel()
+            writePlanNow(pending.ref, scanID: scanID)
+        }
+        pendingPlanSaves.removeAll()
         for (id, task) in pendingSaves {
             task.cancel()
             if let p = project(id) { writeNow(p) }
@@ -255,12 +262,54 @@ final class ProjectStore: ObservableObject {
     }
 
     func deleteScan(_ scanID: UUID, from ref: LocationRef) {
+        pendingPlanSaves[scanID]?.task.cancel()
+        pendingPlanSaves[scanID] = nil
         try? fm.removeItem(at: StoragePaths.scanDir(ref, scanID: scanID))
         planCache[scanID] = nil
         updateLocation(ref) { loc in
             loc.scans.removeAll { $0.id == scanID }
             if loc.primaryScanID == scanID { loc.primaryScanID = loc.scans.last?.id }
         }
+    }
+
+    /// Replaces a scan's 2D plan after an edit by hand (doors, windows, set pieces). The change shows
+    /// at once; the file is written shortly after, and the project is marked changed so it syncs.
+    func setFloorPlan(_ plan: FloorPlan, _ ref: LocationRef, scanID: UUID) {
+        guard floorPlan(ref, scanID: scanID) != plan else { return }
+        objectWillChange.send()
+        planCache[scanID] = plan
+        pendingPlanSaves[scanID]?.task.cancel()
+        let task = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.writePlanNow(ref, scanID: scanID)
+            self.pendingPlanSaves[scanID] = nil
+        }
+        pendingPlanSaves[scanID] = (ref, task)
+        // Touching the project saves it, which tells sync something changed.
+        updateProject(ref.projectID) { _ in }
+    }
+
+    private func writePlanNow(_ ref: LocationRef, scanID: UUID) {
+        // The scan may have gone (deleted with its location or project) while the write waited.
+        guard let plan = planCache[scanID], location(ref)?.scans.contains(where: { $0.id == scanID }) == true else { return }
+        let url = StoragePaths.scanFile(ref, scanID: scanID, .plan)
+        StoragePaths.ensureDirectory(url.deletingLastPathComponent())
+        do {
+            try JSONCoding.encoder.encode(plan).write(to: url, options: .atomic)
+        } catch {
+            lastError = "Couldn't save the plan: \(error.localizedDescription)"
+        }
+    }
+
+    /// A plan that changed on another device: replaces the file and the cached copy, without
+    /// reporting it back to sync.
+    func applyRemotePlan(_ plan: FloorPlan, _ ref: LocationRef, scanID: UUID) {
+        pendingPlanSaves[scanID]?.task.cancel()
+        pendingPlanSaves[scanID] = nil
+        objectWillChange.send()
+        planCache[scanID] = plan
+        writePlanNow(ref, scanID: scanID)
     }
 
     func floorPlan(_ ref: LocationRef, scanID: UUID) -> FloorPlan? {

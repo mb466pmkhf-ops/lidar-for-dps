@@ -452,6 +452,14 @@ final class VirtualSceneModel: ObservableObject {
     private(set) var roomSpan: Float = 6
     private(set) var geometry: SceneGeometry?
     private var scanItems: [(node: SCNNode, category: String, id: UUID?)] = []
+    /// Pieces placed by hand on the plan, drawn over a real scan (see `showPlanEdits`).
+    private var handItems: [(node: SCNNode, category: String, id: UUID?)] = []
+    private var handNode: SCNNode?
+    /// What the room or the hand-placed overlay was last built from, so unchanged plans aren't rebuilt.
+    private var builtPlan: FloorPlan?
+    private var builtHand: FloorPlan?
+    /// Scanned set pieces moved or deleted on the plan: hidden in the scan, redrawn from the plan.
+    private var replacedScanPieces: Set<UUID> = []
     private var alignment = ScanAlignment.identity
     private weak var orbitView: SCNView?
     let wallFader = WallFader()
@@ -536,22 +544,8 @@ final class VirtualSceneModel: ObservableObject {
                     geometry = PlanSceneBuilder.sceneGeometry(plan)
                     builtFromPlan = true
                 }
-                self.geometry = geometry
-                var items: [(node: SCNNode, category: String, id: UUID?)] = []
-                let node = SceneKitBuilder.node(for: geometry) { n, info in
-                    items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
-                }
-                scanItems = items
-                let cutaway: Set<SceneGroup> = [.walls, .windows, .doors]
-                wallFader.configure(walls: items.filter { group(for: $0.category).map(cutaway.contains) ?? false }.map(\.node), world: world,
-                                    centre: SIMD3(roomCentreLocal(node).x, Float(floorY) + 1, roomCentreLocal(node).z))
-                scanHolder.childNodes.forEach { $0.removeFromParentNode() }
-                scanHolder.addChildNode(node)
-                let (lo, hi) = node.boundingBox
-                roomCentre = SIMD3(Float(lo.x + hi.x) / 2, Float(floorY) + 1, Float(lo.z + hi.z) / 2)
-                roomSpan = max(Float(hi.x - lo.x), Float(hi.z - lo.z), 3)
-                roomFootprint = (SIMD2(Float(lo.x) - 0.05, Float(lo.z) - 0.05), SIMD2(Float(hi.x) + 0.05, Float(hi.z) + 0.05))
-                sceneGeneration += 1
+                if builtFromPlan { builtPlan = plan }
+                installRoom(geometry)
                 applyAlignment(alignment)
                 resetView()
                 loaded = true
@@ -559,6 +553,70 @@ final class VirtualSceneModel: ObservableObject {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    /// Puts the room's geometry in the scene (replacing what was there) and registers its parts.
+    private func installRoom(_ geometry: SceneGeometry) {
+        self.geometry = geometry
+        var items: [(node: SCNNode, category: String, id: UUID?)] = []
+        let node = SceneKitBuilder.node(for: geometry) { n, info in
+            items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
+        }
+        scanItems = items
+        handNode = nil
+        handItems = []
+        builtHand = nil
+        replacedScanPieces = []
+        let cutaway: Set<SceneGroup> = [.walls, .windows, .doors]
+        wallFader.configure(walls: items.filter { group(for: $0.category).map(cutaway.contains) ?? false }.map(\.node), world: world,
+                            centre: SIMD3(roomCentreLocal(node).x, Float(floorY) + 1, roomCentreLocal(node).z))
+        scanHolder.childNodes.forEach { $0.removeFromParentNode() }
+        scanHolder.addChildNode(node)
+        let (lo, hi) = node.boundingBox
+        roomCentre = SIMD3(Float(lo.x + hi.x) / 2, Float(floorY) + 1, Float(lo.z + hi.z) / 2)
+        roomSpan = max(Float(hi.x - lo.x), Float(hi.z - lo.z), 3)
+        roomFootprint = (SIMD2(Float(lo.x) - 0.05, Float(lo.z) - 0.05), SIMD2(Float(hi.x) + 0.05, Float(hi.z) + 0.05))
+        sceneGeneration += 1
+    }
+
+    /// Doors, windows and set pieces added or changed by hand on the plan. A room built from the plan
+    /// is rebuilt; a real scan keeps its own geometry, with the pieces placed by hand drawn over it as
+    /// simple boxes and the scanned pieces that were moved or deleted on the plan hidden.
+    func showPlanEdits(_ plan: FloorPlan) {
+        guard loaded else { return }
+        if builtFromPlan {
+            guard plan != builtPlan, !plan.isEmpty else { return }
+            builtPlan = plan
+            installRoom(PlanSceneBuilder.sceneGeometry(plan))
+            applyAlignment(alignment)
+            return
+        }
+        var hand = FloorPlan()
+        hand.floorY = plan.floorY
+        hand.objects = plan.objects.filter { $0.byHand == true }
+        hand.windows = plan.windows.filter { $0.byHand == true }
+        hand.doors = plan.doors.filter { $0.byHand == true }
+        let kept = Set(plan.objects.filter { $0.byHand != true }.map(\.id))
+        let replaced = Set(scanItems.compactMap { item -> UUID? in
+            guard group(for: item.category) == .furniture, let id = item.id, !kept.contains(id) else { return nil }
+            return id
+        })
+        guard hand != builtHand || replaced != replacedScanPieces else { return }
+        builtHand = hand
+        replacedScanPieces = replaced
+        handNode?.removeFromParentNode()
+        handNode = nil
+        handItems = []
+        if !(hand.objects.isEmpty && hand.windows.isEmpty && hand.doors.isEmpty) {
+            var items: [(node: SCNNode, category: String, id: UUID?)] = []
+            let node = SceneKitBuilder.node(for: PlanSceneBuilder.sceneGeometry(hand)) { n, info in
+                items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
+            }
+            scanHolder.addChildNode(node)
+            handNode = node
+            handItems = items
+        }
+        sceneGeneration += 1
     }
 
     private func roomCentreLocal(_ node: SCNNode) -> SIMD3<Float> {
@@ -581,11 +639,15 @@ final class VirtualSceneModel: ObservableObject {
 
     /// Visibility, window and wall transparency. Changes nothing in the scan.
     func applyDisplay(_ d: SceneDisplay) {
-        for item in scanItems {
+        for item in scanItems + handItems {
             let g = group(for: item.category)
             var hidden = g.map { d.isHidden(group: $0) } ?? false
             if g == .furniture {
                 hidden = hidden || d.isHidden(category: item.category) || (item.id.map { d.isHidden(item: SceneItemKey.object($0)) } ?? false)
+                // The scanned copy of a piece that was moved or deleted on the plan.
+                if let id = item.id, replacedScanPieces.contains(id), !handItems.contains(where: { $0.node === item.node }) {
+                    hidden = true
+                }
             }
             item.node.isHidden = hidden
             switch g {
@@ -1074,7 +1136,7 @@ final class VirtualSceneModel: ObservableObject {
                         }
                     }
                 }
-                if let item = scanItems.first(where: { $0.node === node }), group(for: item.category) == .furniture, let id = item.id {
+                if let item = (scanItems + handItems).first(where: { $0.node === node }), group(for: item.category) == .furniture, let id = item.id {
                     return .object(id)
                 }
                 n = node.parent

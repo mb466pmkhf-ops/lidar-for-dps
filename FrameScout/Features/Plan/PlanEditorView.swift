@@ -6,12 +6,17 @@ enum PlanSelection: Hashable {
     case light(UUID)
     case character(UUID)
     case meter(UUID)
-    /// A set piece from the scan (can be hidden, not moved).
+    /// A set piece: from the scan, or placed by hand. Moves on the plan once selected.
     case object(UUID)
+    /// A door, window or opening in a wall. Slides along the walls on the plan once selected.
+    case opening(UUID)
 
+    /// Can be dragged in the 3D view and aimed. Set pieces and openings move on the plan only.
     var isMovable: Bool {
-        if case .object = self { return false }
-        return true
+        switch self {
+        case .object, .opening: return false
+        default: return true
+        }
     }
 }
 
@@ -116,6 +121,10 @@ enum PlanAddItem: Hashable {
     case grip(LightKind)
     case person(CharacterType)
     case meter
+    /// A door, window or opening (`SetPieces.openings` id), placed in the nearest wall.
+    case opening(String)
+    /// Furniture (`SetPieces.furniture` id).
+    case furniture(String)
 
     var label: String {
         switch self {
@@ -124,6 +133,8 @@ enum PlanAddItem: Hashable {
         case .grip: return "Grip"
         case .person: return "Person"
         case .meter: return "Meter"
+        case .opening: return "Door · window"
+        case .furniture: return "Furniture"
         }
     }
     var symbol: String {
@@ -133,6 +144,8 @@ enum PlanAddItem: Hashable {
         case .grip: return "rectangle.portrait"
         case .person: return "figure.stand"
         case .meter: return "gauge.with.dots.needle.50percent"
+        case .opening: return "door.left.hand.open"
+        case .furniture: return "sofa"
         }
     }
 }
@@ -146,20 +159,26 @@ private struct LightingAnalysis {
     func reading(_ s: MeterPoint.Source) -> LightingCalculator.Reading? { readings[s] }
 }
 
+/// One undo step: the location and the scan's 2D plan (doors, windows, set pieces) as they were.
+struct EditSnapshot {
+    var location: Location
+    var plan: FloorPlan?
+}
+
 /// Undo history for the editor: whole-location snapshots. Edits within a moment of each other
 /// (a drag, a slider) collapse into one step.
 @MainActor
 final class EditHistory: ObservableObject {
-    @Published private(set) var undoStack: [Location] = []
-    @Published private(set) var redoStack: [Location] = []
+    @Published private(set) var undoStack: [EditSnapshot] = []
+    @Published private(set) var redoStack: [EditSnapshot] = []
     private var lastEdit = Date.distantPast
     private let limit = 60
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
-    /// Call with the location as it is before an edit.
-    func willEdit(_ current: Location) {
+    /// Call with the location and plan as they are before an edit.
+    func willEdit(_ current: EditSnapshot) {
         let now = Date()
         if now.timeIntervalSince(lastEdit) > 0.8 {
             undoStack.append(current)
@@ -169,14 +188,14 @@ final class EditHistory: ObservableObject {
         lastEdit = now
     }
 
-    func undo(from current: Location) -> Location? {
+    func undo(from current: EditSnapshot) -> EditSnapshot? {
         guard let previous = undoStack.popLast() else { return nil }
         redoStack.append(current)
         lastEdit = .distantPast
         return previous
     }
 
-    func redo(from current: Location) -> Location? {
+    func redo(from current: EditSnapshot) -> EditSnapshot? {
         guard let next = redoStack.popLast() else { return nil }
         undoStack.append(current)
         lastEdit = .distantPast
@@ -359,7 +378,11 @@ struct PlanEditorView: View {
         .onChange(of: layout) { _, _ in if shows3D { load3D() } }
         .onChange(of: location) { _, _ in sync3D() }
         .onChange(of: selection) { _, _ in sync3D() }
-        .onChange(of: scene3D.loaded) { _, _ in sync3D() }
+        .onChange(of: scene3D.loaded) { _, _ in scene3D.showPlanEdits(plan); sync3D() }
+        .onChange(of: plan) { _, newPlan in
+            scene3D.showPlanEdits(newPlan)
+            sync3D()
+        }
     }
 
     // MARK: Lighting
@@ -765,7 +788,25 @@ struct PlanEditorView: View {
         for light in sceneLights where near(light.position) {
             if light.kind.emits ? !d.isHidden(group: .lights) : !d.isHidden(group: .grip) { return .item(.light(light.id)) }
         }
+        // Set pieces and openings drag only once selected, so a finger on a sofa still pans the plan.
+        let world = viewport.toWorld(point)
+        switch selection {
+        case .object(let id)?:
+            if object(at: world)?.id == id { return .item(.object(id)) }
+        case .opening(let id)?:
+            if opening(at: world, viewport: viewport)?.id == id { return .item(.opening(id)) }
+        default: break
+        }
         return nil
+    }
+
+    /// Door, window or opening under a plan point (within a finger's width), if it's shown.
+    private func opening(at p: PlanPoint, viewport: PlanViewport) -> PlanSegment? {
+        let d = display
+        let reach = Double(18 / viewport.scale)
+        let shown = (d.isHidden(group: .windows) ? [] : plan.windows) + (d.isHidden(group: .doors) ? [] : plan.doors + plan.openings)
+        return shown.filter { LightingCalculator.distance(p, toSegment: $0.a, $0.b) < reach }
+            .min { LightingCalculator.distance(p, toSegment: $0.a, $0.b) < LightingCalculator.distance(p, toSegment: $1.a, $1.b) }
     }
 
     /// Set piece under a plan point, if it's shown.
@@ -785,7 +826,9 @@ struct PlanEditorView: View {
             switch hit {
             case .item(let item): selection = item
             case .subject(let id): selection = .shot(id)
-            default: selection = object(at: world).map { PlanSelection.object($0.id) }
+            default:
+                selection = opening(at: world, viewport: viewport).map { PlanSelection.opening($0.id) }
+                    ?? object(at: world).map { PlanSelection.object($0.id) }
             }
         case .add:
             if case .item(let item)? = hit {
@@ -836,6 +879,7 @@ struct PlanEditorView: View {
         o.showPeopleLabels = d.showsLabels(.people)
         o.showMeterLabels = d.showsLabels(.meters)
         if case .object(let id)? = selection { o.selectedObject = id }
+        if case .opening(let id)? = selection { o.selectedSegment = id }
         guard let location else { return o }
         let sid = scan?.id
         o.luxMap = luxMap(analysis)
@@ -930,6 +974,8 @@ struct PlanEditorView: View {
             return location.lightMeters.first { $0.id == id }.map { (point: $0.position, height: $0.height) }
         case .object(let id):
             return plan.objects.first { $0.id == id }.map { (point: $0.center, height: $0.height / 2) }
+        case .opening(let id):
+            return plan.segment(id).map { (point: $0.midpoint, height: $0.bottom + $0.height / 2) }
         }
     }
 
@@ -940,7 +986,18 @@ struct PlanEditorView: View {
         case .light(let id): updateLight(id) { $0.position = p }
         case .character(let id): updateCharacter(id) { $0.position = p }
         case .meter(let id): updateMeter(id) { $0.position = p }
-        case .object: break
+        case .object(let id):
+            editPlan { plan in
+                guard var o = plan.objects.first(where: { $0.id == id }) else { return }
+                o.center = PlanPoint(x: (p.x * 100).rounded() / 100, z: (p.z * 100).rounded() / 100)
+                o.byHand = true
+                plan.replace(o)
+            }
+        case .opening(let id):
+            editPlan { plan in
+                guard let seg = plan.segment(id) else { return }
+                plan.replace(SetPieces.slide(seg, to: p, in: plan))
+            }
         }
     }
 
@@ -957,7 +1014,12 @@ struct PlanEditorView: View {
                 if m.facing != .bearing { m.facing = .bearing }
                 m.bearing = wrap(m.bearing + degrees)
             }
-        case .object: break
+        case .object(let id):
+            editPlan { plan in
+                guard let o = plan.objects.first(where: { $0.id == id }) else { return }
+                plan.replace(SetPieces.turned(o, by: degrees * .pi / 180))
+            }
+        case .opening: break
         }
     }
 
@@ -975,6 +1037,20 @@ struct PlanEditorView: View {
         case .grip(let kind): addGrip(kind, at: point)
         case .person(let type): addPerson(type, at: point)
         case .meter: addMeter(at: point)
+        case .opening(let id):
+            guard let preset = SetPieces.opening(id), let seg = SetPieces.placeOpening(plan.isEmpty ? nil : plan, at: point, preset: preset) else {
+                // Missed the walls: keep the tool so the next tap can try again.
+                notice = plan.walls.isEmpty ? "This plan has no walls to put a door or window in." : "Tap on a wall, or within a metre of one."
+                return
+            }
+            editPlan { $0.add(seg) }
+            selection = .opening(seg.id)
+            notice = nil
+        case .furniture(let id):
+            guard let preset = SetPieces.furniturePreset(id) else { return }
+            let o = SetPieces.placeFurniture(plan.isEmpty ? nil : plan, at: point, preset: preset)
+            editPlan { $0.objects.append(o) }
+            selection = .object(o.id)
         }
         tool = .select
     }
@@ -1076,25 +1152,44 @@ struct PlanEditorView: View {
                 m.facing = .bearing
                 m.bearing = bearing
             }
-        case .object: break
+        case .object, .opening: break
         }
+    }
+
+    private var snapshot: EditSnapshot? {
+        location.map { EditSnapshot(location: $0, plan: scan == nil ? nil : plan) }
     }
 
     /// Every change made in the editor goes through here so it can be undone.
     private func edit(_ mutate: (inout Location) -> Void) {
-        if let location { history.willEdit(location) }
+        if let snapshot { history.willEdit(snapshot) }
         store.updateLocation(ref, mutate)
     }
 
+    /// Changes the scan's 2D plan by hand: doors, windows, set pieces. Undoable like `edit`.
+    private func editPlan(_ mutate: (inout FloorPlan) -> Void) {
+        guard let scan else { return }
+        var next = plan
+        mutate(&next)
+        guard next != plan else { return }
+        if let snapshot { history.willEdit(snapshot) }
+        store.setFloorPlan(next, ref, scanID: scan.id)
+    }
+
+    private func restore(_ s: EditSnapshot) {
+        store.updateLocation(ref) { $0 = s.location }
+        if let p = s.plan, let scan, p != plan { store.setFloorPlan(p, ref, scanID: scan.id) }
+    }
+
     private func undo() {
-        guard let current = location, let previous = history.undo(from: current) else { return }
-        store.updateLocation(ref) { $0 = previous }
+        guard let current = snapshot, let previous = history.undo(from: current) else { return }
+        restore(previous)
         notice = nil
     }
 
     private func redo() {
-        guard let current = location, let next = history.redo(from: current) else { return }
-        store.updateLocation(ref) { $0 = next }
+        guard let current = snapshot, let next = history.redo(from: current) else { return }
+        restore(next)
     }
 
     /// Places a lighting setup round a person, set for the camera's exposure.
@@ -1267,6 +1362,10 @@ struct PlanEditorView: View {
                     addChip(.grip(.bounce), selected: { if case .grip = addItem { return true }; return false }())
                     addChip(.person(.woman), selected: { if case .person = addItem { return true }; return false }())
                     addChip(.meter, selected: addItem == .meter)
+                    if scan != nil {
+                        addChip(.opening("door"), selected: { if case .opening = addItem { return true }; return false }())
+                        addChip(.furniture("sofa"), selected: { if case .furniture = addItem { return true }; return false }())
+                    }
                 }
             }
             switch addItem {
@@ -1299,6 +1398,20 @@ struct PlanEditorView: View {
                 Text("A camera position. Make it a shot from its panel.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             case .meter:
                 Text("Reads the light at a point, 1.5 m up, towards camera. Estimated.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            case .opening(let id):
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(SetPieces.openings) { o in TagChip(text: o.label, selected: id == o.id) { addItem = .opening(o.id) } }
+                    }
+                }
+                Text("Tap a wall to put it in. Typical size; change it after.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            case .furniture(let id):
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(SetPieces.furniture) { f in TagChip(text: f.label, selected: id == f.id) { addItem = .furniture(f.id) } }
+                    }
+                }
+                Text("Tap where it goes. Near a wall it backs onto it. Typical size; change it after.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
         }
         .padding()
@@ -1450,7 +1563,30 @@ struct PlanEditorView: View {
                 }
             case .object(let id):
                 if let object = plan.objects.first(where: { $0.id == id }) {
-                    SetPiecePanel(object: object, display: display, updateDisplay: updateDisplay, onClose: { self.selection = nil })
+                    SetPiecePanel(object: object, plan: plan, display: display, updateDisplay: updateDisplay,
+                                  update: { next in editPlan { $0.replace(next) } },
+                                  onDuplicate: {
+                                      var copy = object
+                                      copy.id = UUID()
+                                      copy.center = object.center + PlanPoint(x: 0.3, z: 0.3)
+                                      copy.byHand = true
+                                      editPlan { $0.objects.append(copy) }
+                                      self.selection = .object(copy.id)
+                                  },
+                                  onDelete: {
+                                      editPlan { $0.removeObject(id) }
+                                      self.selection = nil
+                                  },
+                                  onClose: { self.selection = nil })
+                }
+            case .opening(let id):
+                if let seg = plan.segment(id) {
+                    OpeningPanel(segment: seg, plan: plan,
+                                 update: { next in editPlan { $0.replace(next) } },
+                                 onDelete: {
+                                     editPlan { $0.removeSegment(id) }
+                                     self.selection = nil
+                                 })
                 }
             }
         } else {

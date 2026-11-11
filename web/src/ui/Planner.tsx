@@ -8,6 +8,10 @@ import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISS
 import { withDefaults } from '../model/exposure';
 import { eyeHeight } from '../model/characters';
 import { newCharacter, newLight, newMeter } from '../model/factory';
+import {
+  FURNITURE_PRESETS, OPENING_PRESETS, addObject, addSegment, findSegment, furniturePreset, openingPreset, placeFurniture, placeOpening,
+  removeObject, removeSegment, replaceObject, replaceSegment, slideOpening, turnObject,
+} from '../model/setPieces';
 import { PlanCanvas, type DragTarget, type Selection } from './PlanCanvas';
 import { Inspector } from './Inspector';
 import { Icon } from './icons';
@@ -20,7 +24,12 @@ type Tool =
   | { kind: 'light'; light: LightKind; profile?: string }
   | { kind: 'person' }
   | { kind: 'meter' }
+  | { kind: 'opening'; preset: string }
+  | { kind: 'furniture'; preset: string }
   | { kind: 'aim' };
+
+/** One undo step: the location and the scan's plan as they were. */
+interface Snapshot { loc: Location; plan?: FloorPlan }
 
 const quickLights: { label: string; kind: LightKind; profile?: string }[] = [
   { label: 'COB + softbox', kind: 'fresnel', profile: 'cob-600-d' },
@@ -51,7 +60,11 @@ function menuAnchor(el: HTMLElement) {
   return { top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 308)) };
 }
 
-export function Planner({ project, location, plans, commit }: { project: Project; location: Location; plans: Record<string, FloorPlan>; commit(p: Project): void }) {
+export function Planner({ project, location, plans, commit, commitPlan }: {
+  project: Project; location: Location; plans: Record<string, FloorPlan>; commit(p: Project): void;
+  /** Saves an edited 2D plan for a scan (doors, windows, set pieces). */
+  commitPlan(scanID: string, plan: FloorPlan): void;
+}) {
   useReadingUnit(); // redraw the plan and the panels when the readings unit changes
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
@@ -59,10 +72,14 @@ export function Planner({ project, location, plans, commit }: { project: Project
   const [selection, setSelection] = useState<Selection>();
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [lightMenu, setLightMenu] = useState(false);
-  const history = useRef<{ past: Location[]; future: Location[] }>({ past: [], future: [] });
+  const [setMenu, setSetMenu] = useState(false);
+  const [missedWall, setMissedWall] = useState(false);
+  const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const [, force] = useState(0);
   const locRef = useRef(location);
   locRef.current = location;
+  const planRef = useRef(plan);
+  planRef.current = plan;
 
   useEffect(() => { history.current = { past: [], future: [] }; setSelection(undefined); setTool({ kind: 'select' }); }, [location.id]);
 
@@ -70,17 +87,38 @@ export function Planner({ project, location, plans, commit }: { project: Project
     commit({ ...project, locations: project.locations.map(l => (l.id === next.id ? next : l)) });
   }, [project, commit]);
 
+  const snapshot = (): Snapshot => ({ loc: locRef.current, plan: planRef.current });
+  const remember = () => {
+    history.current.past.push(snapshot()); history.current.future = [];
+    if (history.current.past.length > 200) history.current.past.shift();
+    force(x => x + 1);
+  };
+
   const edit = useCallback((fn: (loc: Location) => Location, undo = true) => {
-    const before = locRef.current;
-    const next = fn(before);
-    if (undo) { history.current.past.push(before); history.current.future = []; if (history.current.past.length > 200) history.current.past.shift(); force(x => x + 1); }
+    const next = fn(locRef.current);
+    if (undo) remember();
     locRef.current = next;
     write(next);
-  }, [write]);
+  }, [write]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const beginChange = () => { history.current.past.push(locRef.current); history.current.future = []; force(x => x + 1); };
-  const undo = () => { const h = history.current; const prev = h.past.pop(); if (!prev) return; h.future.push(locRef.current); write(prev); force(x => x + 1); };
-  const redo = () => { const h = history.current; const next = h.future.pop(); if (!next) return; h.past.push(locRef.current); write(next); force(x => x + 1); };
+  /** Changes the scan's 2D plan: doors, windows and set pieces. */
+  const editPlan = useCallback((fn: (plan: FloorPlan) => FloorPlan, undo = true) => {
+    const current = planRef.current;
+    if (!current || !scanID) return;
+    const next = fn(current);
+    if (next === current) return;
+    if (undo) remember();
+    planRef.current = next;
+    commitPlan(scanID, next);
+  }, [scanID, commitPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const restore = (s: Snapshot) => {
+    if (s.plan && scanID && s.plan !== planRef.current) { planRef.current = s.plan; commitPlan(scanID, s.plan); }
+    if (s.loc !== locRef.current) { locRef.current = s.loc; write(s.loc); }
+  };
+  const beginChange = () => remember();
+  const undo = () => { const h = history.current; const prev = h.past.pop(); if (!prev) return; h.future.push(snapshot()); restore(prev); force(x => x + 1); };
+  const redo = () => { const h = history.current; const next = h.future.pop(); if (!next) return; h.past.push(snapshot()); restore(next); force(x => x + 1); };
 
   // Typing in a slider counts as one change: open an undo step when a control is first touched.
   useEffect(() => {
@@ -127,9 +165,23 @@ export function Planner({ project, location, plans, commit }: { project: Project
       const m = newMeter(p, `Meter ${(location.meters ?? []).length + 1}`, scanID);
       edit(loc => ({ ...loc, meters: [...(loc.meters ?? []), m] }));
       setSelection({ kind: 'meter', id: m.id });
+    } else if (tool.kind === 'opening') {
+      const preset = openingPreset(tool.preset);
+      const seg = preset && placeOpening(calcPlan, raw, preset);
+      // Missed the walls: keep the tool so the next click can try again.
+      if (!seg) { setMissedWall(true); return; }
+      editPlan(pl => addSegment(pl, seg));
+      setSelection({ kind: 'opening', id: seg.id });
+    } else if (tool.kind === 'furniture') {
+      const preset = furniturePreset(tool.preset);
+      if (!preset) return;
+      const o = placeFurniture(calcPlan, p, preset);
+      editPlan(pl => addObject(pl, o));
+      setSelection({ kind: 'object', id: o.id });
     } else if (tool.kind === 'aim' && selection?.kind === 'light') {
       aimLightAt(selection.id, raw);
     }
+    setMissedWall(false);
     setTool({ kind: 'select' });
   };
 
@@ -152,6 +204,23 @@ export function Planner({ project, location, plans, commit }: { project: Project
     if (dragPending.current) { dragPending.current = false; beginChange(); }
     const p = { x: snap(raw.x), z: snap(raw.z) };
     const turn = (from: PlanPoint) => Math.round(bearingFrom(from, raw));
+    if (t.kind === 'object') {
+      editPlan(pl => {
+        const o = pl.objects.find(x => x.id === t.id);
+        if (!o) return pl;
+        // The handle sits on the piece's long axis; turning snaps to 15° steps.
+        const step = Math.PI / 12;
+        const next = t.part === 'rotate'
+          ? { ...o, rotation: Math.round(Math.atan2(raw.z - o.center.z, raw.x - o.center.x) / step) * step, byHand: true }
+          : { ...o, center: p, byHand: true };
+        return replaceObject(pl, next);
+      }, false);
+      return;
+    }
+    if (t.kind === 'opening') {
+      editPlan(pl => { const seg = findSegment(pl, t.id); return seg ? replaceSegment(pl, slideOpening(pl, seg, raw)) : pl; }, false);
+      return;
+    }
     edit(loc => {
       switch (t.kind) {
         case 'light': return { ...loc, lights: (loc.lights ?? []).map(l => (l.id !== t.id ? l : t.part === 'rotate' ? { ...l, pan: turn(l.position) } : { ...l, position: p })) };
@@ -173,18 +242,25 @@ export function Planner({ project, location, plans, commit }: { project: Project
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if (typing) return;
-      if (e.key === 'Escape') { setTool({ kind: 'select' }); setLightMenu(false); if (tool.kind === 'select') setSelection(undefined); }
+      if (e.key === 'Escape') { setTool({ kind: 'select' }); setLightMenu(false); setSetMenu(false); setMissedWall(false); if (tool.kind === 'select') setSelection(undefined); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
         e.preventDefault();
         const id = selection.id;
         if (selection.kind === 'light') edit(loc => ({ ...loc, lights: (loc.lights ?? []).filter(x => x.id !== id) }));
         if (selection.kind === 'character') edit(loc => ({ ...loc, characters: (loc.characters ?? []).filter(x => x.id !== id) }));
         if (selection.kind === 'meter') edit(loc => ({ ...loc, meters: (loc.meters ?? []).filter(x => x.id !== id) }));
+        if (selection.kind === 'object') editPlan(pl => removeObject(pl, id));
+        if (selection.kind === 'opening') editPlan(pl => removeSegment(pl, id));
         setSelection(undefined);
       }
       if (e.key === 'l') setLightMenu(true);
+      if (e.key === 's' && calcPlan) setSetMenu(true);
       if (e.key === 'p') setTool({ kind: 'person' });
       if (e.key === 'm') setTool({ kind: 'meter' });
+      if (selection?.kind === 'object' && (e.key === '[' || e.key === ']')) {
+        const id = selection.id, step = (e.key === ']' ? 15 : -15) * Math.PI / 180;
+        editPlan(pl => { const o = pl.objects.find(x => x.id === id); return o ? replaceObject(pl, turnObject(o, step)) : pl; });
+      }
       if (selection?.kind === 'light' && (e.key === '[' || e.key === ']')) {
         const step = e.key === ']' ? 15 : -15;
         edit(loc => ({ ...loc, lights: (loc.lights ?? []).map(x => (x.id === selection.id ? { ...x, pan: (x.pan + step + 360) % 360 } : x)) }));
@@ -196,6 +272,10 @@ export function Planner({ project, location, plans, commit }: { project: Project
         const dz = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
         const mv = (q: PlanPoint) => ({ x: snap(q.x + dx), z: snap(q.z + dz) });
         const id = selection.id;
+        if (selection.kind === 'object') {
+          editPlan(pl => { const o = pl.objects.find(x => x.id === id); return o ? replaceObject(pl, { ...o, center: mv(o.center), byHand: true }) : pl; });
+          return;
+        }
         edit(loc => ({
           ...loc,
           lights: selection.kind === 'light' ? (loc.lights ?? []).map(x => (x.id === id ? { ...x, position: mv(x.position) } : x)) : loc.lights,
@@ -225,7 +305,9 @@ export function Planner({ project, location, plans, commit }: { project: Project
   });
   const toggleLuxMap = () => edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), showLuxMap: !showLuxMap } }));
 
-  const hint = tool.kind === 'light' ? 'Click the plan to place the unit. It starts aimed at the nearest person. Esc cancels.'
+  const hint = tool.kind === 'opening' ? (missedWall ? 'That is too far from a wall. Click on a wall, or within a metre of one.' : `Click a wall to put the ${openingPreset(tool.preset)?.label.toLowerCase() ?? 'opening'} in it. Esc cancels.`)
+    : tool.kind === 'furniture' ? `Click where the ${furniturePreset(tool.preset)?.label.toLowerCase() ?? 'piece'} goes. Near a wall it turns to back onto it. Esc cancels.`
+    : tool.kind === 'light' ? 'Click the plan to place the unit. It starts aimed at the nearest person. Esc cancels.'
     : tool.kind === 'person' ? 'Click where the person stands. They face the first camera.'
     : tool.kind === 'meter' ? 'Click where you want a reading.'
     : tool.kind === 'aim' ? 'Click a person or a spot to aim the selected light at it.'
@@ -255,6 +337,20 @@ export function Planner({ project, location, plans, commit }: { project: Project
                 <div className="label" style={{ margin: '12px 0 8px' }}>Grip</div>
                 <div className="chips">{gripItems.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind }); setLightMenu(false); }}>{q.label}</button>)}</div>
                 <p className="note">Pick any fixture type after placing it.</p>
+              </div>
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button className={'tool' + (isOn('opening') || isOn('furniture') ? ' on' : '')} disabled={!calcPlan}
+              onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setSetMenu(!setMenu); setLightMenu(false); }} aria-expanded={setMenu}
+              title={calcPlan ? 'Add a door, window or piece of furniture (S)' : 'Draw a room or scan one first'}><Icon name="sofa" /><span className="txt">+ Set</span></button>
+            {setMenu && (
+              <div className="dialog" style={{ position: 'fixed', ...anchor, width: 320, padding: 12, zIndex: 20 }} onMouseLeave={() => setSetMenu(false)}>
+                <div className="label" style={{ marginBottom: 8 }}>In a wall</div>
+                <div className="chips">{OPENING_PRESETS.map(q => <button key={q.id} className="chip" onClick={() => { setTool({ kind: 'opening', preset: q.id }); setSetMenu(false); setMissedWall(false); }}>{q.label}</button>)}</div>
+                <div className="label" style={{ margin: '12px 0 8px' }}>Furniture</div>
+                <div className="chips">{FURNITURE_PRESETS.map(q => <button key={q.id} className="chip" onClick={() => { setTool({ kind: 'furniture', preset: q.id }); setSetMenu(false); }}>{q.label}</button>)}</div>
+                <p className="note">Typical sizes to start with. Change them after placing; the plan marks them as typed, not measured.</p>
               </div>
             )}
           </div>
@@ -295,7 +391,7 @@ export function Planner({ project, location, plans, commit }: { project: Project
       </div>
       <aside className="inspector" aria-label="Details">
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}
-          selection={selection} windowTransmission={windowTransmission} edit={edit} select={setSelection}
+          selection={selection} windowTransmission={windowTransmission} edit={edit} editPlan={editPlan} select={setSelection}
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })} />
       </aside>
     </>

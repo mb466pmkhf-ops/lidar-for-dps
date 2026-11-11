@@ -2,7 +2,12 @@
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PrevisCharacter, CharacterType } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, CharacterType } from '../model/types';
+import {
+  FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
+  replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
+} from '../model/setPieces';
+import { uuid } from '../model/factory';
 import {
   KIND_INFO, applyProfile, categoryLabel, filters, fixtureModifier, fixtureProfile, isAdjustable, modifiersFor, photometrics, profiles,
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
@@ -57,6 +62,8 @@ export interface InspectorProps {
   selection?: Selection;
   windowTransmission: number;
   edit(fn: (loc: Location) => Location, undo?: boolean): void;
+  /** Changes the scan's 2D plan (doors, windows, set pieces). */
+  editPlan(fn: (plan: FloorPlan) => FloorPlan, undo?: boolean): void;
   select(s?: Selection): void;
   aimMode(on: boolean): void;
 }
@@ -67,17 +74,122 @@ export function Inspector(p: InspectorProps) {
   if (s?.kind === 'character') { const c = p.location.characters?.find(x => x.id === s.id); if (c) return <CharacterInspector {...p} character={c} />; }
   if (s?.kind === 'meter') { const m = p.location.meters?.find(x => x.id === s.id); if (m) return <MeterInspector {...p} meter={m} />; }
   if (s?.kind === 'shot' || s?.kind === 'camera') return <CameraInspector {...p} />;
-  if (s?.kind === 'object') {
-    const o = p.plan?.objects.find(x => x.id === s.id);
-    if (o) return (
-      <Panel title="Set piece">
-        <div style={{ fontSize: 18, fontWeight: 400 }}>{o.category}</div>
-        <p className="mono muted">{metres(o.width)} × {metres(o.depth)} × {metres(o.height)}</p>
-        <p className="note">From the scan. Set pieces are edited on the phone; the plan here shows them as scanned.</p>
-      </Panel>
-    );
-  }
+  if (s?.kind === 'object') { const o = p.plan?.objects.find(x => x.id === s.id); if (o) return <SetPieceInspector {...p} object={o} />; }
+  if (s?.kind === 'opening') { const seg = findSegment(p.plan, s.id); if (seg) return <OpeningInspector {...p} segment={seg} />; }
   return <Overview {...p} />;
+}
+
+// MARK: Set pieces
+
+/** A size in metres: − and + step by 5 cm (one undo step each), typing is one step per focus. */
+function SizeRow({ label, value, min = SIZE_LIMITS.min, max = SIZE_LIMITS.max, step = 0.05, onChange }: { label: string; value: number; min?: number; max?: number; step?: number; onChange(v: number, undo: boolean): void }) {
+  const [text, setText] = useState<string>();
+  const clampV = (v: number) => Math.round(Math.min(max, Math.max(min, v)) * 1000) / 1000;
+  return (
+    <div className="field size-row">
+      <span>{label}</span>
+      <span className="ctl">
+        <button type="button" aria-label={`Less ${label.toLowerCase()}`} onClick={() => onChange(clampV(value - step), true)}>−</button>
+        <input type="text" inputMode="decimal" aria-label={`${label} in metres`} value={text ?? value.toFixed(2)}
+          onChange={e => { setText(e.target.value); const n = parseFloat(e.target.value.replace(',', '.')); if (Number.isFinite(n) && n >= min) onChange(clampV(n), false); }}
+          onBlur={() => setText(undefined)} />
+        <button type="button" aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(clampV(value + step), true)}>+</button>
+      </span>
+      <span className="unit">m</span>
+    </div>
+  );
+}
+
+const ByHandNote = ({ byHand, what }: { byHand?: boolean; what: string }) => (
+  <p className="note">{byHand
+    ? <><span className="badge" title="Typed or picked from a list, not measured">Entered by hand</span> Sizes are typical ones or typed in, not measured. Check them on the recce.</>
+    : <>From the scan. Changing the {what} here marks it as entered by hand.</>}</p>
+);
+
+function SetPieceInspector(p: InspectorProps & { object: PlanObject }) {
+  const o = p.object;
+  const set = (patch: Partial<PlanObject>, undo = true) => p.editPlan(pl => replaceObject(pl, { ...o, ...patch, byHand: true }), undo);
+  const preset = FURNITURE_PRESETS.find(f => f.category === o.category && Math.abs(f.width - o.width) < 1e-6 && Math.abs(f.depth - o.depth) < 1e-6);
+  const wall = backOntoWall(p.plan, o.center, o.depth, 1.5);
+  // Offered only when it would move or turn the piece.
+  const againstWall = wall && (Math.hypot(wall.center.x - o.center.x, wall.center.z - o.center.z) > 0.01 || Math.abs(Math.sin(wall.rotation - o.rotation)) > 0.01) ? wall : undefined;
+  const duplicate = () => {
+    const copy: PlanObject = { ...o, id: uuid(), center: { x: o.center.x + 0.3, z: o.center.z + 0.3 }, byHand: true };
+    p.editPlan(pl => addObject(pl, copy));
+    p.select({ kind: 'object', id: copy.id });
+  };
+  const remove = () => { p.editPlan(pl => removeObject(pl, o.id)); p.select(undefined); };
+  return (
+    <div>
+      <Panel title="Set piece">
+        <div style={{ fontSize: 18, fontWeight: 400, marginBottom: 4 }}>{setPieceName(o)}</div>
+        <label className="field"><span>Swap for</span>
+          <select value={preset?.id ?? ''} onChange={e => {
+            const f = FURNITURE_PRESETS.find(x => x.id === e.target.value);
+            if (f) set({ category: f.category, width: f.width, depth: f.depth, height: f.height });
+          }}>
+            {!preset && <option value="">{o.category} (as it is)</option>}
+            {FURNITURE_PRESETS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select><span />
+        </label>
+        <SizeRow label="Width" value={o.width} onChange={(v, u) => set({ width: clampSize(v) }, u)} />
+        <SizeRow label="Depth" value={o.depth} onChange={(v, u) => set({ depth: clampSize(v) }, u)} />
+        <SizeRow label="Height" value={o.height} max={SIZE_LIMITS.heightMax} onChange={(v, u) => set({ height: clampSize(v, SIZE_LIMITS.heightMax) }, u)} />
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="btn small" onClick={() => p.editPlan(pl => replaceObject(pl, turnObject(o, -Math.PI / 2)))} title="Turn a quarter left ([ turns 15°)"><Icon name="turnLeft" /> Turn</button>
+          <button className="btn small" onClick={() => p.editPlan(pl => replaceObject(pl, turnObject(o, Math.PI / 2)))} title="Turn a quarter right (] turns 15°)"><Icon name="turnRight" /> Turn</button>
+          {againstWall && <button className="btn small" onClick={() => set(againstWall)} title="Turn it to back onto the nearest wall">Back to wall</button>}
+        </div>
+        <div className="actions" style={{ marginTop: 8 }}>
+          <button className="btn small" onClick={duplicate}><Icon name="copy" /> Duplicate</button>
+          <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>
+        </div>
+        <p className="note">Drag it on the plan to move it, or the round handle to turn it. Arrow keys nudge it 5 cm.</p>
+        <ByHandNote byHand={o.byHand} what="piece" />
+      </Panel>
+    </div>
+  );
+}
+
+function OpeningInspector(p: InspectorProps & { segment: PlanSegment }) {
+  const seg = p.segment;
+  const plan = p.plan;
+  if (!plan) return null;
+  const width = Math.hypot(seg.b.x - seg.a.x, seg.b.z - seg.a.z);
+  const put = (next: PlanSegment, undo = true) => p.editPlan(pl => replaceSegment(pl, { ...next, byHand: true }), undo);
+  const remove = () => { p.editPlan(pl => removeSegment(pl, seg.id)); p.select(undefined); };
+  const duplicate = () => {
+    // A second one beside it on the same wall.
+    const dx = (seg.b.x - seg.a.x), dz = (seg.b.z - seg.a.z);
+    const shifted = { ...seg, id: uuid(), a: { x: seg.a.x + dx * 1.3, z: seg.a.z + dz * 1.3 }, b: { x: seg.b.x + dx * 1.3, z: seg.b.z + dz * 1.3 }, byHand: true };
+    const fitted = resizeOpening(plan, shifted, width);
+    p.editPlan(pl => addSegment(pl, fitted));
+    p.select({ kind: 'opening', id: fitted.id });
+  };
+  return (
+    <div>
+      <Panel title={openingLabel(seg.kind)}>
+        <div className="seg" role="group" aria-label="Kind" style={{ marginBottom: 8 }}>
+          {(['door', 'window', 'opening'] as const).map(k => (
+            <button key={k} className={'tool' + (seg.kind === k ? ' on' : '')} aria-pressed={seg.kind === k}
+              onClick={() => put(k === 'window' && seg.kind !== 'window' ? setOpeningHeight(plan, { ...seg, kind: k }, Math.min(seg.height, 1.4), 0.85) : k !== 'window' && seg.kind === 'window' ? setOpeningHeight(plan, { ...seg, kind: k }, 2.05, 0) : { ...seg, kind: k })}>{openingLabel(k)}</button>
+          ))}
+        </div>
+        <SizeRow label="Width" value={width} min={0.3} onChange={(v, u) => put(resizeOpening(plan, seg, v), u)} />
+        <SizeRow label="Height" value={seg.height} min={0.3} max={SIZE_LIMITS.heightMax} onChange={(v, u) => put(setOpeningHeight(plan, seg, v, seg.bottom), u)} />
+        {seg.kind === 'window' && <SizeRow label="Sill" value={seg.bottom} min={0} max={SIZE_LIMITS.heightMax} onChange={(v, u) => put(setOpeningHeight(plan, seg, seg.height, v), u)} />}
+        {seg.kind === 'door' && (
+          <label className="toggle" style={{ margin: '8px 0' }}><input type="checkbox" checked={seg.isOpen} onChange={e => put({ ...seg, isOpen: e.target.checked })} /> Open (light passes through it)</label>
+        )}
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="btn small" onClick={duplicate}><Icon name="copy" /> Another beside it</button>
+          <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>
+        </div>
+        <p className="note">Drag it to slide it along the wall or onto another wall.{seg.kind === 'window' ? ' Units outside the room light it through the glass, at the Light through windows setting.' : ''}</p>
+        <ByHandNote byHand={seg.byHand} what={openingLabel(seg.kind).toLowerCase()} />
+      </Panel>
+    </div>
+  );
 }
 
 // MARK: Lights

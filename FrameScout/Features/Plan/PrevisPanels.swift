@@ -219,40 +219,184 @@ struct MeterPanel: View {
     }
 }
 
-/// Bottom panel for a set piece from the scan: hide it, its kind, or just its name.
+/// A size in metres with − and + (5 cm steps) and a typed value.
+struct SizeStepper: View {
+    let label: String
+    let value: Double
+    var range: ClosedRange<Double> = SetPieces.sizeRange
+    var step = 0.05
+    let onChange: (Double) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label).font(.fsCaption).foregroundStyle(Theme.textSecondary).frame(width: 56, alignment: .leading)
+            Spacer(minLength: 4)
+            Button { onChange(clamped(value - step)) } label: {
+                Image(systemName: "minus").frame(width: 40, height: 36)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Less \(label.lowercased())")
+            TextField(label, value: Binding(get: { value }, set: { onChange(clamped($0)) }),
+                      format: .number.precision(.fractionLength(2)))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
+                .font(.fsMono)
+                .frame(width: 64)
+            Text("m").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            Button { onChange(clamped(value + step)) } label: {
+                Image(systemName: "plus").frame(width: 40, height: 36)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("More \(label.lowercased())")
+        }
+    }
+
+    private func clamped(_ v: Double) -> Double {
+        ((min(range.upperBound, max(range.lowerBound, v.isFinite ? v : range.lowerBound))) * 1000).rounded() / 1000
+    }
+}
+
+/// Where a set piece's sizes came from: the scan, or typed / picked by hand.
+private struct ByHandLine: View {
+    let byHand: Bool
+    let what: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            ProvenanceBadge(provenance: byHand ? .manual : .measured)
+            Text(byHand ? "Entered by hand: typical sizes or typed in, not measured. Check them on the recce."
+                        : "From the scan. Changing the \(what) marks it as entered by hand.")
+                .font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Bottom panel for a set piece: size, turn, swap, duplicate or delete it, or just hide it.
 struct SetPiecePanel: View {
     let object: PlanObject
+    let plan: FloorPlan
     let display: SceneDisplay
     let updateDisplay: (@escaping (inout SceneDisplay) -> Void) -> Void
+    let update: (PlanObject) -> Void
+    var onDuplicate: () -> Void
+    var onDelete: () -> Void
     var onClose: () -> Void
+
+    private func change(_ mutate: (inout PlanObject) -> Void) {
+        var o = object
+        mutate(&o)
+        o.byHand = true
+        update(o)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(object.category).font(.fsHeadline)
+                Text(SetPieces.name(of: object)).font(.fsHeadline)
                 Spacer()
-                Text("\(UnitsFormatter.distance(object.width)) × \(UnitsFormatter.distance(object.depth)) × \(UnitsFormatter.distance(object.height))")
-                    .font(.fsMono).foregroundStyle(Theme.textSecondary)
+                Menu {
+                    ForEach(SetPieces.furniture) { f in
+                        Button(f.label) {
+                            change { $0.category = f.category; $0.width = f.width; $0.depth = f.depth; $0.height = f.height }
+                        }
+                    }
+                } label: {
+                    Label("Swap", systemImage: "arrow.left.arrow.right").font(.fsCaption)
+                }
             }
-            Text("Set piece from the scan. Hiding it changes only what you see; the scan is kept.")
-                .font(.fsCaption).foregroundStyle(Theme.textTertiary)
-            HStack(spacing: 10) {
-                Button {
-                    updateDisplay { $0.setHidden(item: SceneItemKey.object(object.id), true) }
-                    onClose()
-                } label: { Label("Hide", systemImage: "eye.slash") }
-                    .buttonStyle(HairlineButtonStyle())
-                Button {
-                    updateDisplay { $0.setHidden(category: object.category, true) }
-                    onClose()
-                } label: { Label("Hide all \(object.category.lowercased())", systemImage: "eye.slash") }
-                    .buttonStyle(HairlineButtonStyle())
+            SizeStepper(label: "Width", value: object.width) { v in change { $0.width = v } }
+            SizeStepper(label: "Depth", value: object.depth) { v in change { $0.depth = v } }
+            SizeStepper(label: "Height", value: object.height, range: SetPieces.sizeRange.lowerBound...SetPieces.heightMax) { v in change { $0.height = v } }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button { update(SetPieces.turned(object, by: -.pi / 2)) } label: { Label("Turn", systemImage: "rotate.left") }
+                        .buttonStyle(HairlineButtonStyle())
+                    Button { update(SetPieces.turned(object, by: .pi / 2)) } label: { Label("Turn", systemImage: "rotate.right") }
+                        .buttonStyle(HairlineButtonStyle())
+                    if let wall = SetPieces.backOntoWall(plan, center: object.center, depth: object.depth, snap: 1.5),
+                       wall.center.distance(to: object.center) > 0.01 || abs(sin(wall.rotation - object.rotation)) > 0.01 {
+                        Button { change { $0.center = wall.center; $0.rotation = wall.rotation } } label: { Label("Back to wall", systemImage: "arrow.down.to.line") }
+                            .buttonStyle(HairlineButtonStyle())
+                    }
+                    Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
+                        .buttonStyle(HairlineButtonStyle())
+                    Button {
+                        updateDisplay { $0.setHidden(item: SceneItemKey.object(object.id), true) }
+                        onClose()
+                    } label: { Label("Hide", systemImage: "eye.slash") }
+                        .buttonStyle(HairlineButtonStyle())
+                    Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                        .buttonStyle(HairlineButtonStyle())
+                }
+            }
+            Text("Selected: drag it on the plan to move it.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            ByHandLine(byHand: object.byHand == true, what: "piece")
+        }
+        .padding()
+        .background(Theme.surface)
+    }
+}
+
+/// Bottom panel for a door, window or opening: kind, size, sill, open or closed.
+struct OpeningPanel: View {
+    let segment: PlanSegment
+    let plan: FloorPlan
+    let update: (PlanSegment) -> Void
+    var onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(SetPieces.label(of: segment.kind)).font(.fsHeadline)
                 Spacer()
+                Picker("Kind", selection: Binding(get: { segment.kind }, set: { k in
+                    var s = segment
+                    s.kind = k
+                    // A window starts at a sill; a door or opening starts at the floor.
+                    if k == .window && segment.kind != .window { s = SetPieces.setHeight(s, height: min(segment.height, 1.4), sill: 0.85, in: plan) }
+                    if k != .window && segment.kind == .window { s = SetPieces.setHeight(s, height: 2.05, sill: 0, in: plan) }
+                    s.byHand = true
+                    update(s)
+                })) {
+                    Text("Door").tag(PlanSegmentKind.door)
+                    Text("Window").tag(PlanSegmentKind.window)
+                    Text("Opening").tag(PlanSegmentKind.opening)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 230)
             }
-            Toggle("Show set piece names", isOn: Binding(get: { display.showsLabels(.objects) },
-                                                         set: { v in updateDisplay { $0.setLabels(.objects, shown: v) } }))
-                .font(.fsCaption)
-                .tint(Theme.accent)
+            SizeStepper(label: "Width", value: segment.length, range: SetPieces.minOpening...SetPieces.sizeRange.upperBound) { v in
+                update(SetPieces.resize(segment, width: v, in: plan))
+            }
+            SizeStepper(label: "Height", value: segment.height, range: 0.3...SetPieces.heightMax) { v in
+                update(SetPieces.setHeight(segment, height: v, sill: segment.bottom, in: plan))
+            }
+            if segment.kind == .window {
+                SizeStepper(label: "Sill", value: segment.bottom, range: 0...SetPieces.heightMax) { v in
+                    update(SetPieces.setHeight(segment, height: segment.height, sill: v, in: plan))
+                }
+            }
+            HStack {
+                if segment.kind == .door {
+                    Toggle("Open", isOn: Binding(get: { segment.isOpen }, set: { v in
+                        var s = segment
+                        s.isOpen = v
+                        s.byHand = true
+                        update(s)
+                    }))
+                    .font(.fsCaption)
+                    .tint(Theme.accent)
+                    .fixedSize()
+                }
+                Spacer()
+                Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                    .buttonStyle(HairlineButtonStyle())
+            }
+            Text("Selected: drag it to slide it along the wall or onto another wall.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            ByHandLine(byHand: segment.byHand == true, what: SetPieces.label(of: segment.kind).lowercased())
         }
         .padding()
         .background(Theme.surface)

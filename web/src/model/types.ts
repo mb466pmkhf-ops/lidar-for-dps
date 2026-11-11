@@ -13,10 +13,14 @@ export type PlanSegmentKind = 'wall' | 'door' | 'window' | 'opening';
 export interface PlanSegment {
   id: UUID; kind: PlanSegmentKind; a: PlanPoint; b: PlanPoint;
   height: number; bottom: number; isOpen: boolean;
+  /** Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items. */
+  byHand?: boolean;
 }
 export interface PlanObject {
   id: UUID; category: string; center: PlanPoint;
   width: number; depth: number; height: number; rotation: number;
+  /** Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items. */
+  byHand?: boolean;
 }
 export interface FloorPlan {
   walls: PlanSegment[]; doors: PlanSegment[]; windows: PlanSegment[]; openings: PlanSegment[];

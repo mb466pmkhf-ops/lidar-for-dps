@@ -27,6 +27,9 @@ const paths: Record<string, string> = {
   sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',
   planmap: 'M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14',
   fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  sofa: 'M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v5H3zM5 18v2M19 18v2',
+  turnLeft: 'M4 9a8 8 0 1 1 1.5 7M4 4v5h5',
+  turnRight: 'M20 9a8 8 0 1 0-1.5 7M20 4v5h-5',
 };
 export function Icon({ name, className = 'icon' }: { name: keyof typeof paths | string; className?: string }) {
   return (

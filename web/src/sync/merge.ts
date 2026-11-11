@@ -88,3 +88,10 @@ export function mergeDocuments<T>(base: T | undefined, local: T, remote: T): T {
   const v = merge3(base === undefined ? MISSING : (base as Json), local as Json, remote as Json);
   return (v === MISSING ? local : v) as T;
 }
+
+/// Plans are keyed by scan id. The phone writes ids in upper case; older web copies may not have.
+export function upperKeys<T>(plans: Record<string, T>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(plans)) out[k.toUpperCase()] = v;
+  return out;
+}
