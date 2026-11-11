@@ -1,15 +1,33 @@
 // 3D view of the lighting plan, built from the synced data (the 2D floor plan, lights, people,
 // cameras, meters). Like the phone's 3D view: units on their stands, beams that stop where they
-// meet the room, walls between you and the room cut away. Looks only; lux comes from the calculator.
-import { useEffect, useRef } from 'react';
+// meet the room, walls between you and the room cut away.
+//
+// What the picture is, and isn't (Docs/DECISIONS.md D-006, D-011): each unit's brightness, colour,
+// beam shape and barn-door cut come from the same photometric model as the readings, and shadows
+// are real. It shows direct light only: no light bouncing round the room, no daylight. So it is a
+// preview of the look, and the readings stay the figures to work from.
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { CameraRig, FloorPlan, LightFixture, Location } from '../model/types';
-import { KIND_INFO, fixtureProfile, photometrics } from '../model/photometrics';
-import { cameraSupport, lightSupport, type CameraSupport, type LightSupport } from '../model/rigging';
-import { skinRGB } from '../model/characters';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
+import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
+import { lightSupport } from '../model/rigging';
+import { keyLux, stopLabel } from '../model/exposure';
+import { fieldOfView, imageArea } from '../model/camera';
+import type { MeterPoint } from '../model/calculator';
 import type { Selection } from './PlanCanvas';
+import { readingShort } from './format';
 import { Icon } from './icons';
+import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
+import { buildRoom, ground, type WallRecord } from './scene3d/room';
+import { board, cameraModel, head, meterModel, person, stand, yoke } from './scene3d/models';
+import { beam } from './scene3d/beam';
 
 interface Props {
   location: Location;
@@ -19,312 +37,204 @@ interface Props {
   selection?: Selection;
   /** Draw every unit's beam, not just the selected one's (the plan's Beams layer). */
   beams?: boolean;
+  /** The calculator's readings, shown as tags over meters and faces (the plan's Readings layer). */
+  meters?: MeterPoint[];
+  readings?: Map<string, number>;
+  showReadings?: boolean;
+  exposure: ExposureSettings;
   onSelect(s?: Selection): void;
 }
 
-const rad = (d: number) => (d * Math.PI) / 180;
-const mat = (color: number | string, opts: THREE.MeshStandardMaterialParameters = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, ...opts });
-const STEEL = mat(0x9a9a9a, { metalness: 0.8, roughness: 0.35 });
-const BLACK = mat(0x161616, { metalness: 0.6, roughness: 0.45 });
-const DARK = mat(0x2c2c2c, { metalness: 0.6, roughness: 0.4 });
-const SAND = mat(0x6b5c3d, { roughness: 0.95 });
+type Quality = 0 | 1 | 2; // 2 = everything on, 1 = no ambient occlusion, 0 = plain
+const SHADOW_LIGHTS = 4;
+const DEFAULT_FOV = 42;
 
-/** A round bar between two points. */
-function bar(a: THREE.Vector3, b: THREE.Vector3, r: number, m: THREE.Material, parent: THREE.Object3D) {
-  const d = new THREE.Vector3().subVectors(b, a);
-  const len = d.length();
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, Math.max(len, 0.001), 10), m);
-  mesh.position.copy(a).addScaledVector(d, 0.5);
-  if (len > 1e-6) mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
-  parent.add(mesh);
-  return mesh;
-}
-const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-
-/** Stand from the floor (y = -height) up to `top`, in the unit's pan space (−Z is where it faces). */
-function stand(support: LightSupport, height: number, top: number, parent: THREE.Object3D) {
-  const floor = -height;
-  const legs = (o: THREE.Vector3, hub: number, spread: number, r: number, sandbag: boolean) => {
-    for (let i = 0; i < 3; i++) {
-      const a = (i * 2 * Math.PI) / 3 + Math.PI / 3;
-      const foot = v(o.x + Math.sin(a) * spread, floor + 0.02, o.z + Math.cos(a) * spread);
-      bar(v(o.x, hub - i * 0.04, o.z), foot, r, STEEL, parent);
-      if (sandbag && i === 2) {
-        const bag = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.3, 4, 8), SAND);
-        bag.position.set((o.x + foot.x) / 2, (hub + foot.y) / 2 + 0.03, (o.z + foot.z) / 2);
-        bag.rotation.set(0, a, Math.PI / 2 - 0.55);
-        parent.add(bag);
-      }
-    }
-  };
-  switch (support) {
-    case 'cStand': legs(v(0, 0, 0), floor + 0.32, 0.42, 0.012, true); bar(v(0, floor + 0.3, 0), v(0, top, 0), 0.015, STEEL, parent); break;
-    case 'comboStand': case 'rollerStand': legs(v(0, 0, 0), floor + 0.55, 0.58, 0.016, false); bar(v(0, floor + 0.2, 0), v(0, top, 0), 0.022, STEEL, parent); break;
-    case 'turtleBase': legs(v(0, 0, 0), floor + 0.07, 0.36, 0.012, false); bar(v(0, floor + 0.04, 0), v(0, top, 0), 0.016, STEEL, parent); break;
-    case 'megaBoom': {
-      const reach = 2.2, armY = top + 0.12;
-      legs(v(0, 0, reach), floor + 0.55, 0.6, 0.016, false);
-      bar(v(0, floor + 0.2, reach), v(0, armY, reach), 0.024, STEEL, parent);
-      bar(v(0, armY, -0.05), v(0, armY, reach + 0.9), 0.02, STEEL, parent);
-      const w = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.16), DARK);
-      w.position.set(0, armY - 0.06, reach + 0.95);
-      parent.add(w);
-      bar(v(0, armY, 0), v(0, top, 0), 0.01, STEEL, parent);
-      break;
-    }
-    case 'overhead': bar(v(0, top, 0), v(0, top + 0.45, 0), 0.01, STEEL, parent); bar(v(-0.8, top + 0.48, 0), v(0.8, top + 0.48, 0), 0.024, STEEL, parent); break;
-    case 'floor': bar(v(0, floor + 0.01, 0), v(0, top, 0), 0.01, STEEL, parent); break;
-    case 'none': break;
+/** How the unit's light falls off across its cone, and where the barn doors cut it: the calculator's
+ *  own curves, baked into a small texture the spotlight projects. `half` is the cone's half-angle. */
+function cookie(pm: ResolvedPhotometrics, l: LightFixture, half: number): THREE.DataTexture {
+  const N = 128, data = new Uint8Array(N * N * 4), t = Math.tan(rad(half));
+  const doors = l.barnDoors && pm.barnDoorsAvailable ? l.barnDoors : undefined;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = ((i + 0.5) / N * 2 - 1) * t, y = ((j + 0.5) / N * 2 - 1) * t;
+    const theta = Math.atan(Math.hypot(x, y)) * 180 / Math.PI;
+    let f = relativeIntensity(pm.distribution, theta, pm.beamAngle);
+    if (doors) f *= barnDoorTransmission(doors, Math.atan(x) * 180 / Math.PI, Math.atan(y) * 180 / Math.PI);
+    f *= 1 - Math.min(1, Math.max(0, (theta - half * 0.92) / (half * 0.08))); // ease out at the cone's rim
+    f = Math.max(0, Math.min(1, f));
+    const c = Math.round(255 * (f <= 0.0031308 ? f * 12.92 : 1.055 * Math.pow(f, 1 / 2.4) - 0.055)); // sRGB-encoded, so the dim end stays smooth
+    data.set([c, c, c, 255], (j * N + i) * 4);
   }
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
 }
 
-/** Head facing −Z with a glowing face, sized by fixture category. Returns half-width and depth below the axis. */
-function head(l: LightFixture, color: THREE.Color, on: boolean, parent: THREE.Object3D): { half: number; below: number } {
-  const p = fixtureProfile(l);
-  const glow = new THREE.MeshBasicMaterial({ color: on ? color : 0x555555 });
-  const add = (g: THREE.BufferGeometry, m: THREE.Material, pos: THREE.Vector3, rot?: THREE.Euler) => {
-    const mesh = new THREE.Mesh(g, m); mesh.position.copy(pos); if (rot) mesh.rotation.copy(rot); parent.add(mesh); return mesh;
-  };
-  const along = new THREE.Euler(Math.PI / 2, 0, 0);
-  switch (p.category) {
-    case 'panel': case 'soft': {
-      const w = p.emitterWidth, h = p.emitterHeight;
-      add(new THREE.BoxGeometry(w + 0.04, h + 0.04, 0.05), BLACK, v(0, 0, 0.02));
-      add(new THREE.PlaneGeometry(w, h), glow, v(0, 0, -0.006), new THREE.Euler(0, Math.PI, 0));
-      return { half: w / 2 + 0.03, below: h / 2 + 0.03 };
-    }
-    case 'tube':
-      add(new THREE.CylinderGeometry(0.022, 0.022, p.emitterWidth, 12), glow, v(0, 0, 0), new THREE.Euler(0, 0, Math.PI / 2));
-      return { half: 0.05, below: 0.04 };
-    case 'spaceLight':
-      add(new THREE.CylinderGeometry(0.32, 0.32, 0.55, 24), glow, v(0, 0, 0));
-      return { half: 0.35, below: 0.3 };
-    case 'practical': {
-      add(new THREE.SphereGeometry(0.04, 12, 8), glow, v(0, 0, 0));
-      const shade = new THREE.MeshStandardMaterial({ color: on ? color : 0xbbbbbb, emissive: on ? color : 0x000000, emissiveIntensity: 0.5, side: THREE.DoubleSide });
-      add(new THREE.CylinderGeometry(0.11, 0.17, 0.2, 24, 1, true), shade, v(0, 0.03, 0));
-      return { half: 0.1, below: 0.1 };
-    }
-    case 'hmi': case 'fresnel': case 'tungsten': {
-      const r = p.category === 'hmi' ? 0.17 : 0.13;
-      add(new THREE.CylinderGeometry(r, r, 0.32, 24), BLACK, v(0, 0, 0.1), along);
-      add(new THREE.CylinderGeometry(r * 0.78, r * 0.78, 0.01, 24), glow, v(0, 0, -0.065), along);
-      return { half: r + 0.02, below: r + 0.02 };
-    }
-    default: {
-      // COB: body, mount, and its reflector or softbox.
-      add(new THREE.BoxGeometry(0.2, 0.22, 0.26), BLACK, v(0, 0, 0.1));
-      const mod = l.modifierID ?? p.defaultModifierID ?? '';
-      if (mod.startsWith('softbox')) {
-        const size = mod.includes('150') ? 1.5 : 0.9;
-        const cone = new THREE.Mesh(new THREE.CylinderGeometry(size / 2, 0.08, size * 0.55, 8, 1, true), mat(0x121212, { side: THREE.DoubleSide }));
-        cone.rotation.x = -Math.PI / 2; cone.position.set(0, 0, -0.06 - size * 0.275); parent.add(cone);
-        add(new THREE.CylinderGeometry(size / 2, size / 2, 0.004, 8), glow, v(0, 0, -0.06 - size * 0.55), along);
-      } else if (mod.startsWith('lantern')) {
-        add(new THREE.SphereGeometry(0.32, 20, 14), glow, v(0, 0, -0.4));
-      } else {
-        const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.065, 0.14, 24, 1, true), mat(0xbbbbbb, { metalness: 0.9, roughness: 0.2, side: THREE.DoubleSide }));
-        dish.rotation.x = -Math.PI / 2; dish.position.set(0, 0, -0.13); parent.add(dish);
-        add(new THREE.CylinderGeometry(0.05, 0.05, 0.01, 16), glow, v(0, 0, -0.07), along);
-      }
-      return { half: 0.12, below: 0.13 };
-    }
-  }
-}
-
-/** Yoke round the head (pan space). Returns the stud's height. */
-function yoke(half: number, below: number, hanging: boolean, parent: THREE.Object3D): number {
-  const x = half + 0.025, y = (below + 0.03) * (hanging ? 1 : -1);
-  for (const s of [-1, 1]) bar(v(s * x, 0, 0), v(s * x, y, 0), 0.008, BLACK, parent);
-  bar(v(-x, y, 0), v(x, y, 0), 0.008, BLACK, parent);
-  const stud = y + (hanging ? 0.07 : -0.07);
-  bar(v(0, y, 0), v(0, stud, 0), 0.008, STEEL, parent);
-  return stud;
-}
-
-function cameraModel(rig: CameraRig, selected: boolean): THREE.Group {
-  const g = new THREE.Group();
-  g.position.set(rig.position.x, rig.height, rig.position.z);
-  g.rotation.y = -rad(rig.pan);
-  const tilt = new THREE.Group();
-  tilt.rotation.x = rad(rig.tilt);
-  g.add(tilt);
-  const body = mat(selected ? 0x8fa6bd : 0x222222, { metalness: 0.5 });
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.14, 0.2), body); box.position.z = 0.06; tilt.add(box);
-  const lensLen = Math.min(0.3, 0.07 + rig.focalLength / 520);
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, lensLen, 20), BLACK);
-  lens.rotation.x = Math.PI / 2; lens.position.z = -0.04 - lensLen / 2; tilt.add(lens);
-  const mb = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.1), mat(0x111111, { side: THREE.DoubleSide, wireframe: true }));
-  mb.position.z = -0.1 - lensLen; tilt.add(mb);
-  const support: CameraSupport = cameraSupport(rig);
-  const floor = -rig.height;
-  if (support === 'tripod' || support === 'babyLegs' || support === 'highHat' || support === 'dolly') {
-    const fluid = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.16), DARK); fluid.position.set(0, -0.14, 0.02); g.add(fluid);
-    bar(v(0.06, -0.12, 0.08), v(0.2, -0.22, 0.48), 0.011, STEEL, g);
-  }
-  if (support === 'tripod' || support === 'babyLegs') {
-    const spread = 0.5 * Math.min(1, rig.height / 1.4 + 0.2);
-    for (let i = 0; i < 3; i++) {
-      const a = (i * 2 * Math.PI) / 3 + Math.PI;
-      bar(v(Math.sin(a) * 0.07, -0.25, Math.cos(a) * 0.07), v(Math.sin(a) * spread, floor, Math.cos(a) * spread), 0.011, mat(0x6e5236), g);
-    }
-  } else if (support === 'highHat') {
-    bar(v(0, floor + 0.02, 0), v(0, -0.25, 0.02), 0.04, DARK, g);
-  } else if (support === 'dolly') {
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.8), DARK); chassis.position.set(0, floor + 0.17, 0.25); g.add(chassis);
-    bar(v(0, floor + 0.25, 0), v(0, -0.25, 0.02), 0.045, STEEL, g);
-  } else if (support === 'slider') {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.9), STEEL); rail.position.set(0, -0.18, 0); g.add(rail);
-    for (const z of [-0.4, 0.4]) bar(v(0, -0.18, z), v(0, floor, z), 0.012, STEEL, g);
-  }
-  return g;
-}
-
-// A soft beam: a smooth cone in light haze. It fades towards its edges and its far end, so it
-// reads as light in the air rather than a solid shape. Each direction round the rim stops at the
-// first surface it meets (smoothed, so one stray hit doesn't make a shard).
-const BEAM_SEGMENTS = 64, BEAM_RINGS = 12, BEAM_MAX = 7;
-const beamVertex = `
-  attribute float along;
-  varying float vAlong;
-  varying vec3 vNormal;
-  varying vec3 vView;
-  void main() {
-    vAlong = along;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vView = normalize(-mv.xyz);
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * mv;
-  }`;
-const beamFragment = `
-  uniform vec3 color;
-  uniform float strength;
-  varying float vAlong;
-  varying vec3 vNormal;
-  varying vec3 vView;
-  void main() {
-    // Faces seen edge-on (the cone's outline) fade out; faces seen head-on carry the glow.
-    float facing = abs(dot(normalize(vNormal), normalize(vView)));
-    float edge = pow(facing, 1.6);
-    float fade = (1.0 - smoothstep(0.55, 1.0, vAlong)) * smoothstep(0.0, 0.08, vAlong);
-    gl_FragColor = vec4(color * strength * edge * fade, 1.0);
-  }`;
-
-function beam(l: LightFixture, origin: THREE.Vector3, q: THREE.Quaternion, color: THREE.Color, hitTargets: THREE.Object3D[]): THREE.Mesh | undefined {
-  const pm = photometrics(l);
-  if (pm.distribution !== 'beam' && pm.distribution !== 'lambertian') return undefined;
-  const half = Math.min(pm.distribution === 'beam' ? pm.beamAngle * 0.6 : 50, 70);
-  const th = Math.tan(rad(half));
-  const doors = l.barnDoors;
-  const lim = (d: number) => Math.tan(rad(Math.min(half, doors ? d : 90)));
-  const L = lim(doors?.left ?? 90), R = lim(doors?.right ?? 90), U = lim(doors?.top ?? 90), D = lim(doors?.bottom ?? 90);
-
-  // Rim directions (in the unit's frame, -Z forward) and how far each goes before a surface.
-  const ray = new THREE.Raycaster();
-  ray.far = BEAM_MAX;
-  const dirs: THREE.Vector3[] = [], reach: number[] = [];
-  for (let k = 0; k < BEAM_SEGMENTS; k++) {
-    const a = (k / BEAM_SEGMENTS) * 2 * Math.PI;
-    const d = v(Math.min(Math.max(Math.cos(a) * th, -L), R), Math.min(Math.max(Math.sin(a) * th, -D), U), -1);
-    dirs.push(d);
-    ray.set(origin, d.clone().normalize().applyQuaternion(q));
-    const hit = ray.intersectObjects(hitTargets, true).find(h => h.distance > 0.05);
-    reach.push((hit?.distance ?? BEAM_MAX) / d.length()); // as a depth along -Z
-  }
-  // Smooth round the rim so neighbouring directions agree, keeping the nearer surface where they don't.
-  const smooth = reach.map((_, k) => {
-    let sum = 0, w = 0;
-    for (let j = -3; j <= 3; j++) { const wt = 4 - Math.abs(j); sum += reach[(k + j + BEAM_SEGMENTS) % BEAM_SEGMENTS] * wt; w += wt; }
-    return Math.min(sum / w, reach[k] * 1.15);
+/** Free what a removed part of the scene held on the graphics card. */
+function dispose(root: THREE.Object3D) {
+  root.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) { m.geometry.dispose(); const mm = m.material as THREE.Material; if (!mm.userData.shared) mm.dispose(); }
+    const s = o as THREE.SpotLight;
+    if (s.isSpotLight) { s.map?.dispose(); s.shadow.map?.dispose(); }
   });
+}
 
-  const pos: number[] = [], along: number[] = [], index: number[] = [];
-  for (let r = 0; r <= BEAM_RINGS; r++) {
-    const t = r / BEAM_RINGS;
-    for (let k = 0; k <= BEAM_SEGMENTS; k++) {
-      const i = k % BEAM_SEGMENTS, depth = smooth[i] * t;
-      pos.push(dirs[i].x * depth, dirs[i].y * depth, -depth);
-      along.push(t);
-    }
-  }
-  const row = BEAM_SEGMENTS + 1;
-  for (let r = 0; r < BEAM_RINGS; r++) for (let k = 0; k < BEAM_SEGMENTS; k++) {
-    const a = r * row + k, b = a + row;
-    index.push(a, b, a + 1, a + 1, b, b + 1);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('along', new THREE.Float32BufferAttribute(along, 1));
-  geo.setIndex(index);
-  geo.computeVertexNormals();
-  const strength = 0.2 + 0.15 * Math.min(1, Math.log10(1 + pm.flux / 500));
-  const material = new THREE.ShaderMaterial({
-    uniforms: { color: { value: color.clone() }, strength: { value: strength } },
-    vertexShader: beamVertex, fragmentShader: beamFragment,
-    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.userData.noShadow = true;
-  mesh.raycast = () => {}; // clicks go through the haze to what's behind it
-  return mesh;
+interface Api {
+  renderer: THREE.WebGLRenderer; composer: EffectComposer; gtao: GTAOPass; bloom: UnrealBloomPass;
+  scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
+  room: THREE.Group; items: THREE.Group; marks: THREE.Group; walls: WallRecord[]; wallGroups: THREE.Object3D[];
+  ambient: THREE.HemisphereLight; grid: THREE.Mesh;
+  centre: THREE.Vector3; span: number;
+  tags: { el: HTMLElement; at: THREE.Vector3 }[];
+  invalidate(frames?: number): void;
 }
 
 export function Scene3D(p: Props) {
   const host = useRef<HTMLDivElement>(null);
-  const api = useRef<{ renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls; room: THREE.Group; items: THREE.Group; walls: { mesh: THREE.Mesh; mid: THREE.Vector3 }[]; centre: THREE.Vector3; span: number }>(undefined);
+  const tagHost = useRef<HTMLDivElement>(null);
+  const api = useRef<Api>(undefined);
   const onSelect = useRef(p.onSelect);
   onSelect.current = p.onSelect;
+  // "Balanced" fits the brightness to the screen; "set stop" shows it as the camera would expose it.
+  const [atStop, setAtStop] = useState(() => { try { return localStorage.getItem('framescan.3d.look') === 'stop'; } catch { return false; } });
+  // Looking through a camera: its frame lines are drawn over the view.
+  const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string }>();
+  const eyeRef = useRef(eye);
+  eyeRef.current = eye;
+  const [noLight, setNoLight] = useState(false);
+  // What is already built, by item: a change to one light leaves the others (and their shadow maps) alone.
+  const built = useRef(new Map<string, { key: string; obj: THREE.Object3D }>());
+  const roomGen = useRef(0);
 
   // Renderer, camera, controls: once.
   useEffect(() => {
     const el = host.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x0b0b0b);
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    renderer.setClearColor(0x070707);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft edges, no stair-steps
+    renderer.shadowMap.type = THREE.PCFShadowMap; // honours each light's shadow radius: soft sources, soft shadows
+    renderer.shadowMap.autoUpdate = false; // shadows are redrawn when the plan changes, not on every frame of an orbit
+    renderer.toneMapping = THREE.NeutralToneMapping; // keeps the colour of the light honest in the highlights
+    renderer.toneMappingExposure = 1;
     el.appendChild(renderer.domElement);
+
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.35));
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.03, 200);
+    scene.background = backdropTexture();
+    // A soft studio surround, used only for reflections in metal and glass.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new RoomEnvironment();
+    scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+    scene.environmentIntensity = 0.05;
+    pmrem.dispose();
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x8a8580, 0.08);
+    scene.add(ambient);
+
+    const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.05, 200);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.dampingFactor = 0.09;
     controls.maxPolarAngle = rad(88);
     controls.minDistance = 0.6;
     controls.maxDistance = 40;
     controls.screenSpacePanning = false;
-    const grid = new THREE.GridHelper(24, 24, 0x333333, 0x1c1c1c);
+    const grid = ground();
     scene.add(grid);
-    const room = new THREE.Group(), items = new THREE.Group();
-    scene.add(room, items);
-    api.current = { renderer, scene, camera, controls, room, items, walls: [], centre: v(0, 1, 0), span: 6 };
+    const room = new THREE.Group(), items = new THREE.Group(), marks = new THREE.Group();
+    scene.add(room, items, marks);
+    built.current = new Map();
 
-    const resize = () => {
-      const w = el.clientWidth, h = el.clientHeight;
-      renderer.setSize(w, h, false);
-      renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
-      camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
+    // Picture pipeline: multisampled HDR target → contact shading → glow round bright faces → tone map.
+    const target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(renderer, target);
+    composer.addPass(new RenderPass(scene, camera));
+    const gtao = new GTAOPass(scene, camera, 4, 4);
+    gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 16, screenSpaceRadius: false });
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    gtao.blendIntensity = 0.85;
+    // Haze, glass, the ground grid and cut-away walls must not darken what is behind them.
+    const baseOverride = gtao.overrideVisibility.bind(gtao);
+    gtao.overrideVisibility = () => {
+      baseOverride();
+      scene.traverse(o => { if (o.userData.noAO || o.userData.cut) o.visible = false; });
     };
-    const ro = new ResizeObserver(resize); ro.observe(el); resize();
+    composer.addPass(gtao);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.32, 0.55, 1.15);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
 
-    let frame = 0;
-    const tick = () => {
+    let quality: Quality = 2;
+    try { const q = localStorage.getItem('framescan.3d.quality'); if (q === 'fast') quality = 0; } catch { /* private mode */ }
+    const locked = (() => { try { return !!localStorage.getItem('framescan.3d.quality'); } catch { return false; } })();
+    const applyQuality = () => {
+      gtao.enabled = quality === 2;
+      bloom.enabled = quality >= 1;
+      const ratio = Math.min(window.devicePixelRatio, quality === 2 ? 2 : quality === 1 ? 1.5 : 1);
+      renderer.setPixelRatio(ratio); composer.setPixelRatio(ratio);
+      resize();
+    };
+
+    let pending = 3;
+    const invalidate = (frames = 2) => { pending = Math.max(pending, frames); };
+    const resize = () => {
+      const w = Math.max(el.clientWidth, 1), h = Math.max(el.clientHeight, 1);
+      renderer.setSize(w, h, false); composer.setSize(w, h);
+      renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      invalidate();
+    };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
+    applyQuality();
+    if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
+    const ro = new ResizeObserver(resize); ro.observe(el);
+    controls.addEventListener('change', () => invalidate());
+    // Orbiting away from a camera leaves its viewfinder.
+    controls.addEventListener('start', () => {
+      if (!eyeRef.current) return;
+      setEye(undefined);
+      camera.fov = DEFAULT_FOV; camera.updateProjectionMatrix();
+    });
+
+    let frame = 0, last = 0, slow = 0, streak = 0;
+    const tmp = new THREE.Vector3();
+    const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
       controls.update();
       const a = api.current!;
-      // Cut away the walls between the camera and the room.
-      for (const w of a.walls) {
-        const out = v(w.mid.x - a.centre.x, 0, w.mid.z - a.centre.z);
-        const toCam = v(camera.position.x - w.mid.x, 0, camera.position.z - w.mid.z);
-        const outside = Math.hypot(camera.position.x - a.centre.x, camera.position.z - a.centre.z) > out.length();
-        const cut = out.dot(toCam) > 0 && outside;
-        (w.mesh.material as THREE.MeshStandardMaterial).opacity = cut ? 0.08 : 1;
-        (w.mesh.material as THREE.MeshStandardMaterial).depthWrite = !cut;
+      // Cut away the walls between the camera and the room, easing them in and out.
+      let fading = false;
+      a.walls.forEach((w, i) => {
+        const ox = w.mid.x - a.centre.x, oz = w.mid.z - a.centre.z;
+        const outside = Math.hypot(camera.position.x - a.centre.x, camera.position.z - a.centre.z) > Math.hypot(ox, oz);
+        const cut = ox * (camera.position.x - w.mid.x) + oz * (camera.position.z - w.mid.z) > 0 && outside;
+        const goal = cut ? 0 : 1;
+        if (w.level === goal) return;
+        w.level = Math.abs(w.level - goal) < 0.04 ? goal : w.level + (goal - w.level) * 0.22;
+        fading = true;
+        for (const { m, base } of w.mats) { m.opacity = base * (0.05 + 0.95 * w.level); m.depthWrite = w.level > 0.6 && base > 0.5; }
+        a.wallGroups[i]?.traverse(o => { o.userData.cut = w.level < 0.5; });
+      });
+      if (fading) invalidate();
+      if (pending <= 0) { streak = 0; return; }
+      pending--;
+      composer.render();
+      // Reading tags follow their points.
+      const w = el.clientWidth, h = el.clientHeight;
+      for (const t of a.tags) {
+        tmp.copy(t.at).project(camera);
+        const visible = tmp.z < 1 && Math.abs(tmp.x) < 1.05 && Math.abs(tmp.y) < 1.05;
+        t.el.style.display = visible ? '' : 'none';
+        if (visible) t.el.style.transform = `translate(-50%, -100%) translate(${((tmp.x + 1) / 2) * w}px, ${((1 - tmp.y) / 2) * h}px)`;
       }
-      renderer.render(scene, camera);
+      // If the machine can't keep up while the view is moving, drop the costliest effects first.
+      if (!locked && streak++ > 2 && last) {
+        slow = slow * 0.9 + (now - last > 42 ? 1 : 0) * 0.1;
+        if (slow > 0.6 && quality > 0) { quality = (quality - 1) as Quality; slow = 0; applyQuality(); }
+      }
+      last = now;
     };
-    tick();
+    frame = requestAnimationFrame(tick);
 
     // Click (not drag) selects.
     let down: { x: number; y: number } | undefined;
@@ -344,7 +254,8 @@ export function Scene3D(p: Props) {
     renderer.domElement.addEventListener('pointerdown', pd);
     renderer.domElement.addEventListener('pointerup', pu);
     return () => {
-      cancelAnimationFrame(frame); ro.disconnect(); controls.dispose(); renderer.dispose();
+      cancelAnimationFrame(frame); ro.disconnect(); controls.dispose();
+      composer.dispose(); target.dispose(); renderer.dispose();
       renderer.domElement.remove();
     };
   }, []);
@@ -352,187 +263,246 @@ export function Scene3D(p: Props) {
   // The room, from the floor plan.
   useEffect(() => {
     const a = api.current!;
-    a.room.clear(); a.walls = [];
-    const plan = p.plan;
-    const b = plan?.bounds ?? { minX: -3, minZ: -3, maxX: 3, maxZ: 3 };
-    a.centre = v((b.minX + b.maxX) / 2, 1, (b.minZ + b.maxZ) / 2);
-    a.span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 3);
-    const floorMat = mat(0x3a3530, { roughness: 0.9 });
-    const polys = plan?.floorPolygons.length ? plan.floorPolygons : [[{ x: b.minX, z: b.minZ }, { x: b.maxX, z: b.minZ }, { x: b.maxX, z: b.maxZ }, { x: b.minX, z: b.maxZ }]];
-    for (const poly of polys) {
-      if (poly.length < 3) continue;
-      const shape = new THREE.Shape(poly.map(q => new THREE.Vector2(q.x, -q.z)));
-      const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), floorMat);
-      m.rotation.x = -Math.PI / 2; m.userData.surface = true;
-      a.room.add(m);
-    }
-    const seg = (s: FloorPlan['walls'][number], m: THREE.Material, thick: number) => {
-      const len = Math.hypot(s.b.x - s.a.x, s.b.z - s.a.z);
-      const h = Math.max(s.height, 0.05);
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, h, thick), m);
-      mesh.position.set((s.a.x + s.b.x) / 2, s.bottom + h / 2, (s.a.z + s.b.z) / 2);
-      mesh.rotation.y = -Math.atan2(s.b.z - s.a.z, s.b.x - s.a.x);
-      mesh.userData.surface = true;
-      a.room.add(mesh);
-      return mesh;
-    };
-    for (const w of plan?.walls ?? []) {
-      const mesh = seg(w, mat(0xb9b4ac, { roughness: 0.85, transparent: true }), 0.1);
-      a.walls.push({ mesh, mid: v((w.a.x + w.b.x) / 2, 0, (w.a.z + w.b.z) / 2) });
-    }
-    for (const w of plan?.windows ?? []) seg(w, mat(0x8fb4d6, { transparent: true, opacity: 0.35 }), 0.12);
-    for (const w of plan?.doors ?? []) if (!w.isOpen) seg(w, mat(0x6b5a48), 0.12);
-    for (const o of plan?.objects ?? []) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(o.width, o.height, o.depth), mat(0x6a6a6a, { roughness: 0.8 }));
-      m.position.set(o.center.x, o.height / 2, o.center.z);
-      m.rotation.y = -o.rotation;
-      m.userData.surface = true;
-      a.room.add(m);
-    }
+    dispose(a.room);
+    a.room.clear();
+    roomGen.current++;
+    a.renderer.shadowMap.needsUpdate = true;
+    const built = buildRoom(p.plan);
+    a.room.add(built.group);
+    a.walls = built.walls; a.centre = built.centre; a.span = built.span;
+    // Wall records are in the order their groups were added, after the floor pieces.
+    a.wallGroups = built.group.children.filter(c => (c as THREE.Group).isGroup).slice(0, built.walls.length);
+    (a.grid.material as THREE.ShaderMaterial).uniforms.centre.value.set(built.centre.x, built.centre.z);
+    (a.grid.material as THREE.ShaderMaterial).uniforms.reach.value = built.span * 2.2 + 4;
     resetView();
   }, [p.plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Everything placed on the plan; rebuilt on every change (cheap at this size).
+  // Everything placed on the plan. Only what changed is rebuilt; the rest keeps its meshes, beam and shadow map.
   useEffect(() => {
     const a = api.current!;
-    a.items.traverse(o => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); });
-    a.items.clear();
+    const old = built.current, next = new Map<string, { key: string; obj: THREE.Object3D }>();
+    const keep = (id: string, key: string, make: () => THREE.Object3D) => {
+      const had = old.get(id);
+      let obj = had?.key === key ? had.obj : undefined;
+      if (!obj) {
+        obj = make();
+        obj.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noShadow; m.receiveShadow = !m.userData.noShadow; } });
+        a.items.add(obj);
+      }
+      next.set(id, { key, obj });
+      return obj;
+    };
+    dispose(a.marks);
+    a.marks.clear();
     const { location: loc, scanID, selection } = p;
     const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase();
     const isSel = (kind: string, id: string) => selection?.kind === kind && selection.id === id;
     const hidden = new Set(loc.display?.hiddenGroups ?? []);
     a.room.updateMatrixWorld(true);
     const surfaces = a.room.children;
-    let shadows = 0;
+    const accent = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1f5fd1');
+
+    /** A ring on the floor under whatever is selected. */
+    const ring = (x: number, z: number, r: number) => {
+      const m = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.035, 64), new THREE.MeshBasicMaterial({ color: accent.clone().multiplyScalar(1.6), transparent: true, opacity: 0.95, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, z);
+      m.userData.noShadow = true; m.userData.noAO = true; m.raycast = () => {};
+      a.marks.add(m);
+    };
+
+    // One scale for every unit turns the calculator's candela into screen brightness: an incident
+    // reading of `reference` lux puts a mid-grey card at mid-grey.
+    const pms = new Map(p.lights.filter(l => KIND_INFO[l.kind].emits).map(l => [l.id, photometrics(l)]));
+    const lit = p.lights.filter(l => l.isOn && !hidden.has('lights') && (pms.get(l.id)?.peakIntensity ?? 0) > 0).map(l => ({ l, pm: pms.get(l.id)! }));
+    const measured = [...(p.readings?.values() ?? [])].filter(x => x > 0);
+    const brightest = measured.length ? Math.max(...measured) : Math.max(0, ...lit.map(x => illuminanceOnAxis(x.pm, 3)));
+    // Fitted to the screen, the brightest reading sits a little over mid-grey.
+    const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
+    const scale = reference > 0 ? Math.PI / reference : 0;
+    setNoLight(lit.length === 0);
+    // With nothing switched on the room gets a plain work light; otherwise only a trace, so shadows keep some shape.
+    a.ambient.intensity = lit.length === 0 ? 2.2 : 0.11;
+    a.scene.environmentIntensity = lit.length === 0 ? 0.5 : 0.07;
+    const shadowed = new Set([...lit].filter(x => x.pm.distribution === 'beam' || x.pm.distribution === 'lambertian')
+      .sort((x, y) => illuminanceOnAxis(y.pm, 3) - illuminanceOnAxis(x.pm, 3)).slice(0, SHADOW_LIGHTS).map(x => x.l.id));
 
     for (const l of p.lights) {
       const info = KIND_INFO[l.kind];
       if (info.emits ? hidden.has('lights') : hidden.has('grip')) continue;
-      const pan = new THREE.Group();
-      pan.position.set(l.position.x, l.height, l.position.z);
-      pan.rotation.y = -rad(l.pan);
-      pan.userData.sel = { kind: 'light', id: l.id } satisfies Selection;
-      const tilt = new THREE.Group();
-      tilt.rotation.x = rad(l.tilt);
-      pan.add(tilt);
-      const support = lightSupport(l);
-      if (info.emits) {
-        const pm = photometrics(l);
+      const selected = isSel('light', l.id);
+      if (selected) ring(l.position.x, l.position.z, 0.5);
+      const pm = pms.get(l.id);
+      // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
+      const showBeam = !!p.beams || selected;
+      const hasMap = shadowed.has(l.id);
+      const pan = keep(`light:${l.id}`, `${JSON.stringify(l)}|${hasMap}|${showBeam ? roomGen.current : ''}`, () => {
+        const pan = new THREE.Group();
+        pan.position.set(l.position.x, l.height, l.position.z);
+        pan.rotation.y = -rad(l.pan);
+        pan.userData.sel = { kind: 'light', id: l.id } satisfies Selection;
+        const tilt = new THREE.Group();
+        tilt.rotation.x = rad(l.tilt);
+        pan.add(tilt);
+        const support = lightSupport(l);
+        if (!pm) {
+          const h = board(l, tilt);
+          if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
+          return pan;
+        }
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
-        const size = head(l, color, l.isOn, tilt);
-        // Lift the selected head a little. Materials are shared between units, so give it its own copies.
-        if (isSel('light', l.id)) tilt.traverse(c => {
-          const mesh = c as THREE.Mesh, m = mesh.material as THREE.MeshStandardMaterial | undefined;
-          if (!mesh.isMesh || !m || !(m instanceof THREE.MeshStandardMaterial) || m === BLACK) return;
-          mesh.material = m.clone(); (mesh.material as THREE.MeshStandardMaterial).emissive.set(0x333333);
-        });
+        const size = head(l, pm, color, tilt);
         if (fixtureProfile(l).category === 'practical') {
           bar(v(0, -0.05, 0), v(0, -l.height + 0.02, 0), 0.008, DARK, pan);
+          const base = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.025, 28), DARK); base.position.y = -l.height + 0.0125; pan.add(base);
         } else if (support !== 'none') {
           const stud = yoke(size.half, size.below, support === 'overhead' || support === 'megaBoom', pan);
           stand(support, l.height, stud, pan);
         }
-        if (l.isOn && pm.peakIntensity > 0) {
-          const spot = pm.distribution === 'omni' || pm.distribution === 'tube' ? new THREE.PointLight(color, 1, 14, 2) : new THREE.SpotLight(color, 1, 14, rad(Math.min(pm.distribution === 'beam' ? pm.beamAngle * 0.68 : 80, 85)), pm.distribution === 'beam' ? 0.6 : 0.9, 2);
-          spot.intensity = 3 + 12 * Math.log10(1 + pm.flux / 500);
-          spot.position.set(0, 0, -0.14);
-          if (spot instanceof THREE.SpotLight) {
-            spot.target.position.set(0, 0, -2);
-            tilt.add(spot.target);
-            if (shadows < 3) {
-              spot.castShadow = true; shadows++;
-              spot.shadow.mapSize.set(2048, 2048);
-              spot.shadow.camera.near = 0.1; spot.shadow.camera.far = 14;
-              spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.03;
-              spot.shadow.radius = 4;
-            }
+        if (!l.isOn || pm.peakIntensity <= 0) return pan;
+        const z = -(size.front + 0.02);
+        if (pm.distribution === 'beam' || pm.distribution === 'lambertian') {
+          // With the calculator's falloff projected, the cone only needs to be wide enough to hold it.
+          const half = pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.82, 80) : 78;
+          const spot = new THREE.SpotLight(color, 0, 0, rad(hasMap ? half : pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.66, 80) : 80), hasMap ? 0 : pm.distribution === 'beam' ? 0.7 : 1, 2);
+          spot.position.set(0, 0, z);
+          spot.target.position.set(0, 0, z - 2);
+          tilt.add(spot.target);
+          if (hasMap) {
+            spot.map = cookie(pm, l, half);
+            spot.castShadow = true;
+            const soft = Math.min(1, pm.emitterRadius / 0.5); // 0 = a point, 1 = a big soft source
+            const res = soft > 0.5 ? 1024 : 2048;
+            spot.shadow.mapSize.set(res, res);
+            spot.shadow.camera.near = 0.12; spot.shadow.camera.far = 18;
+            spot.shadow.bias = -0.0006; spot.shadow.normalBias = 0.025;
+            spot.shadow.radius = 1.2 + soft * 3.2;
           }
           tilt.add(spot);
-          pan.updateMatrixWorld(true);
-          const origin = new THREE.Vector3(0, 0, -0.1).applyMatrix4(tilt.matrixWorld);
-          const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
-          // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
-          const b = p.beams || isSel('light', l.id) ? beam(l, origin, q, color, surfaces) : undefined;
-          if (b) { b.position.set(0, 0, -0.1); tilt.add(b); }
+          pan.userData.lamp = spot;
+        } else {
+          const point = new THREE.PointLight(color, 0, 0, 2);
+          tilt.add(point);
+          pan.userData.lamp = point;
         }
-      } else {
-        const h = l.boardHeight ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
-        const face = l.kind === 'bounce' ? 0xffffff : l.kind === 'negative' ? 0x0a0a0a : l.kind === 'diffusion' ? 0xeeeeee : 0x3a3a3a;
-        tilt.add(new THREE.Mesh(new THREE.PlaneGeometry(l.width, h), mat(face, { side: THREE.DoubleSide, transparent: l.kind === 'diffusion', opacity: l.kind === 'diffusion' ? 0.55 : 1, emissive: isSel('light', l.id) ? 0x333333 : 0x000000 })));
-        if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, STEEL, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
-      }
-      a.items.add(pan);
+        if (showBeam) {
+          pan.updateMatrixWorld(true);
+          const origin = new THREE.Vector3(0, 0, z).applyMatrix4(tilt.matrixWorld);
+          const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
+          const b = beam(l, pm, origin, q, color, surfaces);
+          if (b) { b.position.set(0, 0, z); tilt.add(b); }
+        }
+        return pan;
+      });
+      // Brightness follows the shared scale without rebuilding the unit.
+      const lamp = pan.userData.lamp as THREE.Light | undefined;
+      if (lamp && pm) lamp.intensity = pm.peakIntensity * scale;
     }
 
     if (!hidden.has('people')) for (const c of loc.characters ?? []) {
       if (!inScan(c.scanID)) continue;
-      const g = new THREE.Group();
-      g.position.set(c.position.x, 0, c.position.z);
-      g.rotation.y = -rad(c.facing);
-      g.userData.sel = { kind: 'character', id: c.id } satisfies Selection;
-      const sitting = c.posture === 'sitting';
-      const h = c.height * (sitting ? 0.72 : 1);
-      const cloth = mat(isSel('character', c.id) ? 0x9a9a9a : 0x707070, { roughness: 0.9 });
-      const skin = mat(skinRGB[Math.min(Math.max(c.skinTone, 1), 6) - 1], { roughness: 0.55 });
-      const w = 0.2 * c.build + 0.18;
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(w / 2, h * 0.62, 4, 12), cloth);
-      body.position.y = h * 0.43; body.scale.z = 0.6; g.add(body);
-      const headM = new THREE.Mesh(new THREE.SphereGeometry(c.height * 0.065, 16, 12), skin);
-      headM.position.y = h - c.height * 0.07; g.add(headM);
-      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 8), skin);
-      nose.rotation.x = -Math.PI / 2; nose.position.set(0, h - c.height * 0.075, -c.height * 0.065); g.add(nose);
-      a.items.add(g);
+      keep(`character:${c.id}`, JSON.stringify(c), () => { const g = person(c); g.userData.sel = { kind: 'character', id: c.id } satisfies Selection; return g; });
+      if (isSel('character', c.id)) ring(c.position.x, c.position.z, 0.42);
     }
 
     if (!hidden.has('cameras')) {
-      for (const cam of loc.cameraPositions) if (inScan(cam.scanID)) { const g = cameraModel(cam.rig, isSel('camera', cam.id)); g.userData.sel = { kind: 'camera', id: cam.id } satisfies Selection; a.items.add(g); }
-      for (const s of loc.shots) if (inScan(s.scanID)) { const g = cameraModel(s.rig, isSel('shot', s.id)); g.userData.sel = { kind: 'shot', id: s.id } satisfies Selection; a.items.add(g); }
+      const add = (kind: 'camera' | 'shot', id: string, rig: CameraRig) => {
+        const g = keep(`${kind}:${id}`, JSON.stringify(rig), () => { const g = cameraModel(rig); g.userData.sel = { kind, id } satisfies Selection; return g; });
+        // You don't see the camera you are looking through (nor a shot set up on the very same spot).
+        const e = eyeRef.current;
+        g.visible = !e || Math.hypot(rig.position.x - e.x, rig.position.z - e.z) > 0.08;
+        if (isSel(kind, id)) ring(rig.position.x, rig.position.z, 0.48);
+      };
+      for (const cam of loc.cameraPositions) if (inScan(cam.scanID)) add('camera', cam.id, cam.rig);
+      for (const s of loc.shots) if (inScan(s.scanID)) add('shot', s.id, s.rig);
     }
     if (!hidden.has('meters')) for (const m of loc.meters ?? []) {
       if (!inScan(m.scanID)) continue;
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: isSel('meter', m.id) ? 0xffffff : 0xcccccc }));
-      dome.position.set(m.position.x, m.height, m.position.z);
-      dome.userData.sel = { kind: 'meter', id: m.id } satisfies Selection;
-      bar(v(0, 0, 0), v(0, -m.height, 0), 0.006, STEEL, dome);
-      a.items.add(dome);
+      keep(`meter:${m.id}`, JSON.stringify(m), () => { const g = meterModel(m); g.userData.sel = { kind: 'meter', id: m.id } satisfies Selection; return g; });
+      if (isSel('meter', m.id)) ring(m.position.x, m.position.z, 0.22);
     }
-    a.renderer.shadowMap.enabled = true;
-    a.room.traverse(o => { o.receiveShadow = true; o.castShadow = true; });
-    // Beams are light in the air: they must never throw a shadow (that's what drew dark shards before).
-    a.items.traverse(o => { o.castShadow = !o.userData.noShadow; });
-  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams]);
+    for (const [id, e] of old) if (next.get(id)?.obj !== e.obj) { a.items.remove(e.obj); dispose(e.obj); }
+    built.current = next;
+    a.renderer.shadowMap.needsUpdate = true;
 
-  const moveTo = (pos: THREE.Vector3, target: THREE.Vector3) => {
+    // Reading tags: the calculator's figures, in the unit chosen in the panel.
+    const tagEl = tagHost.current!;
+    tagEl.replaceChildren();
+    a.tags = [];
+    if (lit.length) for (const m of p.meters ?? []) {
+      const lux = p.readings?.get(m.key);
+      const sel = 'meter' in m.source ? isSel('meter', m.source.meter) : isSel('character', m.source.character);
+      if (lux === undefined || !(p.showReadings || sel)) continue;
+      const el = document.createElement('div');
+      el.className = 'scene3d-tag';
+      const name = document.createElement('span'); name.textContent = m.name;
+      const val = document.createElement('b'); val.textContent = readingShort(lux, p.exposure);
+      el.append(name, val);
+      tagEl.appendChild(el);
+      a.tags.push({ el, at: v(m.point.x, m.point.y + ('meter' in m.source ? 0.1 : 0.2), m.point.z) });
+    }
+    a.invalidate(3);
+  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Night mode changes the accent colour; redraw so the selection ring follows.
+  useEffect(() => {
+    const mo = new MutationObserver(() => api.current?.invalidate());
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => mo.disconnect();
+  }, []);
+
+  const moveTo = (pos: THREE.Vector3, target: THREE.Vector3, fov = DEFAULT_FOV) => {
     const a = api.current!;
+    a.camera.fov = fov; a.camera.updateProjectionMatrix();
     a.camera.position.copy(pos); a.controls.target.copy(target); a.controls.update();
+    a.invalidate(4);
   };
-  const resetView = () => { const a = api.current!; moveTo(a.centre.clone().add(v(a.span * 0.75, a.span * 1.0, a.span * 0.95)), a.centre); };
-  const topView = () => { const a = api.current!; moveTo(a.centre.clone().add(v(0, a.span * 1.6, 0.01)), a.centre); };
-  // Eye: look through the selected camera (or the first one), else stand at the room's edge at eye height.
+  const resetView = () => { setEye(undefined); const a = api.current!; moveTo(a.centre.clone().add(v(a.span * 0.72, a.span * 0.86, a.span * 0.98)), a.centre.clone().setY(0.7)); };
+  const topView = () => { setEye(undefined); const a = api.current!; moveTo(a.centre.clone().add(v(0, a.span * 1.75, 0.01)), a.centre); };
+  // Eye: look through the selected camera (or the first one) with its lens and frame; else stand at the room's edge.
   const eyeLevel = () => {
     const a = api.current!;
     const { location: loc, selection: sel, scanID } = p;
     const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase();
-    const cams = [...loc.cameraPositions.filter(c => inScan(c.scanID)).map(c => ({ kind: 'camera', id: c.id, rig: c.rig })),
-      ...loc.shots.filter(s => inScan(s.scanID)).map(s => ({ kind: 'shot', id: s.id, rig: s.rig }))];
+    const cams = [...loc.cameraPositions.filter(c => inScan(c.scanID)).map(c => ({ kind: 'camera', id: c.id, rig: c.rig, name: c.name })),
+      ...loc.shots.filter(s => inScan(s.scanID)).map(s => ({ kind: 'shot', id: s.id, rig: s.rig, name: `Shot ${s.number}` }))];
     const cam = cams.find(c => sel?.kind === c.kind && sel.id === c.id) ?? cams[0];
     if (cam) {
       const { position, height, pan, tilt } = cam.rig;
       const dir = v(Math.sin(rad(pan)) * Math.cos(rad(tilt)), Math.sin(rad(tilt)), -Math.cos(rad(pan)) * Math.cos(rad(tilt)));
-      const eye = v(position.x, height, position.z).add(dir.clone().multiplyScalar(0.5)); // just past the lens and matte box
-      moveTo(eye, eye.clone().add(dir.multiplyScalar(2)));
+      const at = v(position.x, height, position.z);
+      // Fit the camera's frame inside the view: match the lens across whichever side is tighter.
+      const area = imageArea(cam.rig), ratio = area.width / area.height, view = a.camera.aspect;
+      const lensV = fieldOfView(area.height, cam.rig.focalLength);
+      const fov = view >= ratio ? lensV : 2 * Math.atan(Math.tan(rad(fieldOfView(area.width, cam.rig.focalLength)) / 2) / view) * 180 / Math.PI;
+      setEye({ key: `${cam.kind}:${cam.id}`, x: position.x, z: position.z, ratio, label: `${cam.name} · ${Math.round(cam.rig.focalLength)} mm` });
+      moveTo(at, at.clone().add(dir.multiplyScalar(2)), fov / 0.92); // a little air round the frame lines
       return;
     }
+    setEye(undefined);
     const t = v(a.centre.x, 1.4, a.centre.z); moveTo(t.clone().add(v(0, 0.2, a.span * 0.45)), t);
   };
+  const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
+
+  const note = noLight ? 'No lights on: the room is shown under a plain work light.'
+    : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. Direct light only, no bounce or daylight. Estimate.`
+    : 'Preview: brightness fitted to the screen. Direct light only, no bounce or daylight. Use the readings for exposure.';
 
   return (
     <div className="scene3d" ref={host}>
-      <div className="scene3d-hint">Drag to look round · right-drag or two fingers to slide · scroll to zoom · click to select</div>
+      <div className="scene3d-tags" ref={tagHost} aria-hidden="true" />
+      {eye && (
+        <div className="scene3d-frame" aria-hidden="true">
+          <div className="lines" style={{ aspectRatio: String(eye.ratio), ...(eye.ratio >= (api.current?.camera.aspect ?? 1.6) ? { width: '92%' } : { height: '92%' }) }}>
+            <span>{eye.label}</span>
+          </div>
+        </div>
+      )}
+      <div className="scene3d-hint"><span className="what">{note}</span><span className="how">Drag to look round · right-drag or two fingers to slide · scroll to zoom · click to select</span></div>
       <div className="scene3d-buttons">
+        <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title="Show the brightness as the camera would expose it at the set stop, instead of fitting it to the screen">At {stopLabel(p.exposure.tStop)}</button>
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>
         <button className="tool" onClick={topView} title="View from above">Top</button>
-        <button className="tool" onClick={eyeLevel} title="Look through the selected camera, or the first one">Eye</button>
+        <button className={'tool' + (eye ? ' on' : '')} onClick={eyeLevel} title="Look through the selected camera, or the first one, with its lens and frame">Eye</button>
       </div>
     </div>
   );

@@ -220,7 +220,7 @@ export function meterCameras(loc: Location): MeterCamera[] {
     .map(r => ({ position: r.position, height: r.height, pan: r.pan, horizontalFOV: horizontalFOV(r) }));
 }
 
-function cameraSeeing(point: PlanPoint, cameras: MeterCamera[]): MeterCamera | undefined {
+export function cameraSeeing(point: PlanPoint, cameras: MeterCamera[]): MeterCamera | undefined {
   const inFrame = (c: MeterCamera) => {
     let diff = Math.abs(bearingFrom(c.position, point) - c.pan) % 360;
     if (diff > 180) diff = 360 - diff;

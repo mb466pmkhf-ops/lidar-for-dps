@@ -485,6 +485,14 @@ do {
     check(fillLux > 0 && abs(log2(keyLux / fillLux) - 2) < 0.4, "fill about two stops under key (\(keyLux) / \(fillLux))")
     let soft = LightingSetup.softSide.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
     check(soft.lights.contains { $0.kind == .negative }, "soft side light adds a neg fill")
+    for kind in LightingSetup.allCases {
+        let built = kind.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+        let lit = LightingCalculator.reading(at: face, normal: toCam, scene: LightingCalculator.Scene(lights: built.lights, plan: demoPlan))
+        let k = lit.contributions.filter { $0.lightID == built.lights[0].id }.reduce(0) { $0 + $1.lux }
+        check(abs(log2(k / exp.keyLux)) < 0.2, "\(kind.label): key solved to the camera's key level (\(k))")
+    }
+    let edge = LightingSetup.keyAndEdge.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(edge.lights.count == 2 && edge.lights[1].role == .edge, "key and edge places a soft key and an edge light")
 }
 
 // MARK: Sync merge (same cases as web/tests/merge.test.ts)

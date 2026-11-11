@@ -126,3 +126,21 @@ phone and the desktop.
 - **Email accounts**: password typed twice, at least 8 characters; the address is confirmed by link or by
   the code in the email before the account gets a session.
 - **Findable on the phone**: Home has a *Sign in to sync* card and a person icon; it was only in the ⋯ menu.
+
+## D-011 · What the 3D picture is allowed to claim — 2026-11-11
+The 3D view was rebuilt for picture quality (HDR, soft shadows, contact shading, glow, modelled equipment,
+furniture and people). Better pictures look more trustworthy, so the rules of D-006 are restated for it.
+- **From the photometric model**: each unit's colour, its brightness relative to the other units, and (web and
+  desktop) its falloff across the beam and its barn-door cut, which are the calculator's own curves projected by
+  the light. Shadow softness follows the size of the source.
+- **Not modelled, and said so on screen**: light bouncing round the room, daylight, and bounce boards. The
+  picture shows direct light plus a trace of work light so the room stays readable.
+- **Brightness**: by default the picture is fitted to the screen (the brightest reading sits a little over
+  mid-grey). Web and desktop can instead show it at the set stop, where an incident reading equal to the key
+  puts a mid-grey card at mid-grey. Either way it is labelled a preview; readings stay the figures to use.
+- **Stand-ins**: furniture, floorboards, wall paint and clothing are neutral stand-ins sized to the scan. The
+  scan knows shapes and sizes, not finishes. Equipment stays generic (no maker's designs).
+- **Speed**: the web view draws only when something changes and drops contact shading, then glow, then
+  resolution if the machine can't keep up.
+- The iPhone has the same picture pipeline but still draws the room from the scan's own geometry; the modelled
+  room, furniture and projected beam pattern are web and desktop only for now.
