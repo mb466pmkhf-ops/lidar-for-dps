@@ -144,3 +144,21 @@ furniture and people). Better pictures look more trustworthy, so the rules of D-
   resolution if the machine can't keep up.
 - The iPhone has the same picture pipeline but still draws the room from the scan's own geometry; the modelled
   room, furniture and projected beam pattern are web and desktop only for now.
+
+## D-012 · Changing the set by hand, and plans that merge — 2026-11-11
+
+Doors, windows, openings and furniture can be added, moved, resized, turned and deleted on the plan, on the
+iPhone and on web/desktop (`SetPieces.swift` ↔ `web/src/model/setPieces.ts`, same presets and rules).
+
+- **Presets, not measurements**: pieces start at typical sizes from a short list. Anything placed or changed
+  by hand carries `byHand: true` (an optional field, so older plans load) and is labelled "Entered by hand"
+  with a dashed outline on the plan. Scanned pieces stay "from the scan" until someone changes them.
+- **Snapping**: a door or window goes in the wall nearest the tap (within 1 m), stays inside the wall's ends and
+  under its top, and slides along or onto another wall when dragged. Furniture dropped near a wall turns to back
+  onto it. Set pieces move only once selected, so dragging across a furnished room still pans the plan.
+- **Sync**: plans now merge three ways like project.json (doors, windows and pieces by id) on both sides, and
+  the phone uploads its plans whenever they changed, not only when a scan was added. Before this, the phone
+  never took a plan it already had and the web let the server's plan win, so edits could be lost.
+- **3D on the iPhone**: a room built from the plan is rebuilt; a real scan keeps its own geometry, with hand-placed
+  pieces drawn over it as simple boxes and scanned pieces that were moved or deleted hidden.
+- Not done: moving or adding walls, and changing the ceiling height after a room is drawn.

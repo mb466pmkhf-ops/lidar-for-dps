@@ -156,6 +156,8 @@ struct PlanOverlay {
     /// Fields of view of every camera and shot; off draws only the selected one's.
     var showAllCameraViews = true
     var selectedObject: UUID?
+    /// A selected door, window or opening, outlined in the accent colour.
+    var selectedSegment: UUID?
 }
 
 enum PlanStyle {
@@ -214,6 +216,7 @@ struct PlanRenderer {
         drawObjects(&ctx, &labels)
         drawWalls(&ctx)
         drawApertures(&ctx)
+        drawSelectedSegment(&ctx)
         if full {
             if overlay.showDimensions { drawWallDimensions(&labels) }
             drawPhotoPoses(&ctx)
@@ -289,9 +292,11 @@ struct PlanRenderer {
             path.closeSubpath()
             let selected = overlay.selectedObject == o.id
             ctx.fill(path, with: .color(Theme.planObject.opacity(selected ? 0.4 : 0.18)))
-            ctx.stroke(path, with: .color(selected ? Theme.accent : Theme.planObject), lineWidth: selected ? 1.5 : 1)
-            if full && vp.scale > 40 && overlay.showObjectLabels {
-                labels.append(PlanLabel(text: Text(o.category).font(.poppins(.light, fs(9))).foregroundColor(Theme.textSecondary),
+            // Pieces placed by hand get a dashed edge, so they read apart from scanned ones.
+            ctx.stroke(path, with: .color(selected ? Theme.accent : Theme.planObject),
+                       style: StrokeStyle(lineWidth: selected ? 1.5 : 1, dash: o.byHand == true && !selected ? [4, 3] : []))
+            if full && vp.scale > 40 && (overlay.showObjectLabels || selected) {
+                labels.append(PlanLabel(text: Text(SetPieces.name(of: o)).font(.poppins(.light, fs(9))).foregroundColor(Theme.textSecondary),
                                         anchor: c, priority: .object))
             }
         }
@@ -305,6 +310,15 @@ struct PlanRenderer {
         }
         let width = full ? max(2, px(0.1)) : max(1.2, px(0.1))
         ctx.stroke(path, with: .color(Theme.planWall), style: StrokeStyle(lineWidth: width, lineCap: .square))
+    }
+
+    private func drawSelectedSegment(_ ctx: inout GraphicsContext) {
+        guard let id = overlay.selectedSegment, let seg = plan.segment(id) else { return }
+        var path = Path()
+        path.move(to: s(seg.a))
+        path.addLine(to: s(seg.b))
+        let width = (full ? max(2, px(0.1)) : max(1.2, px(0.1))) + 6
+        ctx.stroke(path, with: .color(Theme.accent.opacity(0.5)), style: StrokeStyle(lineWidth: width, lineCap: .round))
     }
 
     private func drawApertures(_ ctx: inout GraphicsContext) {

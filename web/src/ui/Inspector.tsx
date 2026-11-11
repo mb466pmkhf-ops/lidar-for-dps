@@ -106,7 +106,9 @@ function SetPieceInspector(p: InspectorProps & { object: PlanObject }) {
   const o = p.object;
   const set = (patch: Partial<PlanObject>, undo = true) => p.editPlan(pl => replaceObject(pl, { ...o, ...patch, byHand: true }), undo);
   const preset = FURNITURE_PRESETS.find(f => f.category === o.category && Math.abs(f.width - o.width) < 1e-6 && Math.abs(f.depth - o.depth) < 1e-6);
-  const againstWall = backOntoWall(p.plan, o.center, o.depth, 1.5);
+  const wall = backOntoWall(p.plan, o.center, o.depth, 1.5);
+  // Offered only when it would move or turn the piece.
+  const againstWall = wall && (Math.hypot(wall.center.x - o.center.x, wall.center.z - o.center.z) > 0.01 || Math.abs(Math.sin(wall.rotation - o.rotation)) > 0.01) ? wall : undefined;
   const duplicate = () => {
     const copy: PlanObject = { ...o, id: uuid(), center: { x: o.center.x + 0.3, z: o.center.z + 0.3 }, byHand: true };
     p.editPlan(pl => addObject(pl, copy));

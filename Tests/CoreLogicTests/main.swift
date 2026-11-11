@@ -651,5 +651,56 @@ do {
     check(ReadingUnit(rawValue: "tStop") == .tStop && ReadingUnit.allCases.first == .tStop, "T-stop is the first, default unit")
 }
 
+// MARK: Set pieces by hand (same cases as web/tests/setPieces.test.ts)
+do {
+    var spec = DrawnRoom()
+    spec.length = 6; spec.width = 4; spec.ceiling = 2.7; spec.windows = 0; spec.door = false
+    let room = spec.plan   // walls at x = ±3 and z = ±2
+    let close = { (a: Double, b: Double) in abs(a - b) < 1e-6 }
+    let w = SetPieces.placeOpening(room, at: P(1, -1.6), preset: SetPieces.opening("window")!)!
+    check(w.kind == .window && w.a.z == -2 && w.b.z == -2 && close(w.length, 1.2) && close(w.midpoint.x, 1), "window goes in the nearest wall at its typical width")
+    check(w.bottom == 0.85 && w.height == 1.4 && w.byHand == true, "window keeps its sill and height and is marked by hand")
+    check(SetPieces.placeOpening(room, at: P(0, 0), preset: SetPieces.opening("door")!) == nil, "no door far from every wall")
+    var low = spec; low.ceiling = 2.0
+    let tall = SetPieces.placeOpening(low.plan, at: P(0, -2), preset: SetPieces.opening("tall-window")!)!
+    check(tall.bottom + tall.height <= 1.95 + 1e-9, "openings stay under the top of the wall")
+    let slid = SetPieces.slide(w, to: P(-2, -2.2), in: room)
+    check(close(slid.midpoint.x, -2) && slid.a.z == -2 && slid.id == w.id, "openings slide along the wall")
+    let other = SetPieces.slide(w, to: P(2.9, 0.5), in: room)
+    check(other.a.x == 3 && close(other.length, 1.2), "openings move onto another wall, same width")
+    check(close(SetPieces.resize(w, width: 2, in: room).length, 2) && close(SetPieces.resize(w, width: 50, in: room).length, 5.9), "resizing keeps openings inside the wall")
+    let sofa = SetPieces.placeFurniture(room, at: P(0, 1.6), preset: SetPieces.furniturePreset("sofa")!)
+    check(close(sofa.center.z, 2 - 0.45 - 0.02) && abs(sin(sofa.rotation)) < 1e-6, "a sofa near a wall backs onto it")
+    let side = SetPieces.placeFurniture(room, at: P(-2.6, 0), preset: SetPieces.furniturePreset("wardrobe")!)
+    check(close(side.center.x, -3 + 0.3 + 0.02) && abs(cos(side.rotation)) < 1e-6, "a wardrobe turns to back onto the side wall")
+    let mid = SetPieces.placeFurniture(room, at: P(0, 0), preset: SetPieces.furniturePreset("dining-table")!)
+    check(mid.center == P(0, 0) && mid.rotation == 0, "furniture in the middle stays square")
+    var turned = mid
+    for _ in 0..<5 { turned = SetPieces.turned(turned, by: .pi / 2) }
+    check(abs(turned.rotation - .pi / 2) < 1e-3 && turned.rotation > -.pi && turned.rotation <= .pi, "turning by quarters stays in range")
+    var plan = room
+    var door = SetPieces.placeOpening(room, at: P(0, 2), preset: SetPieces.opening("door")!)!
+    plan.add(door)
+    door.kind = .opening
+    plan.replace(door)
+    check(plan.doors.isEmpty && plan.openings.count == 1, "changing the kind moves a segment to the matching list")
+    plan.removeSegment(door.id)
+    check(plan.openings.isEmpty, "segments delete by id")
+    check(SetPieces.openings.map(\.id) == ["door", "double-door", "window", "tall-window", "opening"]
+          && SetPieces.furniture.map(\.id) == ["sofa", "armchair", "chair", "dining-table", "coffee-table", "desk", "bed", "wardrobe", "sideboard", "shelves", "fridge", "cooker", "sink", "bath", "toilet", "fireplace", "box"],
+          "same presets as the web planner")
+    // Older plans load: byHand is optional.
+    let old = try JSONEncoder().encode(PlanObject(category: "Sofa", center: P(0, 0), width: 2, depth: 1, height: 1, rotation: 0))
+    check((try JSONDecoder().decode(PlanObject.self, from: old)).byHand == nil, "older set pieces decode without byHand")
+    // Plans merge by id: a piece added on each side survives.
+    let base = try JSONSerialization.jsonObject(with: JSONEncoder().encode(["K": room])) as! [String: Any]
+    var phone = room; phone.objects.append(sofa)
+    var desk = room; desk.windows.append(w)
+    let merged = SyncMerge.merge(base: base, local: try JSONSerialization.jsonObject(with: JSONEncoder().encode(["K": phone])),
+                                 remote: try JSONSerialization.jsonObject(with: JSONEncoder().encode(["K": desk]))) as! [String: Any]
+    let m = try JSONDecoder().decode(FloorPlan.self, from: JSONSerialization.data(withJSONObject: merged["K"]!))
+    check(m.objects.count == 1 && m.windows.count == 1, "set pieces added on the phone and the desktop both survive a sync")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)
