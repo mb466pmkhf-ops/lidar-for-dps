@@ -715,6 +715,43 @@ do {
     check((try JSONDecoder().decode(ScanStats.self, from: data)).enteredByHand == nil, "older scan stats decode without the new field")
 }
 
+// MARK: Rooms from a studio listing (cases shared with web/tests/listing.test.ts)
+do {
+    struct Expect: Decodable {
+        var length, width, ceiling, area: Double?
+        var windows: Int?
+        var door: Bool?
+        var sizeSource: String
+        var alternatives: Int
+    }
+    struct Case: Decodable { var name: String; var text: String; var expect: Expect }
+    struct Fixture: Decodable { var cases: [Case] }
+    let data = try Data(contentsOf: URL(fileURLWithPath: "web/tests/fixtures/listings.json"))
+    let cases = try JSONDecoder().decode(Fixture.self, from: data).cases
+    check(cases.count >= 8, "listing fixture loads (\(cases.count) cases)")
+    for c in cases {
+        let e = c.expect
+        let r = ListingReader.read(c.text)
+        func same(_ got: Double?, _ want: Double?) -> Bool {
+            guard let want else { return got == nil }
+            return got.map { abs($0 - want) < 1e-9 } ?? false
+        }
+        let ok = same(r.length, e.length) && same(r.width, e.width) && same(r.ceiling, e.ceiling) && same(r.area, e.area)
+            && r.windows == e.windows && r.door == e.door && r.sizeSource.rawValue == e.sizeSource && r.alternatives.count == e.alternatives
+        check(ok, "listing: \(c.name) (got \(String(describing: r.length)) × \(String(describing: r.width)), ceiling \(String(describing: r.ceiling)), area \(String(describing: r.area)), windows \(String(describing: r.windows)), door \(String(describing: r.door)), \(r.sizeSource), \(r.alternatives.count) alt)")
+    }
+    let quoted = ListingReader.read("Studio 2: 15m × 10m × 6m to grid")
+    check(quoted.findings.first?.quote == "Studio 2: 15m × 10m × 6m to grid", "listing quotes keep the original text")
+    var base = DrawnRoom()
+    base.length = 9; base.width = 7
+    let kept = ListingReader.read("Ceiling height 5 m").room(base: base)
+    check(kept.length == 9 && kept.width == 7 && kept.ceiling == 5, "a listing keeps what it doesn't say")
+    let huge = ListingReader.read("Stage 90m x 45m x 18m").room()
+    check(huge.length == 60 && huge.width == 45 && huge.ceiling == 18, "a huge stage is clamped to a drawn room")
+    check(ListingReader.read("100 sqm loft").sizeNote.contains("square"), "area-only listing says the shape is a guess")
+    check(ListingReader.fmt(15) == "15" && ListingReader.fmt(18.288) == "18.29", "listing numbers print like the web")
+}
+
 // MARK: Reading units (T-stop by default)
 do {
     let e = ExposureSettings()

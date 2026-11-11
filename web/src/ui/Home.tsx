@@ -10,6 +10,7 @@ export interface HomeProps {
   synced: boolean;
   onOpen(projectID: string, locationID: string): void;
   onDraw(): void;
+  onListing(): void;
   onImport(): void;
   onSync(): void;
   onDemo(): void;
@@ -67,6 +68,10 @@ export function Home(p: HomeProps) {
           <button className="tile" onClick={p.onDraw}>
             <Icon name="pencil" />
             <span><span className="t">Draw a room</span><span className="s">Pick a shape, type the sizes, get 2D and 3D</span></span>
+          </button>
+          <button className="tile" onClick={p.onListing}>
+            <Icon name="upload" />
+            <span><span className="t">From a listing</span><span className="s">Can't recce? Use the studio's photos and sizes</span></span>
           </button>
           <button className="tile" onClick={p.onImport}>
             <Icon name="download" />
