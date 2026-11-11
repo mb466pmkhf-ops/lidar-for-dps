@@ -517,7 +517,7 @@ do {
         let unit: Bool = a.profileID == b.profileID
         return near && level && named && unit
     }
-    let same = zip(again.lights, original.lights).allSatisfy { sameUnit($0, $1) }
+    let same = Swift.zip(again.lights, original.lights).allSatisfy { sameUnit($0, $1) }
     check(again.lights.count == 3 && same, "saved three-point used again lands where it was")
     check(abs(log2(faceLux(again.lights, again.lights[0].id, person, 0) / exp.keyLux)) < 0.2, "used again, the key is at the set stop")
 
