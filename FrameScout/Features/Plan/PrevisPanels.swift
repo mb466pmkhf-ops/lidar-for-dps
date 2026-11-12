@@ -135,7 +135,7 @@ struct CharacterFields: View {
                 }
             }
             HStack(spacing: 8) {
-                Text("HAIR").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                Text("Hair").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(HairStyle.allCases) { style in
