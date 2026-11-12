@@ -343,6 +343,9 @@ struct LightForm: View {
                 ForEach(LightRole.allCases) { Text($0.label).tag(LightRole?.some($0)) }
             }
         }
+        if !light.kind.emits {
+            GripSection(light: $light)
+        }
         if light.kind.emits {
             Section {
                 Toggle("On", isOn: $light.isOn)
@@ -621,6 +624,58 @@ struct FilterPicker: View {
                         if selected.contains(f.id) { Image(systemName: "checkmark") }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Size, rag and frame gels for a flag, frame or bounce (`GripCatalog`). Same choices as the web planner.
+struct GripSection: View {
+    @Binding var light: LightFixture
+
+    var body: some View {
+        let size = light.gripSize
+        let shown = light.drape ?? GripCatalog.drape(id: GripCatalog.defaultDrapeID(for: light.kind))
+        Section {
+            Picker("Size", selection: Binding(get: { size?.id ?? "" },
+                                              set: { id in if let s = GripCatalog.size(id: id) { light.applyGripSize(s) } })) {
+                if size == nil { Text("Custom").tag("") }
+                ForEach(GripCatalog.sizes(for: light.kind)) { Text($0.name).tag($0.id) }
+            }
+            if size?.floppy == true {
+                Picker("Floppy", selection: Binding(get: { light.floppyOpen == true }, set: { light.setFloppyOpen($0) })) {
+                    Text("Closed 4×4").tag(false)
+                    Text("Open 4×8").tag(true)
+                }
+                .pickerStyle(.segmented)
+            }
+            Picker("Rag", selection: Binding(get: { light.drape?.id ?? "" },
+                                             set: { id in if let d = GripCatalog.drape(id: id) { light.applyDrape(d) } })) {
+                if light.drape == nil { Text("\(shown?.name ?? light.kind.label) (standard)").tag("") }
+                Section("Bounce") { ForEach(GripCatalog.drapes.filter { $0.kinds.first == .bounce }) { Text($0.name).tag($0.id) } }
+                Section("Flags and negative fill") {
+                    ForEach(GripCatalog.drapes.filter { $0.kinds.first == .flag || $0.kinds.first == .negative }) { Text($0.name).tag($0.id) }
+                }
+                Section("Diffusion and nets") { ForEach(GripCatalog.drapes.filter { $0.kinds.first == .diffusion }) { Text($0.name).tag($0.id) } }
+            }
+            if light.kind == .diffusion {
+                ForEach(GripCatalog.frameGels) { g in
+                    Toggle(g.name, isOn: Binding(get: { light.filterIDs?.contains(g.id) == true }, set: { on in
+                        var ids = (light.filterIDs ?? []).filter { $0 != g.id }
+                        if on { ids.append(g.id) }
+                        light.filterIDs = ids.isEmpty ? nil : ids
+                    }))
+                }
+            }
+        } header: {
+            Text(light.kind == .diffusion ? "Size, rag and gels" : "Size and rag")
+        } footer: {
+            if let shown {
+                let t = shown.transmission * light.frameGels.reduce(1) { $0 * $1.transmission }
+                let what = light.kind == .bounce ? "Throws back about \(Int((shown.reflectance * 100).rounded())) % of the light that lands on it."
+                    : t > 0 ? "Light through it: \(GripCatalog.stopsText(t))\(shown.scatter > 0.5 ? ", softened" : shown.scatter == 0 && t < 1 ? ", not softened" : "")."
+                    : "Blocks the light that goes through it."
+                Text("\(what) \(shown.note) Estimate.")
             }
         }
     }

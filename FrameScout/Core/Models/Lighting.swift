@@ -170,6 +170,10 @@ struct LightFixture: Identifiable, Codable, Hashable {
     var boardHeight: Double? = nil
     /// Stand or rigging; nil picks one from the unit and its height (`LightSupport.automatic`).
     var support: LightSupport? = nil
+    /// Grip: picked flag/frame size and rag (`GripCatalog`), and whether a floppy is open.
+    var gripSizeID: String? = nil
+    var drapeID: String? = nil
+    var floppyOpen: Bool? = nil
 
     init(name: String, kind: LightKind, position: PlanPoint, pan: Double = 0, scanID: UUID? = nil) {
         self.name = name

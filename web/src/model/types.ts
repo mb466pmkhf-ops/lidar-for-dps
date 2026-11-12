@@ -47,6 +47,8 @@ export interface LightFixture {
   photometricOverride?: PhotometricReference; boardHeight?: number;
   /** Stand or rigging (see model/rigging.ts); absent picks one automatically. */
   support?: string;
+  /** Grip: picked flag/frame size and rag (see model/grip.ts), and whether a floppy is open. */
+  gripSizeID?: string; drapeID?: string; floppyOpen?: boolean;
   [key: string]: unknown;
 }
 

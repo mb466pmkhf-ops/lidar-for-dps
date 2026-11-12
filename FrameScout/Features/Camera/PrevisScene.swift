@@ -356,6 +356,18 @@ final class WallFader {
 /// on the plan. Scan, cameras, lights and people sit under one `world` node, so a levelling or
 /// alignment correction moves them together and they stay where they are in the room.
 @MainActor
+/// Tint a frame gel puts on the cloth, so a gelled frame reads at a glance. Drawing only.
+private func gelTint(_ f: LightFilter) -> UIColor? {
+    let id = f.id
+    func c(_ hex: Int) -> UIColor { UIColor(red: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1) }
+    if id.hasPrefix("cto") { return c(id.hasSuffix("full") ? 0xf2a65a : id.hasSuffix("half") ? 0xf6c48e : 0xf9dcb8) }
+    if id.hasPrefix("ctb") { return c(id.hasSuffix("full") ? 0x7fa6e6 : id.hasSuffix("half") ? 0xa9c3ee : 0xcdddf5) }
+    if id.hasPrefix("plus-green") { return c(0xc8e8b8) }
+    if id.hasPrefix("minus-green") { return c(0xeac0e0) }
+    if id.hasPrefix("nd") { return c(0x9a9a96) }
+    return nil
+}
+
 final class VirtualSceneModel: ObservableObject {
     @Published var loaded = false
     @Published var error: String?
@@ -898,8 +910,6 @@ final class VirtualSceneModel: ObservableObject {
         let optical = LightingCalculator.Scene(lights: lights.filter { !$0.kind.emits || $0.isOn }, plan: plan)
         for b in optical.boards {
             var glow: [Int: [Double]] = [1: Array(repeating: 0, count: n * n), -1: Array(repeating: 0, count: n * n)]
-            let ab = b.b - b.a
-            let abLen2 = max(1e-9, ab.x * ab.x + ab.z * ab.z)
             let patchArea = b.area / Double(n * n)
             for side in [1, -1] {
                 let mine = optical.patches.filter { $0.board == b.id && ($0.normal.dot(b.normal) > 0 ? 1 : -1) == side }
@@ -908,8 +918,9 @@ final class VirtualSceneModel: ObservableObject {
                 for q in mine {
                     // A patch facing away from its unit is light that came through the frame.
                     guard let e = optical.emitters.first(where: { $0.id == q.lightID }), (e.position - q.centre).dot(q.normal) < 0 else { continue }
-                    let i = min(n - 1, Int(((q.centre.x - b.a.x) * ab.x + (q.centre.z - b.a.z) * ab.z) / abLen2 * Double(n)))
-                    let j = min(n - 1, Int((q.centre.y - b.bottom) / max(1e-6, b.top - b.bottom) * Double(n)))
+                    let d = q.centre - b.centre
+                    let i = min(n - 1, Int((d.dot(b.right) + b.halfWidth) / max(1e-6, 2 * b.halfWidth) * Double(n)))
+                    let j = min(n - 1, Int((d.dot(b.up) - b.lo) / max(1e-6, b.hi - b.lo) * Double(n)))
                     glow[side]![max(0, j) * n + max(0, i)] += q.intensity / patchArea
                 }
                 // Same scale as the units: a source's intensity against the brightest unit's at 3 m.
@@ -1046,30 +1057,60 @@ final class VirtualSceneModel: ObservableObject {
             // Two faces back to back, so each side can show what it does with the light: albedo is
             // the board's reflectance (a faint sheen on black cloth), and the far face of a
             // diffusion glows with what it passes (`setGripGlow`). Face +1 looks the way the board faces.
-            let reflectance = BoardOptics.defaults(for: l.kind).reflectance
+            // Coloured rags (lamé, muslin, checkerboard) and frame gels show their colour; nets stay
+            // see-through. A floppy opened hangs its second panel below the first.
+            let rag = l.drape
+            let reflectance = (l.drapeOptics?.reflectance) ?? BoardOptics.defaults(for: l.kind).reflectance
+            let open = l.floppyOpen == true && l.gripSize?.floppy == true
+            let hw = Float(l.width / 2), hh = Float(h / 2)
+            let lo: Float = open ? -3 * hh : -hh
+            let tube: Float = l.width >= 1.7 ? 0.016 : l.width >= 1 ? 0.011 : 0.007
+            func rgb(_ hex: Int) -> UIColor { UIColor(red: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1) }
+            let coloured = rag.map { ($0.kinds.first == .bounce && $0.id != "white-board") || $0.pattern == .checker } ?? false
+            var colour = coloured ? rgb(rag!.color) : UIColor(white: CGFloat(pow(reflectance, 1 / 2.2)), alpha: 1)
+            if let tint = l.frameGels.last.flatMap(gelTint) { colour = tint }
+            if let rag, rag.pattern == .net { colour = rgb(rag.color).withAlphaComponent(CGFloat(1 - rag.transmission * 0.9)) }
+            let lame = rag?.id.hasSuffix("lame") == true
             for side in [1, -1] {
-                let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
+                let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(hh - lo))
                 let m = SCNMaterial()
                 m.lightingModel = .physicallyBased
-                m.diffuse.contents = UIColor(white: CGFloat(pow(reflectance, 1 / 2.2)), alpha: 1)
-                m.roughness.contents = 0.95
-                m.metalness.contents = 0
+                m.diffuse.contents = colour
+                m.roughness.contents = lame ? 0.4 : 0.95
+                m.metalness.contents = lame ? 0.6 : 0
+                // A rag that lets light through lets you see through it a little too.
+                let see = l.drapeOptics?.transmission ?? BoardOptics.defaults(for: l.kind).transmission
+                if rag?.pattern != .net && see > 0 { m.transparency = CGFloat(1 - see * 0.8); m.writesToDepthBuffer = false }
                 if selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
                 board.materials = [m]
                 let face = SCNNode(geometry: board)
                 face.name = "face\(side)"
-                face.simdPosition = SIMD3(0, 0, Float(side) * -0.002)
+                face.simdPosition = SIMD3(0, (lo + hh) / 2, Float(side) * -0.002)
                 if side > 0 { face.simdEulerAngles = SIMD3(0, .pi, 0) }
                 tilt.addChildNode(face)
             }
-            // Frame round the board, then a grip head down to its stand.
-            let hw = Float(l.width / 2), hh = Float(h / 2)
-            let corners: [SIMD3<Float>] = [SIMD3(-hw, -hh, 0), SIMD3(hw, -hh, 0), SIMD3(hw, hh, 0), SIMD3(-hw, hh, 0)]
-            for i in 0..<4 { RigModels.bar(corners[i], corners[(i + 1) % 4], radius: 0.01, RigModels.steel, to: tilt, segments: 8) }
+            // The frame round the rag (two panels for an opened floppy), then the stand.
+            func panel(_ y0: Float, _ y1: Float) {
+                let c: [SIMD3<Float>] = [SIMD3(-hw, y0, 0), SIMD3(hw, y0, 0), SIMD3(hw, y1, 0), SIMD3(-hw, y1, 0)]
+                for i in 0..<4 { RigModels.bar(c[i], c[(i + 1) % 4], radius: tube, RigModels.steel, to: tilt, segments: 8) }
+            }
+            panel(-hh, hh)
+            if open { panel(-3 * hh, -hh) }
             let support = l.supportValue
-            if support != .none {
-                let stud = -Float(h / 2) - 0.03
-                RigModels.bar(SIMD3(0, -Float(h / 2), 0), SIMD3(0, stud, 0), radius: 0.008, RigModels.steel, to: pan, segments: 8)
+            if support != .none && l.gripStandCount == 2 {
+                // Big frames sit on their ears between two stands and pivot there.
+                for s: Float in [-1, 1] {
+                    RigModels.add(SCNBox(width: 0.06, height: 0.1, length: 0.05, chamferRadius: 0.01), RigModels.darkMetal, to: tilt, at: SIMD3(s * (hw + 0.03), 0, 0))
+                    let side = SCNNode()
+                    side.simdPosition = SIMD3(s * (hw + 0.07), 0, 0)
+                    pan.addChildNode(side)
+                    RigModels.stand(support, headHeight: l.height, studY: -0.02, to: side)
+                }
+            } else if support != .none {
+                // Grip head under the lowest point of the frame as it's tilted.
+                let lowest = (open ? 3 * hh : hh) * abs(cos(Float(l.tilt) * .pi / 180))
+                let stud = -lowest - 0.03
+                RigModels.bar(SIMD3(0, -lowest, 0), SIMD3(0, stud, 0), radius: 0.008, RigModels.steel, to: pan, segments: 8)
                 RigModels.add(SCNCylinder(radius: 0.03, height: 0.02), RigModels.darkMetal, to: pan, at: SIMD3(0, stud, 0), euler: SIMD3(0, 0, .pi / 2))
                 RigModels.stand(support, headHeight: l.height, studY: stud - 0.02, to: pan)
             }
@@ -1109,9 +1150,10 @@ final class VirtualSceneModel: ObservableObject {
             let t = simd_dot(centre - start, normal) / denom
             guard t > 0.05, t < (best ?? maxLength) else { continue }
             let off = start + d * t - centre
-            let h = g.boardHeight ?? (g.kind == .flag ? min(g.width, 0.9) : g.width)
+            let span = g.gripSpan // an opened floppy reaches further down
+            let up = simd_dot(off, SIMD3(Float(u.x), Float(u.y), Float(u.z)))
             if abs(simd_dot(off, SIMD3(Float(r.x), Float(r.y), Float(r.z)))) <= Float(g.width / 2),
-               abs(simd_dot(off, SIMD3(Float(u.x), Float(u.y), Float(u.z)))) <= Float(h / 2) { best = t }
+               up >= Float(span.bottom - g.height), up <= Float(span.top - g.height) { best = t }
         }
         let end = start + d * (best ?? maxLength)
         let results = scanHolder.hitTestWithSegment(from: SCNVector3(start.x, start.y, start.z), to: SCNVector3(end.x, end.y, end.z),

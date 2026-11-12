@@ -374,6 +374,58 @@ do {
     let soft = C.reading(at: side, normal: facingFrame, scene: C.Scene(lights: [spot, board(.diffusion)])).lux
     check(soft > bare * 4 + 1, "diffusion spreads the light past the bare beam's edge")
 }
+// Grip catalogue: sizes, rags, floppies, wind-ups and tilted overheads (same cases as web/tests/grip.test.ts).
+do {
+    func grip(_ kind: LightKind, height: Double = 1.5) -> LightFixture { var g = LightFixture(name: kind.label, kind: kind, position: P(0, 1.5), pan: 180); g.height = height; return g }
+    var twelve = grip(.diffusion)
+    twelve.applyGripSize(GripCatalog.size(id: "frame-12x12")!)
+    check(abs(twelve.width - 3.66) < 0.005 && twelve.height >= 3.66 / 2 + 0.15 - 1e-9 && twelve.name == "12×12 Diffusion frame", "a size sets the frame, lifts it clear of the floor and names it")
+    twelve.applyDrape(GripCatalog.drape(id: "silk")!)
+    check(twelve.name == "12×12 Silk", "a rag renames an automatic name")
+    var mine = twelve; mine.name = "Overhead A"; mine.applyDrape(GripCatalog.drape(id: "grid-half")!)
+    check(mine.name == "Overhead A", "a typed name is kept")
+    var swap = grip(.diffusion); swap.applyDrape(GripCatalog.drape(id: "ultrabounce-white")!)
+    check(swap.kind == .bounce, "a bounce rag turns the frame into a bounce")
+    var floppy = grip(.flag, height: 2); floppy.applyGripSize(GripCatalog.size(id: "floppy-4x4")!)
+    let shut = floppy.gripSpan
+    floppy.setFloppyOpen(true)
+    let opened = floppy.gripSpan
+    check(abs(opened.top - shut.top) < 1e-9 && abs((opened.top - opened.bottom) - 2 * (shut.top - shut.bottom)) < 1e-9 && floppy.name == "4×4 floppy (open)",
+          "a 4×4 floppy opens to 4×8 downwards from its top edge")
+    func sized(_ id: String) -> LightFixture { var b = grip(.bounce); b.applyGripSize(GripCatalog.size(id: id)!); return b }
+    check(LightSupport.automatic(for: sized("frame-4x4")) == .comboStand && LightSupport.automatic(for: sized("frame-6x6")) == .windUp
+          && sized("frame-6x6").gripStandCount == 1 && sized("frame-8x8").gripStandCount == 2 && sized("frame-12x12").gripStandCount == 2,
+          "6×6 and up go on wind-ups, 8×8 and 12×12 on two")
+    var gelled = grip(.diffusion); gelled.applyDrape(GripCatalog.drape(id: "grid-half")!); gelled.filterIDs = ["cto-half"]
+    check(abs(gelled.drapeOptics!.transmission - 0.35) < 1e-9 && gelled.gripLabel == "½ grid cloth + ½ CTO", "frame gels multiply in and show in the name")
+    check(grip(.diffusion).drapeOptics == nil, "a board without a rag keeps the built-in figures")
+
+    var spot = LightFixture(name: "Spot", kind: .fresnel, position: P(0, 3)); spot.pan = 0; spot.tilt = 0; spot.height = 1.5; spot.beamAngle = 12
+    func frame(_ rag: String) -> LightFixture { var b = grip(.diffusion); b.width = 1.2; b.boardHeight = 1.2; b.applyGripSize(GripCatalog.size(id: "frame-4x4")!); b.applyDrape(GripCatalog.drape(id: rag)!); return b }
+    let meter = LightingCalculator.Point(x: 0, y: 1.5, z: 0), facingLight = C.direction(bearing: 180, tilt: 0)
+    let bare = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot])).lux
+    let net = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, frame("net-single")]))
+    check(abs(net.lux / bare - 0.7) < 1e-6 && !net.contributions.contains { $0.viaBounce != nil }, "a single net cuts about ½ stop without softening")
+    let silk = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, frame("silk")]))
+    let half = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, frame("grid-half")]))
+    check(silk.lux < half.lux && silk.contributions.allSatisfy { $0.viaBounce != nil }, "a silk passes less than ½ grid, all of it soft")
+
+    var top = LightFixture(name: "Top", kind: .fresnel, position: P(0, 0)); top.height = 5; top.tilt = -90; top.beamAngle = 30
+    func solid(_ tilt: Double) -> LightFixture {
+        var s = LightFixture(name: "Flag", kind: .flag, position: P(0, 0)); s.height = 3.2; s.tilt = tilt
+        s.applyGripSize(GripCatalog.size(id: "frame-12x12")!); s.applyDrape(GripCatalog.drape(id: "solid")!); return s
+    }
+    let person = LightingCalculator.Point(x: 0, y: 1.6, z: 0), up = LightingCalculator.Point(x: 0, y: 1, z: 0)
+    let unflagged = C.reading(at: person, normal: up, scene: C.Scene(lights: [top])).lux
+    check(unflagged > 0 && C.reading(at: person, normal: up, scene: C.Scene(lights: [top, solid(90)])).lux == 0
+          && abs(C.reading(at: person, normal: up, scene: C.Scene(lights: [top, solid(0)])).lux - unflagged) < 1e-6 * max(1, unflagged),
+          "a 12×12 solid flown flat cuts a top light; stood upright it doesn't")
+    var low = spot; low.height = 0.6
+    func floppyAt(_ open: Bool) -> LightFixture { var f = grip(.flag, height: 1.9); f.applyGripSize(GripCatalog.size(id: "floppy-4x4")!); f.setFloppyOpen(open); return f }
+    let lowPoint = LightingCalculator.Point(x: 0, y: 0.6, z: 0)
+    check(C.reading(at: lowPoint, normal: facingLight, scene: C.Scene(lights: [low, floppyAt(false)])).lux > 0
+          && C.reading(at: lowPoint, normal: facingLight, scene: C.Scene(lights: [low, floppyAt(true)])).lux == 0, "an open floppy cuts lower than a closed one")
+}
 check(LightKind.renamed("Negative fill", from: .negative, to: .flag) == "Flag"
       && LightKind.renamed("Neg", from: .negative, to: .bounce) == "Bounce"
       && LightKind.renamed("Neg 2", from: .negative, to: .diffusion) == "Diffusion 2"
