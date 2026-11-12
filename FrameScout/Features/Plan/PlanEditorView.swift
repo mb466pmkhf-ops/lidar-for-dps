@@ -227,6 +227,7 @@ struct PlanEditorView: View {
     @State private var showRigSheet = false
     @State private var showSaveMeasurement = false
     @State private var showLayers = false
+    @State private var showStage = false
     @State private var showExposure = false
     @State private var showAlignment = false
     @State private var showFixturePicker = false
@@ -328,6 +329,12 @@ struct PlanEditorView: View {
             LayersSheet(plan: plan, display: displayBinding, hasScan3D: scan != nil,
                         onAlign: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openAlignment() } })
         }
+        .sheet(isPresented: $showStage) {
+            if let location {
+                StageSheet(location: Binding(get: { self.location ?? location }, set: { v in edit { $0.studio = v.studio; $0.daylight = v.daylight } }),
+                           plan: plan.isEmpty ? nil : plan, scan: scan)
+            }
+        }
         .sheet(isPresented: $showExposure) {
             ExposureSheet(exposure: Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } }))
         }
@@ -398,7 +405,9 @@ struct PlanEditorView: View {
         let lights = sceneLights
         let calcPlan: FloorPlan? = plan.isEmpty ? nil : plan
         let wt = location.displaySettings.windowTransmissionValue
-        let scene = LightingCalculator.Scene(lights: lights, plan: calcPlan, windowTransmission: wt)
+        // Sun, sky and an LED wall, when the location has them (see `Stage`).
+        let env = location.environment(plan: calcPlan, scan: scan)
+        let scene = LightingCalculator.Scene(lights: lights, plan: calcPlan, windowTransmission: wt, environment: env)
         let meters = location.meterPoints(scanID: scan?.id)
         var readings: [MeterPoint.Source: LightingCalculator.Reading] = [:]
         for m in meters {
@@ -410,7 +419,7 @@ struct PlanEditorView: View {
             reading: { m in readings[m.source] ?? LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene) },
             solve: { light, m, lux in
                 LightingCalculator.solveOutput(for: light, target: lux, at: m.point, normal: m.normal,
-                                               allLights: lights, plan: calcPlan, windowTransmission: wt)
+                                               allLights: lights, plan: calcPlan, windowTransmission: wt, environment: env)
             })
         return LightingAnalysis(context: context, readings: readings, scene: scene)
     }
@@ -562,9 +571,42 @@ struct PlanEditorView: View {
         scene3D.setMeters(meters, selected: selectedMeter, showLabels: d.showsLabels(.meters))
         let lights = sceneLights.filter { $0.kind.emits ? !d.isHidden(group: .lights) : !d.isHidden(group: .grip) }
         scene3D.setLights(lights, selected: selectedLight, showLabels: d.showsLabels(.lights), showBeams: true)
+        scene3D.setStage(stageVisuals(location))
         scene3D.applyDisplay(d)
         if scene3D.loaded, let scan { scene3D.applyAlignment(scan.alignmentValue) }
         scene3D.showSelection(at: selection.flatMap { position(of: $0)?.point })
+    }
+
+    /// Backdrop, floor, curtains and daylight for the 3D view, or nil when there are none.
+    private func stageVisuals(_ location: Location) -> StageVisuals? {
+        guard !plan.isEmpty else { return nil }
+        var v = StageVisuals()
+        v.backdrop = Stage.backdropPlacement(location, plan: plan)
+        if let st = location.studio {
+            v.ledNits = st.nits ?? Stage.ledDefaultNits
+            v.ledKelvin = st.kelvin ?? 5600
+            v.floor = Stage.floor(st.floor)
+            v.floorColour = st.floorColour
+        }
+        v.curtains = plan.windows.compactMap { w in
+            w.curtain.map { StageVisuals.Curtain(window: w, kind: $0, inward: Stage.inwardNormal(w.a, w.b, plan: plan)) }
+        }
+        v.floorPolygons = plan.floorPolygons
+        if v.floorPolygons.isEmpty {
+            let b = plan.bounds
+            v.floorPolygons = [[PlanPoint(x: b.minX, z: b.minZ), PlanPoint(x: b.maxX, z: b.minZ), PlanPoint(x: b.maxX, z: b.maxZ), PlanPoint(x: b.minX, z: b.maxZ)]]
+        }
+        v.floorY = plan.floorY
+        v.ceiling = plan.walls.map { $0.bottom + $0.height }.max() ?? 2.6
+        if location.daylight?.isOn == true {
+            let sun = Stage.sunPlacement(location, scan: scan)
+            let sky = location.daylight?.sky ?? .clear
+            let levels = Stage.daylightLevels(sky, elevation: sun.elevation)
+            v.daylight = StageVisuals.Daylight(sky: sky, bearing: sun.bearing, elevation: sun.elevation, directNormal: levels.directNormal,
+                                               windowLuminance: Stage.windowViewLuminance(levels, elevation: sun.elevation))
+        }
+        if v.backdrop == nil && v.floor == nil && v.curtains.isEmpty && v.daylight == nil { return nil }
+        return v
     }
 
     private func handle3DTap(_ item: PlanSelection?, _ point: PlanPoint?) {
@@ -933,6 +975,20 @@ struct PlanEditorView: View {
         o.photoPoses = location.photos.compactMap(\.pose).filter { $0.scanID == sid }
         if let north = scan?.northOffset {
             o.northWorldBearing = (360 - north).truncatingRemainder(dividingBy: 360)
+        }
+        o.backdrop = plan.isEmpty ? nil : Stage.backdropPlacement(location, plan: plan)
+        if location.daylight?.isOn == true {
+            // Where the sun is, and which bare windows it comes in through.
+            let sun = Stage.sunPlacement(location, scan: scan)
+            o.sunWorldBearing = sun.bearing
+            o.sunElevation = sun.elevation
+            if sun.elevation > 0 && !plan.isEmpty {
+                let toward = PlanPoint.unit(bearing: sun.bearing)
+                o.litWindows = Set(plan.windows.filter { w in
+                    let n = Stage.inwardNormal(w.a, w.b, plan: plan)
+                    return w.curtain == nil && toward.x * n.x + toward.z * n.z < 0
+                }.map(\.id))
+            }
         }
         guard !d.isHidden(group: .cameras) else { return o }
         let hasPeople = !location.previsCharacters.filter { inScan($0.scanID) }.isEmpty && !d.isHidden(group: .people)
@@ -1458,8 +1514,7 @@ struct PlanEditorView: View {
                         ForEach(location.scans) { s in Text(s.name).tag(Optional(s.id)) }
                     }
                 }
-                Button { showExposure = true } label: { Label("Camera exposure…", systemImage: "camera.aperture") }
-                Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
+XX, isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
                 if scan != nil {
                     Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
                 }
@@ -1554,7 +1609,7 @@ struct PlanEditorView: View {
             case .meter(let id):
                 if let meter = location.lightMeters.first(where: { $0.id == id }) {
                     MeterPanel(meter: meter, reading: analysis.reading(.meter(id)) ?? .zero, exposure: exposure,
-                               lightName: { lid in location.lightFixtures.first { $0.id == lid }?.name ?? "Unit" },
+                               lightName: { lid in location.lightFixtures.first { $0.id == lid }?.name ?? Stage.ambientName(lid) ?? "Unit" },
                                update: { mutate in updateMeter(id, mutate) },
                                onDelete: {
                                    edit { $0.lightMeters.removeAll { $0.id == id } }

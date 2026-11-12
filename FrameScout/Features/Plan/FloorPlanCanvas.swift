@@ -141,6 +141,8 @@ struct PlanOverlay {
     var sunWorldBearing: Double?
     var sunElevation: Double?
     var litWindows: Set<UUID> = []
+    /// A studio backdrop against one wall (see `Stage`).
+    var backdrop: Stage.BackdropPlacement?
     var people: [PlanPersonMarker] = []
     var meters: [PlanMeterMarker] = []
     var luxMap: PlanLuxMap?
@@ -211,6 +213,7 @@ struct PlanRenderer {
         var labels: [PlanLabel] = []
         if full && overlay.showGrid { drawGrid(&ctx) }
         drawFloors(&ctx)
+        drawBackdrop(&ctx)
         if full { drawLuxMap(&ctx) }
         drawOccupancy(&ctx)
         drawObjects(&ctx, &labels)
@@ -337,7 +340,16 @@ struct PlanRenderer {
             path.addLine(to: s(w.b))
             let lit = overlay.litWindows.contains(w.id)
             ctx.stroke(path, with: .color(lit ? Theme.sun : Theme.planWindow), lineWidth: max(2, wallWidth * 0.8))
-            if lit && full {
+            if let curtain = w.curtain {
+                // Curtains hang on the room side of the glass.
+                let n = inwardNormal(w, centroid: centroid) * 0.09
+                var c = Path()
+                c.move(to: s(w.a + n))
+                c.addLine(to: s(w.b + n))
+                ctx.stroke(c, with: .color(curtain == .blackout ? Theme.ink : Theme.textTertiary),
+                           style: StrokeStyle(lineWidth: curtain == .blackout ? 3.5 : 2, dash: curtain == .sheer ? [3, 3] : []))
+            }
+            if lit && full && w.curtain == nil {
                 // Light spill into the room.
                 let inward = inwardNormal(w, centroid: centroid)
                 var spill = Path()
@@ -373,6 +385,24 @@ struct PlanRenderer {
             }
             arc.closeSubpath()
             ctx.stroke(arc, with: .color(Theme.planDoor.opacity(0.5)), lineWidth: 1)
+        }
+    }
+
+    /// The backdrop's footprint and its sweep onto the floor, in its own colour.
+    private func drawBackdrop(_ ctx: inout GraphicsContext) {
+        guard let bd = overlay.backdrop else { return }
+        let sweep = max(bd.sweep, 0.12)
+        var path = Path()
+        path.move(to: s(bd.a))
+        path.addLine(to: s(bd.b))
+        path.addLine(to: s(bd.b + bd.inward * sweep))
+        path.addLine(to: s(bd.a + bd.inward * sweep))
+        path.closeSubpath()
+        ctx.fill(path, with: .color(Color(hex: bd.colour).opacity(bd.info.kind == .led ? 0.85 : 0.5)))
+        ctx.stroke(path, with: .color(Theme.textTertiary), style: StrokeStyle(lineWidth: 1, dash: bd.info.kind == .paper ? [4, 3] : []))
+        if full && px(1) > 30 {
+            let mid = PlanPoint(x: (bd.a.x + bd.b.x) / 2, z: (bd.a.z + bd.b.z) / 2) + bd.inward * (sweep / 2)
+            ctx.draw(Text(bd.info.label).font(.poppins(.regular, fs(10))).foregroundColor(Theme.ink), at: s(mid))
         }
     }
 

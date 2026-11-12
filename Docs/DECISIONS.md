@@ -133,7 +133,7 @@ furniture and people). Better pictures look more trustworthy, so the rules of D-
 - **From the photometric model**: each unit's colour, its brightness relative to the other units, and (web and
   desktop) its falloff across the beam and its barn-door cut, which are the calculator's own curves projected by
   the light. Shadow softness follows the size of the source.
-- **Not modelled, and said so on screen**: light bouncing round the room, daylight, and bounce boards. The
+- **Not modelled, and said so on screen**: light bouncing round the room, daylight (added in D-013), and bounce boards. The
   picture shows direct light plus a trace of work light so the room stays readable.
 - **Brightness**: by default the picture is fitted to the screen (the brightest reading sits a little over
   mid-grey). Web and desktop can instead show it at the set stop, where an incident reading equal to the key
@@ -162,3 +162,28 @@ iPhone and on web/desktop (`SetPieces.swift` ↔ `web/src/model/setPieces.ts`, s
 - **3D on the iPhone**: a room built from the plan is rebuilt; a real scan keeps its own geometry, with hand-placed
   pieces drawn over it as simple boxes and scanned pieces that were moved or deleted hidden.
 - Not done: moving or adding walls, and changing the ceiling height after a room is drawn.
+
+## D-013 · Studio sets, daylight and curtains — 2026-11-12
+
+A location can be dressed as a studio and lit by the sun and sky through its windows, on the iPhone
+("Daylight and studio set…" in the plan menu, curtain picker on a selected window) and on web/desktop (Overview
+and window panels). Maths in `Stage.swift` ↔ `web/src/model/stage.ts`, checked against each other in CI.
+
+- **Backdrops** (generic names only): white, black, green, blue and painted cyc; white, grey, black and colour
+  paper rolls; an LED wall. They go on a wall (the one the camera faces by default, else the longest) with a
+  width, height and position along it. Floors: grey, black or painted concrete, white painted floor.
+- **Only the LED wall counts as light.** It is an area source at the brightness set in nits, worked out with the
+  exact Lambert formula for a lit rectangle, blocked by walls. Backdrop and floor colours change the picture
+  only; their reflectance is shown as a figure, but nothing bounces, so it is not added to readings.
+- **Daylight is a standard sky, not the location's weather**: IES daylight-availability model (clear, hazy,
+  overcast), Kasten-Young air mass, twilight to 6° below the horizon. The sun is placed by hand or from the
+  date, time, coordinates and the scan's north; without coordinates or north the app says so and stays by hand.
+- Sun reaches a point only along a ray through a window that no wall blocks; sky light comes in as an area
+  source per window, with the window seeing half sky, half sunlit ground (20 % reflectance). Nothing outside
+  (trees, buildings, overhangs) is known, so real figures are often lower. All daylight figures are **estimated**.
+- **Curtains**: sheer passes half the light and stops the sun's hard beam (it glows instead); blackout passes none.
+- **3D picture**: sky behind the windows, a sun light that only enters through openings (an invisible ceiling
+  casts shadow), sheer curtains glowing, backdrops and floors in their colours. Intensities are clamped so the
+  frame stays readable; viewport brightness is still not a reading.
+- The iPhone draws the set with SceneKit (simpler cove, gradient sky, area light for the LED wall); it was
+  built in CI but not checked on a device.
