@@ -760,6 +760,33 @@ do {
     paper.studio = StudioSetup(backdrop: "paper-white", wallID: room.walls[0].id)
     check(lux(paper, room, LightingCalculator.Point(x: 0, y: 1.5, z: -0.25), toWindow) == 0, "paper gives no light")
     check(Set(Stage.backdrops.map(\.id)).count == Stage.backdrops.count, "backdrop ids are unique")
+
+    // Backdrops round several walls (same cases as web/tests/stage.test.ts)
+    func near(_ p: PlanPoint, _ x: Double, _ z: Double) -> Bool { hypot(p.x - x, p.z - z) < 1e-9 }
+    var corner = Location(name: "Corner")
+    corner.studio = StudioSetup(backdrop: "cyc-white", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id)])
+    if let lay = Stage.backdropLayout(corner, plan: room), lay.pieces.count == 2, let c = lay.corners.first {
+        check(lay.corners.count == 1 && near(c.point, 2.98, -2.23) && abs(c.radius - Stage.cycCornerRadius) < 1e-9, "a corner cyc curves round the corner")
+        check([lay.pieces[0].a, lay.pieces[0].b].contains { near($0, 2.23, -2.23) } && [lay.pieces[1].a, lay.pieces[1].b].contains { near($0, 2.98, -1.48) },
+              "each piece stops at the bend")
+        check(Stage.cornerFootprint(c, sweep: 1.5).count == 6, "corner floor footprint")
+    } else { check(false, "a corner cyc has two pieces and a corner") }
+    var paperCorner = Location(name: "Paper corner")
+    paperCorner.studio = StudioSetup(backdrop: "paper-white", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id)])
+    let pc = Stage.backdropLayout(paperCorner, plan: room)?.pieces ?? []
+    check(pc.count == 2 && pc.allSatisfy { [$0.a, $0.b].contains { near($0, 2.65, -1.9) } } && abs(pc[0].width - (2.72 - 0.35)) < 1e-9,
+          "a narrower piece goes into the corner it shares")
+    var uShape = Location(name: "U")
+    uShape.studio = StudioSetup(backdrop: "cyc-green", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id), BackdropWall(wallID: room.walls[2].id)])
+    check(Stage.backdropLayout(uShape, plan: room)?.corners.count == 2, "a U has two corners")
+    let names = Stage.wallNames(room)
+    check(room.walls.map { names[$0.id] ?? "" } == ["Top wall", "Right wall", "Bottom wall", "Left wall"], "walls are named by where they sit on the plan")
+    var volume = Location(name: "Volume corner")
+    volume.studio = StudioSetup(backdrop: "led-wall", wallID: room.walls[0].id, nits: 300, moreWalls: [BackdropWall(wallID: room.walls[1].id)])
+    var flat = volume
+    flat.studio?.moreWalls = nil
+    let vp = LightingCalculator.Point(x: 2, y: 1.5, z: -1.2), vn = LightingCalculator.Point(x: 0.7071, y: 0, z: -0.7071)
+    check(lux(volume, room, vp, vn, Stage.ledWallID) > 1.2 * lux(flat, room, vp, vn, Stage.ledWallID), "an LED volume round a corner adds light")
 }
 
 // MARK: Web parity, studio and daylight (web/tests/stage.test.ts, STAGE_READINGS)
@@ -770,7 +797,8 @@ do {
     let scanID = loc.primaryScanID
     let plan = scanID.flatMap { bundle.plans[$0.uuidString] }
     let scan = loc.scans.first { $0.id == scanID }
-    check(plan?.windows.first?.curtain == .sheer && loc.studio?.backdrop == "led-wall", "web-written curtains and studio decode in Swift")
+    check(plan?.windows.first?.curtain == .sheer && loc.studio?.backdrop == "led-wall" && loc.studio?.moreWalls?.count == 1,
+          "web-written curtains and studio (round a corner) decode in Swift")
     let lights = loc.lightFixtures.filter { $0.scanID == nil || $0.scanID == scanID }
     let scene = LightingCalculator.Scene(lights: lights, plan: plan, windowTransmission: loc.displaySettings.windowTransmissionValue,
                                          environment: loc.environment(plan: plan, scan: scan))

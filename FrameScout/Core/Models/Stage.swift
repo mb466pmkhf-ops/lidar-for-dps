@@ -3,8 +3,8 @@ import Foundation
 // Studio builds, daylight and window dressing. Ported to web/src/model/stage.ts with the same ids,
 // numbers and rules (tests on both sides, parity in CI). See Docs/DECISIONS.md D-014.
 //
-// - A studio backdrop (cyc, chroma screen, paper roll or LED wall) stands against one wall, and the
-//   floor can be given a finish. Only the LED wall gives light in the readings; the others are
+// - A studio backdrop (cyc, chroma screen, paper roll or LED wall) stands against one wall or runs
+//   on round several (a corner cyc, a U, an LED volume), and the floor can be given a finish. Only the LED wall gives light in the readings; the others are
 //   surfaces, and the readings don't include light bouncing off surfaces.
 // - Daylight: a sun and a sky outside the windows, from the location's clock (when the scan knows
 //   north and the location has coordinates) or set by hand. Levels come from the IES daylight
@@ -37,7 +37,8 @@ struct StudioSetup: Codable, Hashable {
     var backdrop: String? = nil
     /// The wall it stands against; nil = the wall facing the camera (or the longest).
     var wallID: UUID? = nil
-    /// Metres from the wall's middle, along the wall.
+    /// Metres from the wall's middle, along the wall. nil = centred, or into the corner it shares
+    /// with another backdrop wall.
     var offset: Double? = nil
     var width: Double? = nil
     var height: Double? = nil
@@ -50,6 +51,17 @@ struct StudioSetup: Codable, Hashable {
     /// `StageCatalog.floors` id; nil = as scanned or drawn.
     var floor: String? = nil
     var floorColour: String? = nil
+    /// The same backdrop carried on round more walls (a corner, a U). Each piece has its own width
+    /// and place along its wall; where two pieces meet in a corner they join (a cyc curves round it).
+    var moreWalls: [BackdropWall]? = nil
+}
+
+/// One more wall a backdrop runs on (see `StudioSetup.moreWalls`).
+struct BackdropWall: Codable, Hashable {
+    var wallID: UUID
+    /// As `StudioSetup.offset` and `.width`, for this wall.
+    var offset: Double? = nil
+    var width: Double? = nil
 }
 
 enum CurtainKind: String, Codable, CaseIterable, Identifiable {
@@ -244,6 +256,8 @@ enum Stage {
         var height: Double
         var sweep: Double
         var colour: String
+        /// Where it sits along its wall: metres from the wall's middle (before any corner trim).
+        var offset: Double = 0
     }
 
     /// The wall a backdrop goes on when none is chosen: the one the camera looks at, else the longest.
@@ -267,26 +281,172 @@ enum Stage {
         return walls.reduce(first) { $1.length > $0.length ? $1 : $0 }
     }
 
+    /// Where two backdrop pieces meet in an inside corner. `point` is where their faces would meet;
+    /// a cyc curves round a vertical radius centred on `centre`, so each piece stops `radius` short of
+    /// the bend at its tangent point. Paper and LED pieces simply butt together (radius 0).
+    struct BackdropCorner: Hashable {
+        var point: PlanPoint
+        var centre: PlanPoint
+        var radius: Double
+        /// Tangent points on the two faces, and the two faces' into-the-room directions.
+        var tangentA: PlanPoint
+        var tangentB: PlanPoint
+        var inwardA: PlanPoint
+        var inwardB: PlanPoint
+        var height: Double
+        var bottom: Double
+    }
+
+    struct BackdropLayout: Hashable {
+        var info: BackdropInfo
+        /// The first is on the main wall (`StudioSetup.wallID`).
+        var pieces: [BackdropPlacement]
+        var corners: [BackdropCorner]
+        var sweep: Double { pieces.first?.sweep ?? 0 }
+        var colour: String { pieces.first?.colour ?? info.colour }
+    }
+
+    /// Radius of the vertical bend where a cyc turns a corner (more than the 0.5–0.6 m floor cove).
+    static let cycCornerRadius = 0.75
+    /// How close two wall ends must be to count as the same corner.
+    static let cornerSnap = 0.15
+
+    private static let sideNames = ["Top", "Top right", "Right", "Bottom right", "Bottom", "Bottom left", "Left", "Top left"]
+    /// Names for the walls as they sit on the plan ("Top wall", "Left wall"; numbered when two share a
+    /// side), for walls longer than half a metre. Same as the web.
+    static func wallNames(_ plan: FloorPlan) -> [UUID: String] {
+        let walls = plan.walls.filter { $0.length > 0.5 }
+        let side = walls.map { w -> String in
+            let n = inwardNormal(w.a, w.b, plan: plan)
+            // The wall sits on the side opposite its inward normal; plan up is −z.
+            let bearing = (atan2(-n.x, n.z) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+            return sideNames[Int((bearing / 45).rounded()) % 8]
+        }
+        var out: [UUID: String] = [:]
+        for (i, w) in walls.enumerated() {
+            let same = side.filter { $0 == side[i] }.count
+            let k = side[...i].filter { $0 == side[i] }.count
+            out[w.id] = same > 1 ? "\(side[i]) wall \(k)" : "\(side[i]) wall"
+        }
+        return out
+    }
+
+    /// Two walls that meet end to end (a corner a backdrop can turn).
+    static func wallsTouch(_ w: PlanSegment, _ o: PlanSegment) -> Bool {
+        [w.a, w.b].contains { p in [o.a, o.b].contains { $0.distance(to: p) < cornerSnap } }
+    }
+
+    static func defaultBackdropWidth(_ k: BackdropKind, wallLength L: Double) -> Double {
+        k == .cyc ? L : k == .paper ? paperWidth : min(L, 6)
+    }
+
+    /// The main piece only (the wall the backdrop was first put on).
     static func backdropPlacement(_ loc: Location, plan: FloorPlan?) -> BackdropPlacement? {
+        backdropLayout(loc, plan: plan)?.pieces.first
+    }
+
+    /// Every piece of the backdrop, trimmed where pieces meet in a corner, and the corners.
+    static func backdropLayout(_ loc: Location, plan: FloorPlan?) -> BackdropLayout? {
         guard let st = loc.studio, let info = backdrop(st.backdrop), let plan else { return nil }
-        guard let wall = plan.walls.first(where: { $0.id == st.wallID }) ?? defaultBackdropWall(loc, plan: plan) else { return nil }
-        let L = wall.length
-        let inward = inwardNormal(wall.a, wall.b, plan: plan)
-        let def = info.kind == .cyc ? L : info.kind == .paper ? paperWidth : min(L, 6)
-        let width = clamp(st.width ?? def, 0.5, L)
-        let wallTop = wall.bottom + wall.height
-        let defH = info.kind == .cyc ? wallTop : info.kind == .paper ? min(wallTop, 3.0) : min(wallTop, 3.5)
-        let height = clamp(st.height ?? defH, 0.5, max(0.5, wallTop))
-        var u = PlanPoint(x: (wall.b.x - wall.a.x) / L, z: (wall.b.z - wall.a.z) / L)
-        if u.x * inward.z - u.z * inward.x < 0 { u = PlanPoint(x: -u.x, z: -u.z) }
-        let half = width / 2
-        let off = clamp(st.offset ?? 0, -(L / 2 - half), L / 2 - half)
-        let off2 = standoff(info.kind)
-        let mid = PlanPoint(x: (wall.a.x + wall.b.x) / 2 + u.x * off + inward.x * off2, z: (wall.a.z + wall.b.z) / 2 + u.z * off + inward.z * off2)
-        return BackdropPlacement(info: info, wall: wall,
-                                 a: PlanPoint(x: mid.x - u.x * half, z: mid.z - u.z * half), b: PlanPoint(x: mid.x + u.x * half, z: mid.z + u.z * half),
-                                 inward: inward, width: width, height: height, sweep: sweep(info.kind),
-                                 colour: info.pickColour ? (st.colour ?? info.colour) : info.colour)
+        guard let main = plan.walls.first(where: { $0.id == st.wallID }) ?? defaultBackdropWall(loc, plan: plan) else { return nil }
+        var parts: [(wall: PlanSegment, offset: Double?, width: Double?)] = [(main, st.offset, st.width)]
+        for m in st.moreWalls ?? [] {
+            guard let w = plan.walls.first(where: { $0.id == m.wallID }), w.length > 0.5, !parts.contains(where: { $0.wall.id == w.id }) else { continue }
+            parts.append((w, m.offset, m.width))
+        }
+        let ends = parts.map { [$0.wall.a, $0.wall.b] }
+        /// Does this end of wall `i` meet another backdrop wall?
+        func shared(_ i: Int, _ p: PlanPoint) -> Bool {
+            ends.indices.contains { j in j != i && ends[j].contains { $0.distance(to: p) < cornerSnap } }
+        }
+        var pieces: [BackdropPlacement] = []
+        for (i, part) in parts.enumerated() {
+            let wall = part.wall, L = wall.length
+            let inward = inwardNormal(wall.a, wall.b, plan: plan)
+            let width = clamp(part.width ?? defaultBackdropWidth(info.kind, wallLength: L), 0.5, L)
+            let wallTop = wall.bottom + wall.height
+            let defH = info.kind == .cyc ? wallTop : info.kind == .paper ? min(wallTop, 3.0) : min(wallTop, 3.5)
+            let height = clamp(st.height ?? defH, 0.5, max(0.5, wallTop))
+            var u = PlanPoint(x: (wall.b.x - wall.a.x) / L, z: (wall.b.z - wall.a.z) / L)
+            if u.x * inward.z - u.z * inward.x < 0 { u = PlanPoint(x: -u.x, z: -u.z) }
+            let half = width / 2, slack = L / 2 - half
+            let wallMid = PlanPoint(x: (wall.a.x + wall.b.x) / 2, z: (wall.a.z + wall.b.z) / 2)
+            var off = part.offset ?? 0
+            if part.offset == nil, slack > 1e-6 {
+                // Into the corner it shares with another backdrop wall.
+                let left = shared(i, PlanPoint(x: wallMid.x - u.x * L / 2, z: wallMid.z - u.z * L / 2))
+                let right = shared(i, PlanPoint(x: wallMid.x + u.x * L / 2, z: wallMid.z + u.z * L / 2))
+                if left != right { off = left ? -slack : slack }
+            }
+            off = clamp(off, -slack, slack)
+            let off2 = standoff(info.kind)
+            let mid = PlanPoint(x: wallMid.x + u.x * off + inward.x * off2, z: wallMid.z + u.z * off + inward.z * off2)
+            pieces.append(BackdropPlacement(info: info, wall: wall,
+                                            a: PlanPoint(x: mid.x - u.x * half, z: mid.z - u.z * half), b: PlanPoint(x: mid.x + u.x * half, z: mid.z + u.z * half),
+                                            inward: inward, width: width, height: height, sweep: sweep(info.kind),
+                                            colour: info.pickColour ? (st.colour ?? info.colour) : info.colour, offset: off))
+        }
+        // Join pieces whose ends reach the same room corner.
+        var corners: [BackdropCorner] = []
+        let reach = standoff(info.kind) + 0.05
+        /// The end of piece `k` (0 = a, 1 = b) that sits at a wall end, and that wall end.
+        func atCorner(_ k: Int, _ end: Int) -> PlanPoint? {
+            let p = pieces[k], e = end == 0 ? p.a : p.b
+            return [p.wall.a, p.wall.b].first { $0.distance(to: e) < reach * 1.5 }
+        }
+        for i in pieces.indices {
+            for j in pieces.indices where j > i {
+                for ei in 0..<2 {
+                    for ej in 0..<2 {
+                        guard let ci = atCorner(i, ei), let cj = atCorner(j, ej), ci.distance(to: cj) < cornerSnap else { continue }
+                        let pi = pieces[i], pj = pieces[j]
+                        let ei0 = ei == 0 ? pi.a : pi.b, ei1 = ei == 0 ? pi.b : pi.a
+                        let ej0 = ej == 0 ? pj.a : pj.b, ej1 = ej == 0 ? pj.b : pj.a
+                        // Where the two faces meet.
+                        let di = (ei1 - ei0) * (1 / max(ei0.distance(to: ei1), 1e-9))
+                        let dj = (ej1 - ej0) * (1 / max(ej0.distance(to: ej1), 1e-9))
+                        let denom = di.x * dj.z - di.z * dj.x
+                        guard abs(denom) > 0.05 else { continue }
+                        let w = ej0 - ei0
+                        let t = (w.x * dj.z - w.z * dj.x) / denom
+                        let x = ei0 + di * t
+                        // Inside corners only: each piece on the room side of the other.
+                        guard (ei1 - x).dot(pj.inward) > 0.05, (ej1 - x).dot(pi.inward) > 0.05 else { continue }
+                        let fi = (ei1 - x).dot(di) >= 0 ? di : di * -1
+                        let fj = (ej1 - x).dot(dj) >= 0 ? dj : dj * -1
+                        let phi = acos(max(-1, min(1, fi.dot(fj))))
+                        let leni = x.distance(to: ei1), lenj = x.distance(to: ej1)
+                        var r = info.kind == .cyc ? cycCornerRadius : 0
+                        var tn = r > 0 ? r / tan(phi / 2) : 0
+                        let room = min(leni, lenj) * 0.5
+                        if tn > room { r *= room / tn; tn = room }
+                        let ti = x + fi * tn, tj = x + fj * tn
+                        let bis = (fi + fj) * (1 / max((fi + fj).length, 1e-9))
+                        let centre = r > 0 ? x + bis * (r / sin(phi / 2)) : x
+                        var a = pieces[i], b = pieces[j]
+                        if ei == 0 { a.a = ti } else { a.b = ti }
+                        if ej == 0 { b.a = tj } else { b.b = tj }
+                        a.width = a.a.distance(to: a.b)
+                        b.width = b.a.distance(to: b.b)
+                        pieces[i] = a
+                        pieces[j] = b
+                        corners.append(BackdropCorner(point: x, centre: centre, radius: r, tangentA: ti, tangentB: tj, inwardA: a.inward, inwardB: b.inward,
+                                                      height: min(a.height, b.height), bottom: max(a.wall.bottom, b.wall.bottom)))
+                    }
+                }
+            }
+        }
+        return BackdropLayout(info: info, pieces: pieces, corners: corners)
+    }
+
+    /// The floor a corner covers: between the two faces, out to `sweep` from each.
+    static func cornerFootprint(_ c: BackdropCorner, sweep: Double) -> [PlanPoint] {
+        // The point `sweep` in from both faces: (q − x)·nA = (q − x)·nB = sweep.
+        let a = c.inwardA, b = c.inwardB
+        let det = a.x * b.z - a.z * b.x
+        guard abs(det) > 1e-6 else { return [] }
+        let q = PlanPoint(x: c.point.x + sweep * (b.z - a.z) / det, z: c.point.z + sweep * (a.x - b.x) / det)
+        return [c.point, c.tangentA, c.tangentA + a * sweep, q, c.tangentB + b * sweep, c.tangentB]
     }
 
     private static func clamp(_ v: Double, _ lo: Double, _ hi: Double) -> Double { min(hi, max(lo, v)) }
@@ -315,7 +475,8 @@ enum Stage {
         var sun: Sun?
         /// What a window shows from inside, before glass and curtains.
         var windowLuminance: Double = 0
-        var ledWall: AreaSource?
+        /// One per LED piece (a volume round several walls has several); all count as "LED wall".
+        var ledWalls: [AreaSource] = []
     }
 
     static let sunID = UUID(uuidString: "5A11D000-0000-4000-8000-000000000001")!
@@ -343,14 +504,15 @@ enum Stage {
             if levels.directNormal > 0 { e.sun = .init(bearing: sun.bearing, elevation: sun.elevation, directNormal: levels.directNormal) }
             env = e
         }
-        if let bd = backdropPlacement(loc, plan: plan), bd.info.kind == .led {
+        if let layout = backdropLayout(loc, plan: plan), layout.info.kind == .led {
             let nits = clamp(loc.studio?.nits ?? ledDefaultNits, 0, ledNitsRange.upperBound)
-            let along = PlanPoint(x: (bd.b.x - bd.a.x) / bd.width, z: (bd.b.z - bd.a.z) / bd.width)
-            let led = AreaSource(id: ledWallID, origin: bd.a, bottom: bd.wall.bottom, along: along, width: bd.width, height: bd.height,
-                                 facing: bd.inward, luminance: nits,
-                                 columns: Int(clamp((bd.width / ledCell).rounded(), 2, 12)), rows: Int(clamp((bd.height / ledCell).rounded(), 2, 8)))
             var e = env ?? Environment()
-            e.ledWall = led
+            for bd in layout.pieces where bd.width > 0.01 {
+                let along = PlanPoint(x: (bd.b.x - bd.a.x) / bd.width, z: (bd.b.z - bd.a.z) / bd.width)
+                e.ledWalls.append(AreaSource(id: ledWallID, origin: bd.a, bottom: bd.wall.bottom, along: along, width: bd.width, height: bd.height,
+                                             facing: bd.inward, luminance: nits,
+                                             columns: Int(clamp((bd.width / ledCell).rounded(), 2, 12)), rows: Int(clamp((bd.height / ledCell).rounded(), 2, 8))))
+            }
             env = e
         }
         return env
@@ -362,4 +524,9 @@ extension Location {
     func environment(plan: FloorPlan?, scan: ScanRecord?) -> Stage.Environment? {
         Stage.environment(self, plan: plan, scan: scan)
     }
+}
+
+private extension PlanPoint {
+    func dot(_ o: PlanPoint) -> Double { x * o.x + z * o.z }
+    var length: Double { (x * x + z * z).squareRoot() }
 }

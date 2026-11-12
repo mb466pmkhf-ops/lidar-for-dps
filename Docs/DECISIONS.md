@@ -192,6 +192,13 @@ and window panels). Maths in `Stage.swift` ↔ `web/src/model/stage.ts`, checked
 - **Backdrops** (generic names only): white, black, green, blue and painted cyc; white, grey, black and colour
   paper rolls; an LED wall. They go on a wall (the one the camera faces by default, else the longest) with a
   width, height and position along it. Floors: grey, black or painted concrete, white painted floor.
+- **Round several walls** (added 2026-11-12, Vorbi: "sometimes it is multiple, or just a corner to have more
+  depth"): any backdrop can carry on to more walls (`StudioSetup.moreWalls`, optional, so older files and older
+  apps still read the main wall). Each piece has its own width and place; a piece that is narrower than its wall
+  goes into the corner it shares with another backdrop wall. Where two pieces meet in an inside corner a cyc
+  bends round a 0.75 m vertical radius (the floor cove swung round), paper and LED pieces butt together. An LED
+  volume round a corner is one area source per piece, all reported as "LED wall". Walls are named by where
+  they sit on the plan (Top wall, Left wall).
 - **Only the LED wall counts as light.** It is an area source at the brightness set in nits, worked out with the
   exact Lambert formula for a lit rectangle, blocked by walls. Backdrop and floor colours change the picture
   only; their reflectance is shown as a figure, but nothing bounces, so it is not added to readings.

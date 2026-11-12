@@ -1,17 +1,17 @@
 {
   "project": {
-    "id": "558F62C5-AB66-4081-8F39-C687E9785335",
-    "name": "Sample Commercial (web)",
-    "client": "Demo",
+    "id": "C18B0409-8746-4994-94AE-06D34AD892BD",
+    "name": "Family on the sofa (sample)",
+    "client": "Sample job",
     "notes": "",
-    "createdAt": "2026-11-12T02:34:16Z",
-    "modifiedAt": "2026-11-12T02:34:16Z",
+    "createdAt": "2026-11-12T17:40:49Z",
+    "modifiedAt": "2026-11-12T17:40:49Z",
     "locations": [
       {
-        "id": "25C37265-EC98-4057-845D-3D15130999E7",
+        "id": "52A91746-8CBC-4982-8B76-1B1580FC9365",
         "name": "Hackney Flat — Living Room",
-        "address": "Sample location",
-        "createdAt": "2026-11-12T02:34:16Z",
+        "address": "Hackney, London",
+        "createdAt": "2026-11-12T17:40:49Z",
         "tags": [],
         "notes": "",
         "lightingNotes": "",
@@ -19,10 +19,10 @@
         "quickNotes": [],
         "scans": [
           {
-            "id": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "id": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "name": "Living room",
             "kind": "room",
-            "createdAt": "2026-11-12T02:34:16Z",
+            "createdAt": "2026-11-12T17:40:49Z",
             "segmentCount": 1,
             "deviceModel": "",
             "notes": "",
@@ -50,7 +50,7 @@
         "measurements": [],
         "cameraPositions": [
           {
-            "id": "900CA7F9-673C-41D2-A0C3-72D3E343C9B9",
+            "id": "A3B07CA3-647D-4DF0-80B3-77F17A96593F",
             "name": "A · Window corner",
             "rig": {
               "position": {
@@ -64,14 +64,14 @@
               "sensorID": "arri-minilf-og",
               "aspect": "sensor"
             },
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "notes": "",
-            "createdAt": "2026-11-12T02:34:16Z"
+            "createdAt": "2026-11-12T17:40:49Z"
           }
         ],
         "shots": [
           {
-            "id": "BBDF5263-0A51-480E-BF16-2427983DD6E7",
+            "id": "AE78FE6B-BB39-4909-8966-8142F22185FF",
             "number": 1,
             "title": "Wide, family on sofa",
             "rig": {
@@ -91,12 +91,12 @@
               "z": 1.8
             },
             "subjectHeight": 1.75,
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "notes": "",
-            "createdAt": "2026-11-12T02:34:16Z"
+            "createdAt": "2026-11-12T17:40:49Z"
           },
           {
-            "id": "4067F27D-71C4-4ADC-A510-CFEC6567E17D",
+            "id": "12328E90-6BF6-4996-AC05-C526D6A1F776",
             "number": 2,
             "title": "Single on Maya",
             "rig": {
@@ -116,15 +116,15 @@
               "z": 1.8
             },
             "subjectHeight": 1.75,
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "notes": "",
-            "createdAt": "2026-11-12T02:34:16Z"
+            "createdAt": "2026-11-12T17:40:49Z"
           }
         ],
-        "primaryScanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+        "primaryScanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
         "lights": [
           {
-            "id": "7CC5F05D-AB20-4271-87F3-AD72C8A62B01",
+            "id": "50872D69-72A0-4D9D-B8D8-0523B90F5811",
             "name": "Key",
             "kind": "fresnel",
             "position": {
@@ -143,13 +143,13 @@
             "dimmer": 0.25,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "profileID": "cob-600-d",
             "modifierID": "softbox-90-grid",
             "role": "key"
           },
           {
-            "id": "5F61BD08-DEB1-41B5-96CB-8027D50E2E2D",
+            "id": "77ED0B2F-E3E5-4E34-B21C-52520CBA063A",
             "name": "Fill",
             "kind": "ledPanel",
             "position": {
@@ -168,12 +168,12 @@
             "dimmer": 0.3,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "profileID": "panel-1x1-bi",
             "role": "fill"
           },
           {
-            "id": "ECC14003-57D9-4BA6-959A-29E4105335B7",
+            "id": "9B5D570C-E2E3-48AA-A47F-19BEB9482E80",
             "name": "Back",
             "kind": "fresnel",
             "position": {
@@ -192,7 +192,7 @@
             "dimmer": 0.4,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "profileID": "fresnel-led-200-bi",
             "role": "back",
             "barnDoors": {
@@ -203,7 +203,7 @@
             }
           },
           {
-            "id": "43CDDB9D-C73F-43E9-8C1F-6303E78F55C2",
+            "id": "1A79DFE1-BC1C-4526-8545-C5D8BBF314D7",
             "name": "Bounce",
             "kind": "bounce",
             "position": {
@@ -222,10 +222,10 @@
             "dimmer": 1,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C"
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D"
           },
           {
-            "id": "FC5DE2E8-EF78-46C5-ADA0-31D23FE210FE",
+            "id": "8AC19986-FD56-4CC9-B56D-602677613D26",
             "name": "Neg",
             "kind": "negative",
             "position": {
@@ -244,10 +244,10 @@
             "dimmer": 1,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C"
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D"
           },
           {
-            "id": "508A42A2-3E72-48DF-A9CC-C9FA2604AAC6",
+            "id": "9DFEFE6C-3080-4080-9A7D-35932ACF83E8",
             "name": "Lamp",
             "kind": "practical",
             "position": {
@@ -266,14 +266,14 @@
             "dimmer": 1,
             "isOn": true,
             "notes": "",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C",
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D",
             "profileID": "bulb-tungsten-100",
             "role": "practical"
           }
         ],
         "characters": [
           {
-            "id": "4044B83C-D3B1-4E96-BA68-729B9FBF43CA",
+            "id": "248EBC7B-9B6F-429A-A637-FA8B8E84251A",
             "name": "Maya",
             "type": "woman",
             "height": 1.65,
@@ -285,10 +285,10 @@
             },
             "facing": 330,
             "posture": "sitting",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C"
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D"
           },
           {
-            "id": "D7532C29-E05B-46FF-8E92-BEE6BCCD89E8",
+            "id": "E05574F6-EE97-47FB-9F65-BE01040BCD6F",
             "name": "Leo",
             "type": "boy",
             "height": 1.34,
@@ -300,12 +300,12 @@
             },
             "facing": 340,
             "posture": "sitting",
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C"
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D"
           }
         ],
         "meters": [
           {
-            "id": "444BE3A7-33FE-4ECD-9A77-B97FE8222ADB",
+            "id": "C8B13534-B537-4914-BD30-2A47B7CAF1FA",
             "name": "Table",
             "position": {
               "x": 0.4,
@@ -314,7 +314,7 @@
             "height": 0.5,
             "facing": "up",
             "bearing": 0,
-            "scanID": "98E6B45B-15B4-40C3-81A2-2854D2DD997C"
+            "scanID": "3713E893-7FBC-4521-A451-3FEB60DD195D"
           }
         ],
         "exposure": {
@@ -338,6 +338,14 @@
         },
         "studio": {
           "backdrop": "led-wall",
+          "wallID": "8354CE65-948C-4C61-A7B0-6E650BA61898",
+          "width": 4,
+          "moreWalls": [
+            {
+              "wallID": "2812C8AB-8C4D-4869-BA6A-65B93C05B4C0",
+              "width": 3
+            }
+          ],
           "nits": 450,
           "floor": "concrete-grey"
         }
@@ -346,10 +354,10 @@
     "objects": []
   },
   "plans": {
-    "98E6B45B-15B4-40C3-81A2-2854D2DD997C": {
+    "3713E893-7FBC-4521-A451-3FEB60DD195D": {
       "walls": [
         {
-          "id": "62E76FAA-72F8-40A3-8E6E-99971AE99D79",
+          "id": "8354CE65-948C-4C61-A7B0-6E650BA61898",
           "kind": "wall",
           "a": {
             "x": -3.1,
@@ -364,7 +372,7 @@
           "isOpen": false
         },
         {
-          "id": "9B6DC376-8C3F-4F03-8CB1-A71F81B36A28",
+          "id": "2812C8AB-8C4D-4869-BA6A-65B93C05B4C0",
           "kind": "wall",
           "a": {
             "x": 3.1,
@@ -379,7 +387,7 @@
           "isOpen": false
         },
         {
-          "id": "F3052D09-A98D-4831-9F30-BE5C153EEF22",
+          "id": "14EC7169-6BE4-4721-90AA-9DFB4C9FFCB6",
           "kind": "wall",
           "a": {
             "x": 3.1,
@@ -394,7 +402,7 @@
           "isOpen": false
         },
         {
-          "id": "CD33372F-7746-4C82-9EA2-5D362CEAE7A8",
+          "id": "9F887068-9F29-4A52-AB08-654909D032DD",
           "kind": "wall",
           "a": {
             "x": -3.1,
@@ -411,7 +419,7 @@
       ],
       "doors": [
         {
-          "id": "B93F15D2-5300-49CF-A3C9-1EFED3BA9889",
+          "id": "96491A23-6D4B-4850-B127-1539F42D2EB0",
           "kind": "door",
           "a": {
             "x": -3.1,
@@ -428,7 +436,7 @@
       ],
       "windows": [
         {
-          "id": "09A95805-F32F-4235-A935-544D6692C348",
+          "id": "FC5B8442-5E43-4AB0-A9A5-D0540C2CB7E6",
           "kind": "window",
           "a": {
             "x": -1.9,
@@ -444,7 +452,7 @@
           "curtain": "sheer"
         },
         {
-          "id": "9C7F4276-C0C3-4BBD-9DF6-DC8F2C66D4A5",
+          "id": "936E6C40-4BD3-4D93-A813-C1D85EC2D9D4",
           "kind": "window",
           "a": {
             "x": 0.7,
@@ -485,7 +493,7 @@
       "floorY": 0,
       "objects": [
         {
-          "id": "CD894B8C-05E4-45EA-955C-C46ED3801FC3",
+          "id": "8B59FBC6-9E4D-48ED-88B7-60C7B42D7FBB",
           "category": "Sofa",
           "center": {
             "x": 0.4,
@@ -497,7 +505,7 @@
           "rotation": 0
         },
         {
-          "id": "EF6677E7-6680-4B9E-9178-CA0E1DE7C188",
+          "id": "DFEAAD9D-B8A0-4950-9045-DD4907D5AE82",
           "category": "Table",
           "center": {
             "x": 0.4,
@@ -509,7 +517,7 @@
           "rotation": 0
         },
         {
-          "id": "67F0A57C-4889-4960-873F-F3789656982A",
+          "id": "A8FB13E9-47CE-47A8-B104-B15C25B6929E",
           "category": "Storage",
           "center": {
             "x": 2.8,

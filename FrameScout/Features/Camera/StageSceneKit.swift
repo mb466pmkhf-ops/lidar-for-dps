@@ -4,7 +4,8 @@ import UIKit
 /// What the 3D view needs to draw a studio set and daylight (see `Stage`). Picture only: how bright
 /// things look here is not a reading.
 struct StageVisuals: Hashable {
-    var backdrop: Stage.BackdropPlacement?
+    /// Every piece of the backdrop (one per wall) and the corners where pieces meet.
+    var backdrop: Stage.BackdropLayout?
     var ledNits: Double = Stage.ledDefaultNits
     var ledKelvin: Double = 5600
     var floor: FloorInfo?
@@ -34,7 +35,10 @@ enum StageSceneKit {
     static func build(_ v: StageVisuals) -> SCNNode {
         let root = SCNNode()
         root.name = "stage"
-        if let bd = v.backdrop { root.addChildNode(backdrop(bd, v: v)) }
+        if let layout = v.backdrop {
+            for bd in layout.pieces { root.addChildNode(backdrop(bd, v: v)) }
+            for c in layout.corners { root.addChildNode(corner(c, layout: layout, v: v)) }
+        }
         if let f = v.floor { root.addChildNode(floor(f, colour: v.floorColour, polygons: v.floorPolygons, y: v.floorY)) }
         for c in v.curtains { root.addChildNode(curtain(c, v: v)) }
         if v.daylight != nil { root.addChildNode(lid(v)) }
@@ -120,6 +124,68 @@ enum StageSceneKit {
             ln.simdPosition = SIMD3(Float(mid.x + bd.inward.x * 0.02), Float(v.floorY + bd.height / 2), Float(mid.z + bd.inward.z * 0.02))
             ln.simdLook(at: ln.simdPosition + SIMD3(Float(bd.inward.x), 0, Float(bd.inward.z)))
             node.addChildNode(ln)
+        }
+        return node
+    }
+
+    /// Where two pieces meet: a cyc bends round a vertical radius (its floor cove swung round the
+    /// corner), and cyc and paper get the floor between the two sweeps. LED pieces just butt together.
+    private static func corner(_ c: Stage.BackdropCorner, layout: Stage.BackdropLayout, v: StageVisuals) -> SCNNode {
+        let node = SCNNode()
+        let kind = layout.info.kind
+        guard kind != .led else { return node }
+        let m = SceneKitBuilder.material(UIColor(hex: layout.colour), roughness: kind == .cyc ? 0.9 : 0.75)
+        m.isDoubleSided = true
+        let base = v.floorY + c.bottom
+        if c.radius > 0.05 {
+            let coveR = min(0.6, c.height * 0.5, layout.sweep * 0.8, c.radius - 0.05)
+            let prof = profile(height: c.height, sweep: layout.sweep, radius: coveR).filter { $0.d <= coveR + 1e-6 }
+            let a0 = atan2(c.tangentA.z - c.centre.z, c.tangentA.x - c.centre.x)
+            var da = atan2(c.tangentB.z - c.centre.z, c.tangentB.x - c.centre.x) - a0
+            while da > .pi { da -= 2 * .pi }
+            while da < -.pi { da += 2 * .pi }
+            let steps = 16
+            var verts: [SCNVector3] = [], normals: [SCNVector3] = [], idx: [Int32] = []
+            for k in 0...steps {
+                let a = a0 + da * Double(k) / Double(steps)
+                let dir = PlanPoint(x: cos(a), z: sin(a))
+                for (i, p) in prof.enumerated() {
+                    let q0 = prof[max(0, i - 1)], q1 = prof[min(prof.count - 1, i + 1)]
+                    let td = q1.d - q0.d, ty = q1.y - q0.y
+                    let tl = max(hypot(td, ty), 1e-6)
+                    let nd = -ty / tl, ny = td / tl
+                    let r = c.radius - p.d
+                    verts.append(SCNVector3(Float(c.centre.x + dir.x * r), Float(base + p.y + 0.004), Float(c.centre.z + dir.z * r)))
+                    // Into the room is towards the centre.
+                    normals.append(SCNVector3(Float(-dir.x * nd), Float(ny), Float(-dir.z * nd)))
+                }
+            }
+            let n = Int32(prof.count)
+            for k in 0..<Int32(steps) {
+                for i in 0..<(n - 1) {
+                    let p = k * n + i, q = p + n
+                    idx += [p, q, p + 1, p + 1, q, q + 1]
+                }
+            }
+            let g = SCNGeometry(sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: normals)],
+                                elements: [SCNGeometryElement(indices: idx, primitiveType: .triangles)])
+            g.materials = [m]
+            node.addChildNode(SCNNode(geometry: g))
+        }
+        // The floor between the two sweeps.
+        let foot = Stage.cornerFootprint(c, sweep: max(layout.sweep, 0.3))
+        if foot.count >= 3 {
+            let path = UIBezierPath()
+            path.move(to: CGPoint(x: foot[0].x, y: -foot[0].z))
+            for p in foot.dropFirst() { path.addLine(to: CGPoint(x: p.x, y: -p.z)) }
+            path.close()
+            let shape = SCNShape(path: path, extrusionDepth: 0)
+            shape.materials = [m]
+            let f = SCNNode(geometry: shape)
+            f.eulerAngles.x = -.pi / 2
+            f.simdPosition = SIMD3(0, Float(base + 0.004), 0)
+            f.castsShadow = false
+            node.addChildNode(f)
         }
         return node
     }

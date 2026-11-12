@@ -774,7 +774,7 @@ struct PlanEditorView: View {
     private func stageVisuals(_ location: Location) -> StageVisuals? {
         guard !plan.isEmpty else { return nil }
         var v = StageVisuals()
-        v.backdrop = Stage.backdropPlacement(location, plan: plan)
+        v.backdrop = Stage.backdropLayout(location, plan: plan)
         if let st = location.studio {
             v.ledNits = st.nits ?? Stage.ledDefaultNits
             v.ledKelvin = st.kelvin ?? 5600
@@ -1174,7 +1174,7 @@ struct PlanEditorView: View {
         if let north = scan?.northOffset {
             o.northWorldBearing = (360 - north).truncatingRemainder(dividingBy: 360)
         }
-        o.backdrop = plan.isEmpty ? nil : Stage.backdropPlacement(location, plan: plan)
+        o.backdrop = plan.isEmpty ? nil : Stage.backdropLayout(location, plan: plan)
         if location.daylight?.isOn == true {
             // Where the sun is, and which bare windows it comes in through.
             let sun = Stage.sunPlacement(location, scan: scan)

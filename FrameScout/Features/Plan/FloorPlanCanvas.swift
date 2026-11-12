@@ -141,8 +141,8 @@ struct PlanOverlay {
     var sunWorldBearing: Double?
     var sunElevation: Double?
     var litWindows: Set<UUID> = []
-    /// A studio backdrop against one wall (see `Stage`).
-    var backdrop: Stage.BackdropPlacement?
+    /// A studio backdrop on one wall or round several (see `Stage`).
+    var backdrop: Stage.BackdropLayout?
     var people: [PlanPersonMarker] = []
     var meters: [PlanMeterMarker] = []
     var luxMap: PlanLuxMap?
@@ -388,21 +388,34 @@ struct PlanRenderer {
         }
     }
 
-    /// The backdrop's footprint and its sweep onto the floor, in its own colour.
+    /// The backdrop's footprint on each wall and its sweep onto the floor, and the corners, in its own colour.
     private func drawBackdrop(_ ctx: inout GraphicsContext) {
-        guard let bd = overlay.backdrop else { return }
-        let sweep = max(bd.sweep, 0.12)
-        var path = Path()
-        path.move(to: s(bd.a))
-        path.addLine(to: s(bd.b))
-        path.addLine(to: s(bd.b + bd.inward * sweep))
-        path.addLine(to: s(bd.a + bd.inward * sweep))
-        path.closeSubpath()
-        ctx.fill(path, with: .color(Color(hex: bd.colour).opacity(bd.info.kind == .led ? 0.85 : 0.5)))
-        ctx.stroke(path, with: .color(Theme.textTertiary), style: StrokeStyle(lineWidth: 1, dash: bd.info.kind == .paper ? [4, 3] : []))
+        guard let layout = overlay.backdrop, let first = layout.pieces.first else { return }
+        let sweep = max(first.sweep, 0.12)
+        let fill = Color(hex: layout.colour).opacity(layout.info.kind == .led ? 0.85 : 0.5)
+        for bd in layout.pieces {
+            var path = Path()
+            path.move(to: s(bd.a))
+            path.addLine(to: s(bd.b))
+            path.addLine(to: s(bd.b + bd.inward * sweep))
+            path.addLine(to: s(bd.a + bd.inward * sweep))
+            path.closeSubpath()
+            ctx.fill(path, with: .color(fill))
+            ctx.stroke(path, with: .color(Theme.textTertiary), style: StrokeStyle(lineWidth: 1, dash: layout.info.kind == .paper ? [4, 3] : []))
+        }
+        for c in layout.corners {
+            let foot = Stage.cornerFootprint(c, sweep: sweep)
+            guard foot.count >= 3 else { continue }
+            var path = Path()
+            path.move(to: s(foot[0]))
+            for p in foot.dropFirst() { path.addLine(to: s(p)) }
+            path.closeSubpath()
+            ctx.fill(path, with: .color(fill))
+        }
         if full && px(1) > 30 {
+            let bd = layout.pieces.max { $0.width < $1.width } ?? first
             let mid = PlanPoint(x: (bd.a.x + bd.b.x) / 2, z: (bd.a.z + bd.b.z) / 2) + bd.inward * (sweep / 2)
-            ctx.draw(Text(bd.info.label).font(.poppins(.regular, fs(10))).foregroundColor(Theme.ink), at: s(mid))
+            ctx.draw(Text(layout.info.label).font(.poppins(.regular, fs(10))).foregroundColor(Theme.ink), at: s(mid))
         }
     }
 
