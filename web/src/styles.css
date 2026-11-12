@@ -119,6 +119,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
 .swatch.on { border-color: var(--accent); }
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.wall-picks { display: flex; flex-direction: column; gap: 4px; }
 
 /* Plan */
 .plan-wrap { position: relative; min-height: 0; overflow: hidden; background: var(--paper); touch-action: none; }

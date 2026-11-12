@@ -109,7 +109,12 @@ struct StageSheet: View {
                 editStudio { s in
                     s.backdrop = v
                     s.colour = nil
-                    if v == nil { s.wallID = nil }
+                    if v == nil { s.wallID = nil; s.moreWalls = nil }
+                    // Keep the walls, but let each piece take the new backdrop's own size.
+                    s.width = nil
+                    s.height = nil
+                    s.offset = nil
+                    s.moreWalls = s.moreWalls.map { $0.map { BackdropWall(wallID: $0.wallID) } }
                 }
             })) {
                 Text("None").tag(String?.none)
@@ -128,18 +133,56 @@ struct StageSheet: View {
         }
     }
 
+    /// A wall the backdrop is on, as stored (the main wall first).
+    private struct Part: Hashable { var wallID: UUID; var offset: Double?; var width: Double? }
+
+    private func parts(_ layout: Stage.BackdropLayout?) -> [Part] {
+        guard let main = layout?.pieces.first else { return [] }
+        let onPlan = Set(layout?.pieces.map(\.wall.id) ?? [])
+        return [Part(wallID: main.wall.id, offset: studio.offset, width: studio.width)]
+            + (studio.moreWalls ?? []).filter { onPlan.contains($0.wallID) }.map { Part(wallID: $0.wallID, offset: $0.offset, width: $0.width) }
+    }
+
+    private func saveParts(_ next: [Part]) {
+        guard let main = next.first else { return }
+        editStudio { s in
+            s.wallID = main.wallID
+            s.offset = main.offset
+            s.width = main.width
+            let more = next.dropFirst().map { BackdropWall(wallID: $0.wallID, offset: $0.offset, width: $0.width) }
+            s.moreWalls = more.isEmpty ? nil : Array(more)
+        }
+    }
+
     private var studioDetailSection: some View {
         let info = Stage.backdrop(studio.backdrop)
         let floor = Stage.floor(studio.floor)
-        let placement = Stage.backdropPlacement(location, plan: plan)
-        let walls = plan?.walls ?? []
+        let layout = Stage.backdropLayout(location, plan: plan)
+        let placement = layout?.pieces.first
+        let walls = (plan?.walls ?? []).filter { $0.length > 0.5 }
+        let current = parts(layout)
+        let names = plan.map(Stage.wallNames) ?? [:]
+        func name(_ id: UUID) -> String { names[id] ?? "Wall" }
         return Section {
             if let info {
-                if walls.count > 1 {
-                    Picker("On wall", selection: Binding(get: { studio.wallID ?? placement?.wall.id }, set: { v in editStudio { $0.wallID = v } })) {
-                        ForEach(Array(walls.enumerated()), id: \.element.id) { i, w in
-                            Text("Wall \(i + 1), \(UnitsFormatter.distance(w.length))").tag(UUID?.some(w.id))
+                if walls.count > 1, let placement {
+                    ForEach(walls) { w in
+                        let on = current.contains { $0.wallID == w.id }
+                        let corner = !on && current.contains { p in walls.first { $0.id == p.wallID }.map { Stage.wallsTouch(w, $0) } ?? false }
+                        Toggle(isOn: Binding(get: { on }, set: { v in
+                            if v { saveParts(current + [Part(wallID: w.id)]) }
+                            else if current.count > 1 { saveParts(current.filter { $0.wallID != w.id }) }
+                        })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(name(w.id)), \(UnitsFormatter.distance(w.length))")
+                                if studio.wallID == nil && w.id == placement.wall.id {
+                                    Text("Faces the camera").font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                                } else if corner {
+                                    Text(info.kind == .cyc ? "Makes a corner: the cyc curves round it" : "Makes a corner").font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                                }
+                            }
                         }
+                        .disabled(on && current.count == 1)
                     }
                 }
                 if info.pickColour {
@@ -148,10 +191,19 @@ struct StageSheet: View {
                                 supportsOpacity: false)
                 }
                 if let placement {
-                    let wallLength = placement.wall.length
-                    sliderRow("Width", value: placement.width, range: 0.5...max(0.51, wallLength), unit: "m") { v in editStudio { $0.width = v } }
                     sliderRow("Height", value: placement.height, range: 0.5...max(0.51, placement.wall.bottom + placement.wall.height), unit: "m") { v in editStudio { $0.height = v } }
-                    sliderRow("Along the wall", value: studio.offset ?? 0, range: -wallLength / 2...wallLength / 2, unit: "m") { v in editStudio { $0.offset = v } }
+                    ForEach(Array(current.enumerated()), id: \.element.wallID) { i, part in
+                        let piece = layout?.pieces.first { $0.wall.id == part.wallID }
+                        let wallLength = piece?.wall.length ?? placement.wall.length
+                        let width = min(wallLength, max(0.5, part.width ?? Stage.defaultBackdropWidth(info.kind, wallLength: wallLength)))
+                        let put: (Part) -> Void = { p in var next = current; next[i] = p; saveParts(next) }
+                        if current.count > 1 { Text(name(part.wallID)).font(.fsCaption).foregroundStyle(Theme.textSecondary) }
+                        sliderRow("Width", value: width, range: 0.5...max(0.51, wallLength), unit: "m") { v in var p = part; p.width = v; put(p) }
+                        if width < wallLength - 0.05 {
+                            let slack = (wallLength - width) / 2
+                            sliderRow("Along the wall", value: part.offset ?? piece?.offset ?? 0, range: -slack...slack, unit: "m") { v in var p = part; p.offset = v; put(p) }
+                        }
+                    }
                 }
                 if info.kind == .led {
                     sliderRow("Brightness", value: studio.nits ?? Stage.ledDefaultNits, range: Stage.ledNitsRange, unit: "nits", digits: 0) { v in

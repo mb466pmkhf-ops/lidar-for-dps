@@ -157,7 +157,7 @@ enum LightingCalculator {
             if let s = env.sun {
                 sun = (LightingCalculator.direction(bearing: s.bearing, tilt: s.elevation), s.directNormal)
             }
-            if let led = env.ledWall { areas.append(led) }
+            areas += env.ledWalls
             guard let plan, env.windowLuminance > 0 || sun != nil else { return }
             for w in plan.windows {
                 let width = w.a.distance(to: w.b)

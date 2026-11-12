@@ -1,6 +1,6 @@
 // Top-down plan: the scan's walls, openings and set pieces, with cameras, lights, grip, people and
 // meters on top. Same coordinates as the phone (x right, z down, bearing 0° = up, clockwise).
-import { backdropPlacement, inwardNormal, sunPlacement } from '../model/stage';
+import { backdropLayout, cornerFootprint, inwardNormal, sunPlacement } from '../model/stage';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactElement } from "react";
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, Location, PlanPoint, PlanRect, PrevisCharacter } from '../model/types';
 import { KIND_INFO, distanceForLux, photometrics } from '../model/photometrics';
@@ -426,17 +426,29 @@ export function PlanCanvas(props: Props) {
         )}
         {plan && !hidden.has('floors') && plan.floorPolygons.map((poly, i) => <polygon key={'f' + i} points={poly.map(pt).join(' ')} fill="var(--floor)" pointerEvents="none" />)}
         {plan && (() => {
-          // The studio backdrop: its footprint on the wall plus the sweep onto the floor.
-          const bd = backdropPlacement(location, plan);
-          if (!bd) return null;
-          const sweep = Math.max(bd.sweep, 0.12);
-          const q = [bd.a, bd.b, { x: bd.b.x + bd.inward.x * sweep, z: bd.b.z + bd.inward.z * sweep }, { x: bd.a.x + bd.inward.x * sweep, z: bd.a.z + bd.inward.z * sweep }];
-          const mid = { x: (bd.a.x + bd.b.x) / 2 + bd.inward.x * sweep / 2, z: (bd.a.z + bd.b.z) / 2 + bd.inward.z * sweep / 2 };
+          // The studio backdrop: each piece's footprint on its wall plus the sweep onto the floor, and the corners.
+          const layout = backdropLayout(location, plan);
+          if (!layout) return null;
+          const kind = layout.info.kind;
+          const sweep = Math.max(layout.pieces[0]?.sweep ?? 0, 0.12);
+          const colour = layout.pieces[0]?.colour ?? layout.info.colour;
+          const longest = layout.pieces.reduce((m, x) => (x.width > m.width ? x : m), layout.pieces[0]);
           return (
             <g pointerEvents="none">
-              <polygon points={q.map(pt).join(' ')} fill={bd.colour} fillOpacity={bd.info.kind === 'led' ? 0.85 : 0.5} stroke="var(--ink3)" strokeDasharray={bd.info.kind === 'paper' ? '4 3' : undefined} />
-              {bd.info.kind === 'led' && <line x1={sx(bd.a.x)} y1={sy(bd.a.z)} x2={sx(bd.b.x)} y2={sy(bd.b.z)} stroke="var(--accent)" strokeWidth={3} />}
-              {v.scale > 30 && labelFor(bd.info.label, mid, 0)}
+              {layout.pieces.map((bd, i) => {
+                const q = [bd.a, bd.b, { x: bd.b.x + bd.inward.x * sweep, z: bd.b.z + bd.inward.z * sweep }, { x: bd.a.x + bd.inward.x * sweep, z: bd.a.z + bd.inward.z * sweep }];
+                return (
+                  <g key={i}>
+                    <polygon points={q.map(pt).join(' ')} fill={colour} fillOpacity={kind === 'led' ? 0.85 : 0.5} stroke="var(--ink3)" strokeDasharray={kind === 'paper' ? '4 3' : undefined} />
+                    {kind === 'led' && <line x1={sx(bd.a.x)} y1={sy(bd.a.z)} x2={sx(bd.b.x)} y2={sy(bd.b.z)} stroke="var(--accent)" strokeWidth={3} />}
+                  </g>
+                );
+              })}
+              {layout.corners.map((c, i) => {
+                const f = cornerFootprint(c, sweep);
+                return f.length > 2 && <polygon key={'c' + i} points={f.map(pt).join(' ')} fill={colour} fillOpacity={kind === 'led' ? 0.85 : 0.5} stroke="none" />;
+              })}
+              {v.scale > 30 && longest && labelFor(layout.info.label, { x: (longest.a.x + longest.b.x) / 2 + longest.inward.x * sweep / 2, z: (longest.a.z + longest.b.z) / 2 + longest.inward.z * sweep / 2 }, 0)}
             </g>
           );
         })()}

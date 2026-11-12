@@ -2,7 +2,7 @@
 // wall, floor finishes, curtains and the sky. What gives light here (sun, sky through the windows,
 // LED wall) uses the same levels as the readings (model/stage.ts), on the view's one brightness scale.
 import * as THREE from 'three';
-import type { BackdropPlacement, SkyKind } from '../../model/stage';
+import { cornerFootprint, type BackdropCorner, type BackdropPlacement, type SkyKind } from '../../model/stage';
 import { DARK, STEEL, bar, canvas, finish, mat, mesh, rng, v } from './kit';
 
 /** A sheet that follows a profile (z out from the wall, y up) and runs `width` along local X. */
@@ -96,6 +96,55 @@ export function backdrop(bd: BackdropPlacement, ledColour: THREE.Color, floorY =
     out.ledLight = light;
   }
   return out;
+}
+
+/** Where two backdrop pieces meet in a corner, in world space. A cyc bends round a vertical radius (the
+ *  same wall-to-floor cove swung round the corner); every kind gets the floor between the two sweeps. */
+export function backdropCorner(c: BackdropCorner, kind: BackdropPlacement['info']['kind'], colour: string, sweep: number, floorY = 0): THREE.Group {
+  const group = new THREE.Group();
+  if (kind === 'led') return group;
+  const m = mat(colour, { roughness: kind === 'cyc' ? 0.92 : 0.85, metalness: 0, side: THREE.DoubleSide });
+  const base = floorY + c.bottom;
+  if (c.radius > 0.05) {
+    // Spokes from the centre to each face; the cove profile (wall down, then out) is swung between them.
+    const prof = coveProfile(c.height, Math.min(0.5, c.radius - 0.05), sweep).filter(([z]) => z <= Math.min(0.5, c.radius - 0.05) + 1e-6);
+    const a0 = Math.atan2(c.tangentA.z - c.centre.z, c.tangentA.x - c.centre.x);
+    let a1 = Math.atan2(c.tangentB.z - c.centre.z, c.tangentB.x - c.centre.x);
+    let da = a1 - a0;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    a1 = a0 + da;
+    const steps = 16, pos: number[] = [], idx: number[] = [];
+    for (let k = 0; k <= steps; k++) {
+      const a = a0 + (da * k) / steps;
+      for (const [z, y] of prof) {
+        const d = c.radius - z;
+        pos.push(c.centre.x + Math.cos(a) * d, base + y, c.centre.z + Math.sin(a) * d);
+      }
+    }
+    const n = prof.length;
+    for (let k = 0; k < steps; k++) for (let i = 0; i < n - 1; i++) {
+      const p = k * n + i, q = p + n;
+      idx.push(p, q, p + 1, p + 1, q, q + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    group.add(new THREE.Mesh(g, m));
+  }
+  // The floor between the two sweeps.
+  const foot = cornerFootprint(c, Math.max(sweep, 0.3));
+  if (foot.length >= 3) {
+    const shape = new THREE.Shape(foot.map(p => new THREE.Vector2(p.x, -p.z)));
+    const g = new THREE.ShapeGeometry(shape);
+    g.rotateX(-Math.PI / 2);
+    const f = new THREE.Mesh(g, m);
+    f.position.y = base + 0.002;
+    f.receiveShadow = true;
+    group.add(f);
+  }
+  return group;
 }
 
 /** Concrete: a pale mottled map, tinted by the material colour. */

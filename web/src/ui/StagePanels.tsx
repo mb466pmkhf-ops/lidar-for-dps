@@ -2,8 +2,8 @@
 // phone (model/stage.ts ↔ Stage.swift).
 import type { Location } from '../model/types';
 import {
-  BACKDROPS, CURTAIN_LABEL, FLOORS, LED_DEFAULT_NITS, LED_NITS_RANGE, SKY, backdropInfo, backdropPlacement, clockProblem, daylightLevels,
-  floorInfo, sunPlacement, type CurtainKind, type DaylightSetup, type SkyKind, type StudioSetup,
+  BACKDROPS, CURTAIN_LABEL, FLOORS, LED_DEFAULT_NITS, LED_NITS_RANGE, SKY, backdropInfo, backdropLayout, clockProblem, daylightLevels, defaultBackdropWidth, wallNames, wallsTouch,
+  floorInfo, sunPlacement, type CurtainKind, type DaylightSetup, type SkyKind, type StudioSetup, type BackdropWall,
 } from '../model/stage';
 import { Badge, Panel, Slider, type InspectorProps } from './Inspector';
 import { deg, lux as fmtLux, metres, pct } from './format';
@@ -119,17 +119,33 @@ export function StudioPanel(p: InspectorProps) {
     return { ...loc, studio: next };
   }, undo);
   const info = backdropInfo(st.backdrop);
-  const placed = backdropPlacement(p.location, p.plan);
+  const layout = backdropLayout(p.location, p.plan);
+  const placed = layout?.pieces[0];
   const walls = (p.plan?.walls ?? []).filter(w => segLen(w) > 0.5);
   const floor = floorInfo(st.floor);
-  const wallLen = placed ? segLen(placed.wall) : 0;
   const wallTop = placed ? placed.wall.bottom + placed.wall.height : 3;
+  // The walls it is on, main first: (wall, offset, width) as stored.
+  const parts: { id: string; offset?: number; width?: number }[] = placed
+    ? [{ id: placed.wall.id, offset: st.offset, width: st.width }, ...(st.moreWalls ?? []).filter(m => layout!.pieces.some(x => x.wall.id.toUpperCase() === m.wallID.toUpperCase())).map(m => ({ id: m.wallID, offset: m.offset, width: m.width }))]
+    : [];
+  const onWall = (id: string) => parts.some(x => x.id.toUpperCase() === id.toUpperCase());
+  const save = (next: { id: string; offset?: number; width?: number }[], undo = true) => {
+    const [main, ...more] = next;
+    set({ wallID: main.id, offset: main.offset, width: main.width, moreWalls: more.length ? more.map((m): BackdropWall => ({ wallID: m.id, offset: m.offset, width: m.width })) : undefined }, undo);
+  };
+  const toggleWall = (id: string, on: boolean) => {
+    if (on) save([...parts, { id }]);
+    else if (parts.length > 1) save(parts.filter(x => x.id.toUpperCase() !== id.toUpperCase()));
+  };
+  const names = p.plan ? wallNames(p.plan) : new Map<string, string>();
+  const wallName = (id: string) => names.get(walls.find(w => w.id.toUpperCase() === id.toUpperCase())?.id ?? '') ?? 'Wall';
+  const inCorner = (id: string) => { const w = walls.find(x => x.id === id); return !!w && !onWall(id) && parts.some(x => { const o = walls.find(y => y.id.toUpperCase() === x.id.toUpperCase()); return !!o && wallsTouch(w, o); }); };
   return (
     <Panel title="Studio set" collapsible open={!!(st.backdrop || st.floor)}>
-      {!p.plan ? <p className="note">Draw a room or scan one first; the backdrop stands against one of its walls.</p> : (
+      {!p.plan ? <p className="note">Draw a room or scan one first; the backdrop stands against its walls.</p> : (
         <>
           <div className="field"><span>Backdrop</span>
-            <select value={st.backdrop ?? ''} onChange={e => set({ backdrop: e.target.value || undefined, width: undefined, height: undefined, offset: undefined })}>
+            <select value={st.backdrop ?? ''} onChange={e => set({ backdrop: e.target.value || undefined, width: undefined, height: undefined, offset: undefined, moreWalls: e.target.value && st.moreWalls?.length ? st.moreWalls.map(m => ({ wallID: m.wallID })) : undefined })}>
               <option value="">None</option>
               <optgroup label="Cyc and screens">{BACKDROPS.filter(b => b.kind === 'cyc').map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
               <optgroup label="LED">{BACKDROPS.filter(b => b.kind === 'led').map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
@@ -138,21 +154,40 @@ export function StudioPanel(p: InspectorProps) {
           </div>
           {info && placed && (
             <>
-              <div className="field"><span>On the wall</span>
-                <select value={st.wallID ?? ''} onChange={e => set({ wallID: e.target.value || undefined, offset: undefined })}>
-                  <option value="">The one the camera faces</option>
-                  {walls.map((w, i) => <option key={w.id} value={w.id}>Wall {i + 1} ({metres(segLen(w))})</option>)}
-                </select><span />
+              <div className="field" style={{ alignItems: 'start' }}><span>On the walls</span>
+                <div className="wall-picks">
+                  {walls.map(w => {
+                    const on = onWall(w.id);
+                    return (
+                      <label key={w.id} className="toggle">
+                        <input type="checkbox" checked={on} disabled={on && parts.length === 1} onChange={e => toggleWall(w.id, e.target.checked)} />
+                        {' '}{wallName(w.id)} ({metres(segLen(w))}){!st.wallID && w.id === placed.wall.id ? ', faces the camera' : ''}{inCorner(w.id) ? ', makes a corner' : ''}
+                      </label>
+                    );
+                  })}
+                </div><span />
               </div>
+              <p className="note">Tick the next wall along for a corner{info.kind === 'cyc' ? ' cyc: it curves round the corner' : ''}, or more for a U.</p>
               {info.pickColour && (
                 <div className="field"><span>Colour</span><input type="color" value={st.colour ?? info.colour} onChange={e => set({ colour: e.target.value }, false)} aria-label="Backdrop colour" /><span /></div>
               )}
-              <Slider label="Width" value={placed.width} min={0.5} max={Math.max(0.5, wallLen)} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />
               <Slider label="Height" value={placed.height} min={0.5} max={Math.max(0.5, wallTop)} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
-              {placed.width < wallLen - 0.05 && (
-                <Slider label="Along the wall" value={st.offset ?? 0} min={-(wallLen - placed.width) / 2} max={(wallLen - placed.width) / 2} step={0.05}
-                  format={v => (Math.abs(v) < 0.025 ? 'Centred' : `${metres(Math.abs(v))} ${v < 0 ? 'left' : 'right'}`)} onChange={v => set({ offset: v }, false)} />
-              )}
+              {parts.map((part, i) => {
+                const w = walls.find(x => x.id.toUpperCase() === part.id.toUpperCase()) ?? placed.wall;
+                const L = segLen(w);
+                const width = Math.min(L, Math.max(0.5, part.width ?? defaultBackdropWidth(info.kind, L)));
+                const put = (patch: { offset?: number; width?: number }) => save(parts.map((x, j) => (j === i ? { ...x, ...patch } : x)), false);
+                return (
+                  <div key={part.id}>
+                    {parts.length > 1 && <p className="label" style={{ margin: '8px 0 2px' }}>{wallName(part.id)}</p>}
+                    <Slider label="Width" value={width} min={0.5} max={Math.max(0.5, L)} step={0.05} format={metres} onChange={v => put({ width: v })} />
+                    {width < L - 0.05 && (
+                      <Slider label="Along the wall" value={part.offset ?? layout?.pieces.find(x => x.wall.id === w.id)?.offset ?? 0} min={-(L - width) / 2} max={(L - width) / 2} step={0.05}
+                        format={v => (Math.abs(v) < 0.025 ? 'Centred' : `${metres(Math.abs(v))} ${v < 0 ? 'left' : 'right'}`)} onChange={v => put({ offset: v })} />
+                    )}
+                  </div>
+                );
+              })}
               {info.kind === 'led' && (
                 <>
                   <Slider label="Brightness" value={st.nits ?? LED_DEFAULT_NITS} min={LED_NITS_RANGE.min} max={LED_NITS_RANGE.max} step={10} format={v => `${Math.round(v)} nits`} onChange={v => set({ nits: v }, false)} />

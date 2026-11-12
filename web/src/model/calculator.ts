@@ -260,7 +260,7 @@ function addEnvironment(scene: Scene, env: Environment, plan?: FloorPlan) {
     const toward = direction(env.sun.bearing, env.sun.elevation);
     scene.sun = { toward, directNormal: env.sun.directNormal };
   }
-  if (env.ledWall) scene.areas.push(env.ledWall);
+  scene.areas.push(...env.ledWalls);
   if (!plan || !(env.windowLuminance > 0 || scene.sun)) return;
   for (const w of plan.windows) {
     const width = planDist(w.a, w.b);

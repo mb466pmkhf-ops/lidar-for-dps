@@ -8,7 +8,7 @@ import { demoBundle } from '../src/model/demo';
 import { newLight } from '../src/model/factory';
 import { solarPosition } from '../src/model/solar';
 import {
-  AMBIENT_IDS, BACKDROPS, FLOORS, backdropPlacement, daylightLevels, environment, insideRoom, inwardNormal, sunPlacement, windowViewLuminance,
+  AMBIENT_IDS, BACKDROPS, CYC_CORNER_RADIUS, FLOORS, backdropLayout, backdropPlacement, cornerFootprint, wallNames, daylightLevels, environment, insideRoom, inwardNormal, sunPlacement, windowViewLuminance,
 } from '../src/model/stage';
 import type { FloorPlan, Location, ProjectBundle } from '../src/model/types';
 
@@ -158,6 +158,64 @@ describe('studio builds', () => {
   });
 });
 
+// MARK: Backdrops on several walls
+
+describe('backdrop round several walls', () => {
+  const plan = room();
+  const [top, right, bottom] = plan.walls;
+  const near = (a: { x: number; z: number }, x: number, z: number) => Math.hypot(a.x - x, a.z - z) < 1e-9;
+  it('a corner cyc curves round the corner and each piece stops at the bend', () => {
+    const l = loc({ studio: { backdrop: 'cyc-white', wallID: top.id, moreWalls: [{ wallID: right.id }] } });
+    const lay = backdropLayout(l, plan)!;
+    expect(lay.pieces).toHaveLength(2);
+    expect(lay.corners).toHaveLength(1);
+    const c = lay.corners[0];
+    // Faces 2 cm off the walls meet at (2.98, −2.23); a 90° bend of 0.75 m starts 0.75 m back on each.
+    expect(near(c.point, 2.98, -2.23)).toBe(true);
+    expect(c.radius).toBeCloseTo(CYC_CORNER_RADIUS, 9);
+    expect(near(c.centre, 2.98 - 0.75, -2.23 + 0.75)).toBe(true);
+    const [p0, p1] = lay.pieces;
+    expect([p0.a, p0.b].some(e => near(e, 2.23, -2.23))).toBe(true);
+    expect([p1.a, p1.b].some(e => near(e, 2.98, -1.48))).toBe(true);
+    expect(p0.width).toBeCloseTo(6 - 0.02 - 0.75, 9);
+    expect(cornerFootprint(c, 1.5)).toHaveLength(6);
+  });
+  it('a narrower piece goes into the corner it shares', () => {
+    const l = loc({ studio: { backdrop: 'paper-white', wallID: top.id, moreWalls: [{ wallID: right.id }] } });
+    const [p0, p1] = backdropLayout(l, plan)!.pieces;
+    // Paper hangs 35 cm off the wall, so the two rolls butt at (2.65, −1.90).
+    expect([p0.a, p0.b].some(e => near(e, 2.65, -1.9))).toBe(true);
+    expect([p1.a, p1.b].some(e => near(e, 2.65, -1.9))).toBe(true);
+    expect(p0.width).toBeCloseTo(2.72 - 0.35, 9);
+  });
+  it('a U has two corners; walls that do not meet have none', () => {
+    const u = backdropLayout(loc({ studio: { backdrop: 'cyc-green', wallID: top.id, moreWalls: [{ wallID: right.id }, { wallID: bottom.id }] } }), plan)!;
+    expect(u.pieces).toHaveLength(3);
+    expect(u.corners).toHaveLength(2);
+    const apart = backdropLayout(loc({ studio: { backdrop: 'cyc-green', wallID: top.id, moreWalls: [{ wallID: bottom.id }] } }), plan)!;
+    expect(apart.corners).toHaveLength(0);
+    expect(apart.pieces.every(p => Math.abs(p.width - 6) < 1e-9)).toBe(true);
+  });
+  it('walls are named by where they sit on the plan', () => {
+    expect(plan.walls.map(w => wallNames(plan).get(w.id))).toEqual(['Top wall', 'Right wall', 'Bottom wall', 'Left wall']);
+  });
+  it('a missing or repeated wall is skipped, and one wall is as before', () => {
+    const one = loc({ studio: { backdrop: 'cyc-white', wallID: top.id } });
+    const odd = loc({ studio: { backdrop: 'cyc-white', wallID: top.id, moreWalls: [{ wallID: top.id }, { wallID: 'nope' }] } });
+    expect(backdropLayout(odd, plan)!.pieces).toEqual(backdropLayout(one, plan)!.pieces);
+    expect(backdropPlacement(one, plan)!.width).toBeCloseTo(6, 9);
+  });
+  it('an LED volume round a corner lights more than one wall of it, as one "LED wall"', () => {
+    const p = vec(2, 1.5, -1.2), n = vec(0.7071, 0, -0.7071);
+    const one = lux(loc({ studio: { backdrop: 'led-wall', wallID: top.id, nits: 300 } }), plan, p, n, AMBIENT_IDS.ledWall);
+    const two = loc({ studio: { backdrop: 'led-wall', wallID: top.id, moreWalls: [{ wallID: right.id }], nits: 300 } });
+    const both = lux(two, plan, p, n, AMBIENT_IDS.ledWall);
+    expect(both).toBeGreaterThan(one * 1.2);
+    const r = reading(p, n, buildScene([], plan, 0.78, environment(two, plan)));
+    expect(r.contributions.filter(c => c.lightID === AMBIENT_IDS.ledWall)).toHaveLength(1);
+  });
+});
+
 // MARK: Parity with Swift
 
 const fixture = new URL('./fixtures/stage-bundle.json', import.meta.url);
@@ -169,7 +227,8 @@ function stageBundle(): ProjectBundle {
   plan.windows[0] = { ...plan.windows[0], curtain: 'sheer' };
   l.coordinate = { latitude: 51.5074, longitude: -0.1278 };
   l.daylight = { isOn: true, sky: 'clear', fromClock: true, time: Date.UTC(2026, 5, 21, 15, 30) / 1000 };
-  l.studio = { backdrop: 'led-wall', nits: 450, floor: 'concrete-grey' };
+  // An LED volume round a corner: 4 m on the top wall and 3 m on the right, pushed into the corner they share.
+  l.studio = { backdrop: 'led-wall', wallID: plan.walls[0].id, width: 4, moreWalls: [{ wallID: plan.walls[1].id, width: 3 }], nits: 450, floor: 'concrete-grey' };
   return b;
 }
 if (process.env.UPDATE_FIXTURE) writeFileSync(fixture, JSON.stringify(stageBundle(), null, 2));

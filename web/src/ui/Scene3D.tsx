@@ -34,8 +34,8 @@ import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
 import { buildRoom, ground, type WallRecord } from './scene3d/room';
 import { board, cameraModel, glowLevel, head, meterModel, person, relight, stand, yoke } from './scene3d/models';
 import { beam, beamStrength, type ReachCache } from './scene3d/beam';
-import { backdrop, skyTexture, type BackdropBuild } from './scene3d/stage';
-import { SHEER_TRANSMISSION, backdropPlacement, curtainPass, daylightLevels, environment, floorInfo, inwardNormal, sunPlacement } from '../model/stage';
+import { backdrop, backdropCorner, skyTexture, type BackdropBuild } from './scene3d/stage';
+import { SHEER_TRANSMISSION, backdropLayout, curtainPass, daylightLevels, environment, floorInfo, inwardNormal, sunPlacement } from '../model/stage';
 import { kelvinRGB } from '../model/kelvin';
 import { DEFAULT_WINDOW_TRANSMISSION } from '../model/calculator';
 
@@ -363,10 +363,10 @@ export function Scene3D(p: Props) {
     // (or the daylight or LED wall when they are brighter). It depends on the sources alone: moving a
     // person, a flag or a frame, or dimming a unit, never changes how bright the other units look.
     const brightest = Math.max(0, ...lit.map(x => illuminanceOnAxis(photometrics({ ...x.l, dimmer: 1 }), 3)),
-      (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWall?.luminance ?? 0) * 1.5);
+      (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWalls[0]?.luminance ?? 0) * 1.5);
     const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
     const scale = reference > 0 ? Math.PI / reference : 0;
-    const dark = lit.length === 0 && !(daylight && daylight.levels.skyHorizontal > 0) && !env?.ledWall;
+    const dark = lit.length === 0 && !(daylight && daylight.levels.skyHorizontal > 0) && !env?.ledWalls.length;
     setNoLight(dark);
     // With nothing switched on the room gets a plain work light; otherwise only a trace, so shadows keep some shape.
     a.ambient.intensity = dark ? 2.2 : 0.11;
@@ -420,21 +420,24 @@ export function Scene3D(p: Props) {
       sh.m.emissiveIntensity = Math.min(lum * scale, 3);
     }
 
-    // The studio backdrop.
-    const bd = backdropPlacement(loc, p.plan);
-    if (bd) {
+    // The studio backdrop, on one wall or round several.
+    const layout = backdropLayout(loc, p.plan);
+    if (layout) {
       const ledColour = new THREE.Color(...Object.values(kelvinRGB(loc.studio?.kelvin ?? 6500)) as [number, number, number]);
-      const holder = keep('stage:backdrop', JSON.stringify([bd, loc.studio?.kelvin]), () => {
+      const holder = keep('stage:backdrop', JSON.stringify([layout, loc.studio?.kelvin]), () => {
         const g = new THREE.Group();
-        const b = backdrop(bd, ledColour);
-        g.add(b.group);
-        g.userData.build = b;
+        const builds = layout.pieces.map(bd => backdrop(bd, ledColour));
+        for (const b of builds) g.add(b.group);
+        const sweep = layout.pieces[0]?.sweep ?? 0, colour = layout.pieces[0]?.colour ?? layout.info.colour;
+        for (const c of layout.corners) g.add(backdropCorner(c, layout.info.kind, colour, sweep));
+        g.userData.builds = builds;
         return g;
       });
-      const b = holder.userData.build as BackdropBuild;
-      const nits = env?.ledWall?.luminance ?? 0;
-      if (b.ledFace) b.ledFace.emissiveIntensity = nits * scale * 1.6; // the content map averages about 0.6
-      if (b.ledLight) b.ledLight.intensity = nits * scale;
+      const nits = env?.ledWalls[0]?.luminance ?? 0;
+      for (const b of holder.userData.builds as BackdropBuild[]) {
+        if (b.ledFace) b.ledFace.emissiveIntensity = nits * scale * 1.6; // the content map averages about 0.6
+        if (b.ledLight) b.ledLight.intensity = nits * scale;
+      }
     }
     // Every unit that can cast a shadow does, up to the budget, so grip blocks it (point-like units too).
     // Ranked at full output whether on or off, so switching or dimming one never moves a shadow to
