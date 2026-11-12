@@ -215,6 +215,8 @@ struct PlanEditorView: View {
 
     @EnvironmentObject private var store: ProjectStore
     @EnvironmentObject private var router: AppRouter
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dismiss) private var dismiss
     @State private var scanID: UUID?
     @State private var tool: PlanTool = .select
     @State private var selection: PlanSelection?
@@ -253,6 +255,10 @@ struct PlanEditorView: View {
     @AppStorage("tips.planGestures.seen") private var gestureTipSeen = false
     @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     @State private var showInfoBar = false
+    /// Natural height of the panel under the plan, so it only scrolls when it has to.
+    @State private var panelContentHeight: CGFloat = 0
+    /// Landscape: the readings and camera settings panel beside the 3D view.
+    @State private var showSidePanel = false
 
     private enum DragTarget: Equatable {
         case item(PlanSelection), subject(UUID), canvas
@@ -275,50 +281,28 @@ struct PlanEditorView: View {
         Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } })
     }
 
-    private var shows3D: Bool { layout != .plan && scan != nil }
+    /// iPhone turned sideways with a 3D room to show: the 3D view fills the screen.
+    private var landscape: Bool { verticalSizeClass == .compact && scan != nil }
+    private var landscape3D: Bool { landscape && scene3D.error == nil }
+    private var shows3D: Bool { (layout != .plan || landscape) && scan != nil }
     private var showsPlan: Bool { layout != .scene || scan == nil || scene3D.error != nil }
 
     private func inScan(_ id: UUID?) -> Bool { id == nil || id == scan?.id }
 
     var body: some View {
         let analysis = makeAnalysis()
-        VStack(spacing: 0) {
-            toolBar
-            if shows3D {
-                if let error = scene3D.error {
-                    // Don't give up a third of the screen to a view that can't load.
-                    Label(error, systemImage: "cube.transparent")
-                        .font(.fsCaption)
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal)
-                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
-                } else if layout == .split {
-                    scenePreview.frame(height: 260)
-                } else {
-                    scenePreview.frame(maxHeight: .infinity)
-                }
+        Group {
+            if landscape3D {
+                landscapeBody(analysis)
+            } else {
+                portraitBody(analysis)
             }
-            if showsPlan {
-                planArea(analysis)
-            }
-            if let notice {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle").foregroundStyle(Theme.textSecondary)
-                    Text(notice).font(.fsCaption).foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 4)
-                    Button { self.notice = nil } label: { Image(systemName: "xmark").font(.fsCaption) }
-                        .accessibilityLabel("Dismiss")
-                }
-                .padding(.horizontal).padding(.vertical, 8)
-                .background(Theme.surfaceRaised)
-            }
-            bottomPanel(analysis)
         }
         .fsScreen()
         .navigationTitle(location.map { "\($0.name) · Plan" } ?? "Plan")
         .navigationBarTitleDisplayMode(.inline)
+        // Turned sideways the 3D view takes the whole screen; its own rail has the back button.
+        .toolbar(landscape3D ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
             // "Plan" stays readable; the location name goes underneath and shortens instead.
             ToolbarItem(placement: .principal) {
@@ -379,6 +363,15 @@ struct PlanEditorView: View {
                     selection = location?.previsCharacters.first.map { PlanSelection.character($0.id) }
                 case .lightpanel:
                     selection = location?.lightFixtures.first.map { PlanSelection.light($0.id) }
+                case .landscape, .landscapepanel:
+                    if DemoContent.screen == .landscapepanel {
+                        selection = location?.lightFixtures.first.map { PlanSelection.light($0.id) }
+                    }
+                    // The Simulator can't be turned from the command line, so the screen asks to be.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+                        scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+                    }
                 default: break
                 }
             }
@@ -391,6 +384,11 @@ struct PlanEditorView: View {
             if shows3D { load3D() }
         }
         .onChange(of: layout) { _, _ in if shows3D { load3D() } }
+        .onChange(of: verticalSizeClass) { _, _ in
+            // Measuring is done on the plan, which isn't shown sideways.
+            if landscape3D && tool == .measure { tool = .select; measurePoints = [] }
+            if shows3D { load3D() }
+        }
         .onChange(of: location) { _, _ in sync3D() }
         .onChange(of: selection) { _, _ in sync3D() }
         .onChange(of: scene3D.loaded) { _, _ in scene3D.showPlanEdits(plan); sync3D() }
@@ -398,6 +396,180 @@ struct PlanEditorView: View {
             scene3D.showPlanEdits(newPlan)
             sync3D()
         }
+    }
+
+    // MARK: Layout
+
+    /// Upright: tools, then the 3D view and plan sharing the screen, then the panel. The panel
+    /// scrolls instead of squeezing the plan, so the plan always keeps a usable share.
+    private func portraitBody(_ analysis: LightingAnalysis) -> some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            let split = layout == .split && shows3D && scene3D.error == nil
+            let sceneHeight = split ? min(340, max(200, (h * 0.36).rounded())) : 0
+            let planMin: CGFloat = !showsPlan ? 0 : split ? max(180, (h * 0.30).rounded()) : max(220, (h * 0.45).rounded())
+            let toolBarHeight: CGFloat = 56
+            let panelCap = showsPlan ? max(140, h - toolBarHeight - sceneHeight - planMin) : max(160, (h * 0.45).rounded())
+            VStack(spacing: 0) {
+                toolBar
+                if shows3D {
+                    if let error = scene3D.error {
+                        // Don't give up a third of the screen to a view that can't load.
+                        Label(error, systemImage: "cube.transparent")
+                            .font(.fsCaption)
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.horizontal)
+                            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+                    } else if layout == .split {
+                        scenePreview.frame(height: sceneHeight)
+                    } else {
+                        scenePreview.frame(maxHeight: .infinity)
+                    }
+                }
+                if showsPlan {
+                    planArea(analysis).frame(minHeight: planMin)
+                }
+                if notice != nil { noticeView }
+                panelScroll(analysis, maxHeight: panelCap)
+            }
+        }
+    }
+
+    /// Sideways: the 3D view as big as the screen allows, a rail of tools on the left and the
+    /// panel for whatever is selected on the right.
+    private func landscapeBody(_ analysis: LightingAnalysis) -> some View {
+        GeometryReader { geo in
+            let panelOpen = selection != nil || tool == .add || showSidePanel
+            HStack(spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    scenePreview(leadingInset: 52)
+                    landscapeRail.padding(8)
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if notice != nil {
+                        noticeView
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                            .padding(.leading, 60).padding(.trailing, 96).padding(.bottom, 8)
+                    }
+                }
+                if panelOpen {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text(sidePanelTitle).font(.fsLabel).foregroundStyle(Theme.textSecondary)
+                            Spacer()
+                            Button { closeSidePanel() } label: {
+                                Image(systemName: "xmark").font(.fsCaption).frame(width: 36, height: 36)
+                            }
+                            .accessibilityLabel("Close panel")
+                        }
+                        .padding(.leading)
+                        .padding(.trailing, 4)
+                        .background(Theme.surface)
+                        ScrollView { bottomPanel(analysis) }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .background(Theme.surface)
+                    }
+                    .frame(width: min(380, (geo.size.width * 0.42).rounded()))
+                    .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 0.5) }
+                    .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.snappy, value: panelOpen)
+        }
+        .background(Color.black.ignoresSafeArea())
+    }
+
+    private var sidePanelTitle: String {
+        if tool == .add { return "Add" }
+        if selection != nil { return "Selected" }
+        return "Readings and camera"
+    }
+
+    private func closeSidePanel() {
+        if tool == .add { tool = .select }
+        selection = nil
+        showSidePanel = false
+    }
+
+    /// Back, undo, the tools that work in 3D, show and hide, and the options menu.
+    private var landscapeRail: some View {
+        // Scrolls only on a phone too short for every button, so it doesn't swallow drags on the 3D view.
+        ViewThatFits(in: .vertical) {
+            railButtons
+            ScrollView(.vertical, showsIndicators: false) { railButtons }
+                .scrollBounceBehavior(.basedOnSize)
+        }
+        .frame(width: 40)
+    }
+
+    private var railButtons: some View {
+        VStack(spacing: 6) {
+            viewButton("chevron.left", "Back") { dismiss() }
+            viewButton("arrow.uturn.backward", "Undo") { undo() }
+                .disabled(!history.canUndo)
+                .opacity(history.canUndo ? 1 : 0.4)
+            Rectangle().fill(.white.opacity(0.25)).frame(width: 24, height: 0.5).padding(.vertical, 2)
+            ForEach(PlanTool.toolRow.filter { $0 != .measure }) { t in
+                let disabled = t == .aim && (selection == nil || selection?.isMovable == false)
+                railToolButton(t)
+                    .disabled(disabled)
+                    .opacity(disabled ? 0.4 : 1)
+            }
+            Rectangle().fill(.white.opacity(0.25)).frame(width: 24, height: 0.5).padding(.vertical, 2)
+            viewButton("camera.aperture", showSidePanel ? "Hide readings and camera settings" : "Readings and camera settings") {
+                if selection == nil && tool != .add { showSidePanel.toggle() } else { closeSidePanel(); showSidePanel = true }
+            }
+            viewButton(display.hiddenCount > 0 ? "eye.slash" : "square.3.layers.3d", "Show and hide") { showLayers = true }
+            Menu { optionsMenuItems } label: {
+                railIcon("slider.horizontal.3", selected: false)
+            }
+            .accessibilityLabel("Options")
+        }
+    }
+
+    private func railToolButton(_ t: PlanTool) -> some View {
+        Button { tool = t; measurePoints = [] } label: { railIcon(t.symbol, selected: tool == t) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(t.label)
+            .accessibilityAddTraits(tool == t ? .isSelected : [])
+    }
+
+    private func railIcon(_ symbol: String, selected: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .light))
+            .frame(width: 40, height: 40)
+            .foregroundStyle(selected ? Theme.onAccent : .white)
+            .background(selected ? Theme.accent : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 0.5))
+    }
+
+    /// Short result of the last one-tap action.
+    private var noticeView: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle").foregroundStyle(Theme.textSecondary)
+            Text(notice ?? "").font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button { self.notice = nil } label: { Image(systemName: "xmark").font(.fsCaption) }
+                .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(Theme.surfaceRaised)
+    }
+
+    /// The panel under the plan at its natural height, scrolling once it would pass `maxHeight`.
+    private func panelScroll(_ analysis: LightingAnalysis, maxHeight: CGFloat) -> some View {
+        ScrollView {
+            bottomPanel(analysis)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: PanelHeightKey.self, value: g.size.height)
+                })
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: min(panelContentHeight, maxHeight))
+        .background(Theme.surface)
+        .onPreferenceChange(PanelHeightKey.self) { panelContentHeight = $0 }
     }
 
     // MARK: Lighting
@@ -460,7 +632,9 @@ struct PlanEditorView: View {
 
     // MARK: 3D view (same data as the plan)
 
-    private var scenePreview: some View {
+    private var scenePreview: some View { scenePreview(leadingInset: 0) }
+
+    private func scenePreview(leadingInset: CGFloat) -> some View {
         SceneKitContainer(model: scene3D, orbit: true,
                           onSelect: { selection = $0 },
                           onMove: { item, p in move(item, to: p) },
@@ -499,7 +673,8 @@ struct PlanEditorView: View {
                     }
                 }
                 .padding(8)
-                // Keep clear of the view buttons on the right.
+                // Keep clear of the view buttons on the right (and the tool rail on the left when sideways).
+                .padding(.leading, leadingInset)
                 .padding(.trailing, 56)
             }
             .overlay(alignment: .topTrailing) {
@@ -781,7 +956,12 @@ struct PlanEditorView: View {
     }
 
     private func currentViewport(size: CGSize) -> PlanViewport {
-        let base = PlanViewport.fit(fittedBounds ?? contentBounds(), in: size, padding: 40)
+        // Fit below the Show bar, with a margin that shrinks on a short plan instead of eating it.
+        let topInset: CGFloat = size.height > 160 ? 44 : 0
+        let fitSize = CGSize(width: size.width, height: max(1, size.height - topInset))
+        let padding = max(12, min(40, min(fitSize.width, fitSize.height) * 0.08))
+        var base = PlanViewport.fit(fittedBounds ?? contentBounds(), in: fitSize, padding: padding)
+        base.offset.y += topInset
         let centre = CGPoint(x: size.width / 2, y: size.height / 2)
         let scale = base.scale * zoom
         let offset = CGPoint(x: centre.x + (base.offset.x - centre.x) * zoom + pan.width,
@@ -1523,6 +1703,27 @@ struct PlanEditorView: View {
     }
 
     @ToolbarContentBuilder
+    /// The options menu, from the navigation bar or (sideways) the 3D tool rail.
+    @ViewBuilder
+    private var optionsMenuItems: some View {
+        if let location, location.scans.count > 1 {
+            Picker("Scan", selection: Binding(get: { scan?.id }, set: { scanID = $0 })) {
+                ForEach(location.scans) { s in Text(s.name).tag(Optional(s.id)) }
+            }
+        }
+        Button { showExposure = true } label: { Label("Camera settings…", systemImage: "camera.aperture") }
+        Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
+        Button { showStage = true } label: { Label("Daylight and studio set…", systemImage: "sun.horizon") }
+        if scan != nil {
+            Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
+        }
+        Button { shareDiagram() } label: { Label("Share diagram (PNG)", systemImage: "square.and.arrow.up") }
+        Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
+        if location?.primaryScan != nil {
+            Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
+        }
+    }
+
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
             Button(action: undo) { Image(systemName: "arrow.uturn.backward") }
@@ -1541,22 +1742,7 @@ struct PlanEditorView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                if let location, location.scans.count > 1 {
-                    Picker("Scan", selection: Binding(get: { scan?.id }, set: { scanID = $0 })) {
-                        ForEach(location.scans) { s in Text(s.name).tag(Optional(s.id)) }
-                    }
-                }
-                Button { showExposure = true } label: { Label("Camera settings…", systemImage: "camera.aperture") }
-                Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
-                Button { showStage = true } label: { Label("Daylight and studio set…", systemImage: "sun.horizon") }
-                if scan != nil {
-                    Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
-                }
-                Button { shareDiagram() } label: { Label("Share diagram (PNG)", systemImage: "square.and.arrow.up") }
-                Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
-                if location?.primaryScan != nil {
-                    Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
-                }
+                optionsMenuItems
             } label: {
                 Image(systemName: "slider.horizontal.3")
             }
@@ -1922,4 +2108,10 @@ struct PlanEditorView: View {
         .padding(.horizontal, 40)
         .allowsHitTesting(false)
     }
+}
+
+/// Natural height of the plan's bottom panel.
+private struct PanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

@@ -12,6 +12,8 @@ enum DemoContent {
         case previs, lightpanel
         /// Home with "From a listing" open on a sample studio listing.
         case listing
+        /// The lighting editor turned sideways (full-screen 3D), and with the key light selected.
+        case landscape, landscapepanel
     }
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: "FSDemo") }
@@ -48,6 +50,7 @@ enum DemoContent {
         case .sun: return [.project(projectID), .location(ref), .sun(ref)]
         case .previs: return [.project(projectID), .location(ref), .lighting(ref)]
         case .lightpanel: return [.project(projectID), .location(ref), .plan(ref)]
+        case .landscape, .landscapepanel: return [.project(projectID), .location(ref), .lighting(ref)]
         }
     }
 
