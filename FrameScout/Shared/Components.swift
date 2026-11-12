@@ -468,3 +468,75 @@ extension UIImage {
         return preparingThumbnail(of: CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded()))
     }
 }
+
+/// The one row used for "go somewhere" lists on Home, a project and a location: an icon, a title,
+/// an optional line under it, an optional value on the right and a chevron. Same look everywhere,
+/// so the way from A to B always looks the same.
+struct ListRow: View {
+    var title: String
+    var subtitle: String? = nil
+    var systemImage: String
+    var trailing: String? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage).font(.title3).foregroundStyle(Theme.accent).frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(HomeStyle.body).foregroundStyle(Theme.textPrimary)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle).font(HomeStyle.footnote).foregroundStyle(Theme.textTertiary).lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing).font(.fsMono).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
+            }
+            .frame(minHeight: HomeStyle.minTap)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// One entry for `RowList`.
+struct RowItem {
+    var title: String
+    var subtitle: String? = nil
+    var systemImage: String
+    var trailing: String? = nil
+    var action: () -> Void
+}
+
+/// A card of `ListRow`s with dividers between them.
+struct RowList: View {
+    var rows: [RowItem]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                if i > 0 { Divider().padding(.leading, 42) }
+                ListRow(title: row.title, subtitle: row.subtitle, systemImage: row.systemImage,
+                        trailing: row.trailing, action: row.action)
+            }
+        }
+        .homeCard()
+    }
+}
+
+/// A small group title above a `RowList` ("Go to", "Add a room").
+struct ListSectionTitle: View {
+    var title: String
+
+    var body: some View {
+        Text(title)
+            .font(.fsCaptionStrong)
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}

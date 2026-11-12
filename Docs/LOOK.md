@@ -39,3 +39,18 @@ reads as made for a film set, not as a generic template (see D-016 in `DECISIONS
 - Home is your work first: rooms and projects as a list, newest first.
 - The ways to start something new are plain buttons or rows above or below it, not a tile grid.
 - Tools the device can't run are left out, with one line saying what this device supports.
+
+## Getting around (iPhone)
+
+- Home › project › room › plan. Each screen leads with the thing you came for: Home with your
+  projects, a project with its rooms, a room with its plan.
+- A room screen opens on the plan, with one big "Open the plan" button. Room size and what's placed
+  are one small line under it, not a grid of big numbers. The plan screen does the same.
+- Everything else is one list of rows (`ListRow` / `RowList`) that looks the same on every screen:
+  icon, name, a short line, a count on the right, a chevron. No tile grids of tools.
+- One door per place on a screen. On the room screen the plan is the preview and its button (no extra
+  plan tiles or "Diagram" links further down); the 3D walkthrough is in the plan's options; export
+  and the scout report are in the ••• menu.
+- Capture tools the phone can't run are left out, as on Home. "Compare" appears once there are two
+  rooms to compare.
+- Something you set once (address, GPS, tags) sits under "Details", below the things you use daily.
