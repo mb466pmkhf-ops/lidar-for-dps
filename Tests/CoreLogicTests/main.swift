@@ -762,19 +762,19 @@ do {
     check(Set(Stage.backdrops.map(\.id)).count == Stage.backdrops.count, "backdrop ids are unique")
 
     // Backdrops round several walls (same cases as web/tests/stage.test.ts)
-    func near(_ p: PlanPoint, _ x: Double, _ z: Double) -> Bool { hypot(p.x - x, p.z - z) < 1e-9 }
+    func isAt(_ p: PlanPoint, _ x: Double, _ z: Double) -> Bool { hypot(p.x - x, p.z - z) < 1e-9 }
     var corner = Location(name: "Corner")
     corner.studio = StudioSetup(backdrop: "cyc-white", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id)])
     if let lay = Stage.backdropLayout(corner, plan: room), lay.pieces.count == 2, let c = lay.corners.first {
-        check(lay.corners.count == 1 && near(c.point, 2.98, -2.23) && abs(c.radius - Stage.cycCornerRadius) < 1e-9, "a corner cyc curves round the corner")
-        check([lay.pieces[0].a, lay.pieces[0].b].contains { near($0, 2.23, -2.23) } && [lay.pieces[1].a, lay.pieces[1].b].contains { near($0, 2.98, -1.48) },
+        check(lay.corners.count == 1 && isAt(c.point, 2.98, -2.23) && abs(c.radius - Stage.cycCornerRadius) < 1e-9, "a corner cyc curves round the corner")
+        check([lay.pieces[0].a, lay.pieces[0].b].contains { isAt($0, 2.23, -2.23) } && [lay.pieces[1].a, lay.pieces[1].b].contains { isAt($0, 2.98, -1.48) },
               "each piece stops at the bend")
         check(Stage.cornerFootprint(c, sweep: 1.5).count == 6, "corner floor footprint")
     } else { check(false, "a corner cyc has two pieces and a corner") }
     var paperCorner = Location(name: "Paper corner")
     paperCorner.studio = StudioSetup(backdrop: "paper-white", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id)])
     let pc = Stage.backdropLayout(paperCorner, plan: room)?.pieces ?? []
-    check(pc.count == 2 && pc.allSatisfy { [$0.a, $0.b].contains { near($0, 2.65, -1.9) } } && abs(pc[0].width - (2.72 - 0.35)) < 1e-9,
+    check(pc.count == 2 && pc.allSatisfy { [$0.a, $0.b].contains { isAt($0, 2.65, -1.9) } } && abs(pc[0].width - (2.72 - 0.35)) < 1e-9,
           "a narrower piece goes into the corner it shares")
     var uShape = Location(name: "U")
     uShape.studio = StudioSetup(backdrop: "cyc-green", wallID: room.walls[0].id, moreWalls: [BackdropWall(wallID: room.walls[1].id), BackdropWall(wallID: room.walls[2].id)])
