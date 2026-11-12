@@ -411,6 +411,16 @@ check(broad.proportions.shoulderWidth > maya.proportions.shoulderWidth, "build w
 let mayaBack = try JSONDecoder().decode(PrevisCharacter.self, from: JSONEncoder().encode(maya))
 check(mayaBack == maya, "person round trip")
 check((try JSONDecoder().decode(PrevisCharacter.self, from: Data(#"{"name":"X","type":"girl","position":{"x":1,"z":2}}"#.utf8))).height == CharacterType.girl.defaultHeight, "person decodes with defaults")
+// Same cases as web/tests/characters.test.ts.
+let sam = PrevisCharacter(name: "Sam", type: .universal, position: P(0, 0))
+check(!CharacterType.universal.isChild && sam.height > CharacterType.woman.defaultHeight && sam.height < CharacterType.man.defaultHeight, "universal adult sits between man and woman")
+check(abs(sam.eyeHeight / sam.height - 0.936) < 0.01, "universal eye height")
+check(sam.proportions.shoulderWidth / sam.height < PrevisCharacter(name: "M", type: .man, position: P(0, 0)).proportions.shoulderWidth / CharacterType.man.defaultHeight, "universal shoulders narrower than the man's")
+check(sam.hairStyle == .cropped && sam.hair == nil, "hair follows the type until set")
+var samLong = sam; samLong.hair = .long
+check((try JSONDecoder().decode(PrevisCharacter.self, from: JSONEncoder().encode(samLong))) == samLong, "hair round trip")
+let future = try JSONDecoder().decode(PrevisCharacter.self, from: Data(#"{"name":"X","type":"robot","hair":"mohawk","position":{"x":0,"z":0}}"#.utf8))
+check(future.type == .universal && future.hairStyle == .cropped, "unknown type and hair fall back instead of failing the location")
 var previs = Location(name: "Previs")
 previs.previsCharacters = [maya]
 previs.lightMeters = [LightMeter(name: "M1", position: P(0, -3))]

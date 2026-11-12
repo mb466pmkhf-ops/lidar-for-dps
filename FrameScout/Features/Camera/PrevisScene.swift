@@ -109,78 +109,7 @@ enum SceneKitBuilder {
 
     // MARK: People
 
-    /// Mannequin with believable proportions: clear silhouette, skin-toned head and hands,
-    /// neutral clothing so the light on it reads. A small nose shows which way the person faces.
-    static func figure(_ c: PrevisCharacter, selected: Bool) -> SCNNode {
-        let p = c.proportions
-        let root = SCNNode()
-        let skin = material(uiColor(c.skinTone.rgb), roughness: 0.55)
-        let top = material(UIColor(white: 0.55, alpha: 1), roughness: 0.85)
-        let legs = material(UIColor(white: 0.32, alpha: 1), roughness: 0.85)
-        if selected {
-            for m in [top, legs] { m.emission.contents = UIColor(white: 0.18, alpha: 1) }
-        }
-        func capsule(_ r: Double, _ length: Double, _ m: SCNMaterial) -> SCNNode {
-            let g = SCNCapsule(capRadius: CGFloat(r), height: CGFloat(max(length, 2 * r + 0.001)))
-            g.materials = [m]
-            return SCNNode(geometry: g)
-        }
-        func place(_ n: SCNNode, _ x: Double, _ y: Double, _ z: Double) -> SCNNode {
-            n.simdPosition = SIMD3(Float(x), Float(y), Float(z))
-            root.addChildNode(n)
-            return n
-        }
-        let legSpread = p.hipWidth * 0.26
-        if p.sitting {
-            // Thighs forward (−Z is the facing direction), shins down to the floor.
-            let thigh = p.hipHeight * 0.0 + p.legRadius
-            for s in [-1.0, 1.0] {
-                let t = capsule(p.legRadius, c.height * 0.25, legs)
-                t.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
-                _ = place(t, s * legSpread, p.seatHeight + thigh, -c.height * 0.11)
-                let shin = capsule(p.legRadius * 0.85, p.seatHeight + p.legRadius, legs)
-                _ = place(shin, s * legSpread, (p.seatHeight + p.legRadius) / 2, -c.height * 0.23)
-            }
-            // A stool so a seated figure doesn't float.
-            let seat = SCNBox(width: CGFloat(p.hipWidth * 1.3), height: CGFloat(p.seatHeight), length: CGFloat(p.hipWidth * 1.2), chamferRadius: 0.01)
-            seat.materials = [material(UIColor(white: 0.2, alpha: 1))]
-            _ = place(SCNNode(geometry: seat), 0, p.seatHeight / 2, 0.02)
-        } else {
-            for s in [-1.0, 1.0] {
-                let leg = capsule(p.legRadius, p.hipHeight, legs)
-                _ = place(leg, s * legSpread, p.hipHeight / 2, 0)
-            }
-        }
-        // Hips and torso.
-        let hip = SCNBox(width: CGFloat(p.hipWidth), height: CGFloat(c.height * 0.09), length: CGFloat(p.chestDepth * 0.95), chamferRadius: CGFloat(p.chestDepth * 0.4))
-        hip.materials = [legs]
-        _ = place(SCNNode(geometry: hip), 0, p.hipHeight + c.height * 0.02, 0)
-        let torsoHeight = p.shoulderHeight - p.hipHeight
-        let torso = SCNBox(width: CGFloat(p.shoulderWidth * 0.86), height: CGFloat(torsoHeight), length: CGFloat(p.chestDepth),
-                           chamferRadius: CGFloat(min(p.chestDepth, p.shoulderWidth) * 0.45))
-        torso.materials = [top]
-        _ = place(SCNNode(geometry: torso), 0, p.hipHeight + torsoHeight / 2 + c.height * 0.02, 0)
-        // Arms hang from the shoulders.
-        for s in [-1.0, 1.0] {
-            let arm = capsule(p.armRadius, p.armLength, top)
-            _ = place(arm, s * (p.shoulderWidth / 2 - p.armRadius * 0.4), p.shoulderHeight - p.armLength / 2 + p.armRadius, 0)
-            let hand = SCNSphere(radius: CGFloat(p.armRadius * 1.15))
-            hand.materials = [skin]
-            _ = place(SCNNode(geometry: hand), s * (p.shoulderWidth / 2 - p.armRadius * 0.4), p.shoulderHeight - p.armLength + p.armRadius * 0.4, 0)
-        }
-        // Neck and head.
-        let neck = SCNCylinder(radius: CGFloat(p.headWidth * 0.3), height: CGFloat(p.neckBase - p.shoulderHeight + p.headHeight * 0.25))
-        neck.materials = [skin]
-        _ = place(SCNNode(geometry: neck), 0, (p.shoulderHeight + p.neckBase) / 2 + p.headHeight * 0.1, 0)
-        let head = SCNSphere(radius: CGFloat(p.headWidth / 2))
-        head.materials = [skin]
-        let headNode = place(SCNNode(geometry: head), 0, p.top - p.headHeight / 2, 0)
-        headNode.scale = SCNVector3(1, Float(p.headHeight / p.headWidth), 1.1)
-        let nose = SCNBox(width: CGFloat(p.headWidth * 0.16), height: CGFloat(p.headHeight * 0.16), length: CGFloat(p.headWidth * 0.25), chamferRadius: 0.004)
-        nose.materials = [skin]
-        _ = place(SCNNode(geometry: nose), 0, p.eyeHeight - p.headHeight * 0.12, -p.headWidth * 0.55)
-        return root
-    }
+    // The figure itself is in FigureModel.swift.
 
     // MARK: Cameras
 
