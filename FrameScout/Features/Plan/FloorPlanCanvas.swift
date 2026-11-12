@@ -567,19 +567,35 @@ struct PlanRenderer {
                 var board = Path()
                 board.move(to: a)
                 board.addLine(to: b)
-                let color: Color
+                var color: Color
                 switch light.kind {
                 case .bounce: color = .white
                 case .negative: color = Color(white: 0.05)
                 case .diffusion: color = Color(white: 0.85)
                 default: color = Color(white: 0.45)
                 }
+                // A coloured rag (gold lamé, unbleached muslin…) shows its colour; nets stay dark.
+                if let rag = light.drape, rag.pattern != .net, light.kind == .bounce || light.kind == .diffusion {
+                    color = Color(red: Double((rag.color >> 16) & 0xff) / 255, green: Double((rag.color >> 8) & 0xff) / 255, blue: Double(rag.color & 0xff) / 255)
+                }
+                // Seen from above, a tilted frame covers its face's depth along the facing line
+                // (flown flat overhead: the whole frame).
+                let span = light.gripSpan, sinT = sin(light.tilt * .pi / 180)
+                if abs(sinT) > 0.05 {
+                    let ya = px((span.bottom - light.height) * sinT), yb = px((span.top - light.height) * sinT)
+                    func corner(_ w: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: origin.x + side.dx * w - d.dx * y, y: origin.y + side.dy * w - d.dy * y) }
+                    var face = Path()
+                    face.move(to: corner(-halfWidth, ya)); face.addLine(to: corner(halfWidth, ya))
+                    face.addLine(to: corner(halfWidth, yb)); face.addLine(to: corner(-halfWidth, yb)); face.closeSubpath()
+                    ctx.fill(face, with: .color(color.opacity(0.45)))
+                    ctx.stroke(face, with: .color(Theme.ink.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                }
                 // An outline keeps a white bounce visible on paper and a black neg visible at night.
                 if light.kind == .negative || light.kind == .bounce {
                     ctx.stroke(board, with: .color(Theme.ink.opacity(0.7)), lineWidth: 7 * k)
                 }
                 ctx.stroke(board, with: .color(color),
-                           style: StrokeStyle(lineWidth: 5 * k, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
+                           style: StrokeStyle(lineWidth: 5 * k, lineCap: .butt, dash: light.drape?.pattern == .net ? [1, 2] : light.kind == .diffusion ? [3, 2] : []))
                 // Small tick showing which side faces the action.
                 var face = Path()
                 face.move(to: origin)

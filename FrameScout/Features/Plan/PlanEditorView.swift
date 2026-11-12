@@ -119,6 +119,8 @@ enum PlanAddItem: Hashable {
     case camera
     case light(String)
     case grip(LightKind)
+    /// Ready-made grip (`GripCatalog.presets` id): a size and a rag.
+    case gripPreset(String)
     case person(CharacterType)
     case meter
     /// A door, window or opening (`SetPieces.openings` id), placed in the nearest wall.
@@ -130,7 +132,7 @@ enum PlanAddItem: Hashable {
         switch self {
         case .camera: return "Camera"
         case .light: return "Light"
-        case .grip: return "Grip"
+        case .grip, .gripPreset: return "Grip"
         case .person: return "Person"
         case .meter: return "Meter"
         case .opening: return "Door · window"
@@ -141,7 +143,7 @@ enum PlanAddItem: Hashable {
         switch self {
         case .camera: return "video"
         case .light: return "lightbulb"
-        case .grip: return "rectangle.portrait"
+        case .grip, .gripPreset: return "rectangle.portrait"
         case .person: return "figure.stand"
         case .meter: return "gauge.with.dots.needle.50percent"
         case .opening: return "door.left.hand.open"
@@ -1032,6 +1034,7 @@ struct PlanEditorView: View {
         case .camera: addCamera(at: point)
         case .light(let id): addLight(FixtureLibrary.profile(id: id) ?? FixtureLibrary.defaultProfile(for: .fresnel), at: point)
         case .grip(let kind): addGrip(kind, at: point)
+        case .gripPreset(let id): addGrip(GripCatalog.drape(id: GripCatalog.preset(id: id)?.drape)?.kinds.first ?? .flag, at: point, preset: GripCatalog.preset(id: id))
         case .person(let type): addPerson(type, at: point)
         case .meter: addMeter(at: point)
         case .opening(let id):
@@ -1090,12 +1093,18 @@ struct PlanEditorView: View {
         selection = .light(light.id)
     }
 
-    private func addGrip(_ kind: LightKind, at point: PlanPoint) {
+    private func addGrip(_ kind: LightKind, at point: PlanPoint, preset: GripCatalog.Preset? = nil) {
         guard let location else { return }
         let count = location.lightFixtures.filter { $0.kind == kind }.count
         var board = LightFixture(name: count == 0 ? kind.label : "\(kind.label) \(count + 1)", kind: kind, position: point,
                                  pan: PlanGeometry.bearing(from: point, to: defaultAim(from: point)), scanID: scan?.id)
-        if let last = location.lightFixtures.last(where: { $0.kind == kind }) {
+        if let preset, let size = GripCatalog.size(id: preset.size), let rag = GripCatalog.drape(id: preset.drape) {
+            board.height = 1.5
+            board.applyGripSize(size)
+            board.applyDrape(rag)
+            let same = location.lightFixtures.filter { $0.gripSizeID == board.gripSizeID && $0.drapeID == board.drapeID }.count
+            board.name = board.gripLabel + (same > 0 ? " \(same + 1)" : "")
+        } else if let last = location.lightFixtures.last(where: { $0.kind == kind }) {
             board.width = last.width
             board.height = last.height
             board.boardHeight = last.boardHeight
@@ -1356,7 +1365,7 @@ struct PlanEditorView: View {
                 HStack(spacing: 6) {
                     addChip(.camera, selected: addItem == .camera)
                     addChip(.light(currentAddProfileID), selected: { if case .light = addItem { return true }; return false }())
-                    addChip(.grip(.bounce), selected: { if case .grip = addItem { return true }; return false }())
+                    addChip(.grip(.bounce), selected: { switch addItem { case .grip, .gripPreset: return true; default: return false } }())
                     addChip(.person(.woman), selected: { if case .person = addItem { return true }; return false }())
                     addChip(.meter, selected: addItem == .meter)
                     if scan != nil {
@@ -1377,11 +1386,16 @@ struct PlanEditorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-            case .grip(let kind):
+            case .grip, .gripPreset:
+                let kind: LightKind? = { if case .grip(let k) = addItem { return k }; return nil }()
+                let presetID: String? = { if case .gripPreset(let id) = addItem { return id }; return nil }()
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach([LightKind.bounce, .negative, .flag, .diffusion], id: \.self) { k in
                             TagChip(text: k.label, selected: kind == k) { addItem = .grip(k) }
+                        }
+                        ForEach(GripCatalog.presets) { p in
+                            TagChip(text: p.label, selected: presetID == p.id) { addItem = .gripPreset(p.id) }
                         }
                     }
                 }
