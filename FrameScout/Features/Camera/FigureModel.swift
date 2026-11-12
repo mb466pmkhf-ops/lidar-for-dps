@@ -34,7 +34,10 @@ private final class FigureBuilder {
         top = m(nil, UIColor(red: 0x74 / 255, green: 0x78 / 255, blue: 0x7d / 255, alpha: 1), rough: 0.92)
         legs = m(nil, UIColor(red: 0x3c / 255, green: 0x40 / 255, blue: 0x46 / 255, alpha: 1), rough: 0.9)
         // Lips: the skin tone pulled a little towards red and darkened.
-        let mix = { (a: Double, b: Double) in CGFloat((a + (b - a) * 0.28) * 0.88) }
+        func mix(_ a: Double, _ b: Double) -> CGFloat {
+            let x: Double = (a + (b - a) * 0.28) * 0.88
+            return CGFloat(x)
+        }
         lip = m(nil, UIColor(red: mix(tone.r, 0.55), green: mix(tone.g, 0.25), blue: mix(tone.b, 0.235), alpha: 1), rough: 0.4)
         hairM = m(nil, UIColor(red: 0x22 / 255, green: 0x1a / 255, blue: 0x15 / 255, alpha: 1), rough: 0.72, doubleSided: true)
         eyeWhite = m(nil, UIColor(red: 0xc4 / 255, green: 0xbd / 255, blue: 0xb2 / 255, alpha: 1), rough: 0.12)
@@ -159,8 +162,10 @@ private final class FigureBuilder {
         let chestR = sw * 0.88, waistR = hw * (0.98 - 0.12 * fem) + h * 0.012 * build, neckR = r * (0.44 - 0.06 * fem)
         let k = depth / (2 * chestR)
         let beltY = hipY + h * 0.06, crotchY = hipY - h * 0.035
-        add(lathe([(0, crotchY), (hw * 0.7, crotchY + h * 0.004), (hw * 0.97, hipY), (hw * 1.01, hipY + h * 0.035),
-                   (hw * 0.99, beltY + h * 0.012), (0, beltY + h * 0.012)], depth: k * 1.08), legs, .zero)
+        let beltTop: Double = beltY + h * 0.012
+        let trousers: [(Double, Double)] = [(0, crotchY), (hw * 0.7, crotchY + h * 0.004), (hw * 0.97, hipY), (hw * 1.01, hipY + h * 0.035),
+                                            (hw * 0.99, beltTop), (0, beltTop)]
+        add(lathe(trousers, depth: k * 1.08), legs, .zero)
         add(SCNTorus(ringRadius: CGFloat(hw), pipeRadius: CGFloat(h * 0.007)), belt, v(0, beltY, 0)).simdScale = v(1, 1, k * 1.1)
         box(h * 0.03, h * 0.022, h * 0.006, h * 0.002, chrome, v(0, beltY, -hw * k * 1.1 - h * 0.004)) // buckle
         let shirt: [(Double, Double)] = [
@@ -169,12 +174,17 @@ private final class FigureBuilder {
             (neckR * 1.55, shoulderY + h * 0.024), (neckR * 1.12, shoulderY + h * 0.03),
         ]
         // A soft bust pushed out of the front of the top (before flattening).
-        let bustShape: ((inout V) -> Void)? = bust ? { (p: inout V) in
+        let bustY: Double = chestY - h * 0.02, bustX: Double = chestR * 0.42
+        let spreadX: Double = chestR * chestR * 0.09, spreadY: Double = h * h * 0.0018, peak: Double = h * 0.032
+        func pushBust(_ p: inout V) {
             guard p.z < 0 else { return }
-            let dx = Double(abs(p.x)) - chestR * 0.42, dy = Double(p.y) - (chestY - h * 0.02)
-            let lift = h * 0.032 * exp(-(dx * dx) / (chestR * chestR * 0.09) - (dy * dy) / (h * h * 0.0018))
-            p.z -= Float(lift / k * min(1, Double(-p.z) / chestR))
-        } : nil
+            let dx: Double = Double(abs(p.x)) - bustX
+            let dy: Double = Double(p.y) - bustY
+            let lift: Double = peak * exp(-(dx * dx) / spreadX - (dy * dy) / spreadY)
+            let reach: Double = min(1, Double(-p.z) / chestR)
+            p.z -= Float(lift / k * reach)
+        }
+        let bustShape: ((inout V) -> Void)? = bust ? pushBust : nil
         add(lathe(shirt, depth: k, shape: bustShape), top, .zero)
         let collar = add(SCNTorus(ringRadius: CGFloat(neckR * 1.14), pipeRadius: CGFloat(h * 0.0035)), top, v(0, shoulderY + h * 0.028, 0))
         collar.simdEulerAngles = v(-0.22, 0, 0)
@@ -228,7 +238,8 @@ private final class FigureBuilder {
         for s in [-1.0, 1.0] {
             let hip = v(s * hw * 0.5, hipY - h * 0.008, 0)
             let knee = sitting ? v(s * hw * 0.68, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.5, h * 0.285, -h * 0.008)
-            let ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006)
+            let tuck: Double = max(0, h * 0.24 - hipY) * 0.9
+            let ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - tuck) : v(s * hw * 0.48, h * 0.055, h * 0.006)
             taper(hip, knee, tr, sr * 1.08, legs)
             taper(knee, ankle, sr * 1.05, sr * 0.82, legs)
             let foot = V(ankle.x, 0, ankle.z)
