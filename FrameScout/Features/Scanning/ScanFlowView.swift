@@ -295,23 +295,23 @@ struct ScanStatsStrip: View {
         let s = info.stats
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
-                figure("TIME", timeString(info.elapsed))
-                figure("AREA", UnitsFormatter.area(s.floorArea))
-                figure("SIZE", UnitsFormatter.dimensions(s.width, s.length))
-                figure("CEILING", UnitsFormatter.distance(s.ceilingHeight))
+                figure("Time", timeString(info.elapsed))
+                figure("Area", UnitsFormatter.area(s.floorArea))
+                figure("Size", UnitsFormatter.dimensions(s.width, s.length))
+                figure("Ceiling", UnitsFormatter.distance(s.ceilingHeight))
             }
             HStack(spacing: 14) {
                 if kind == .room {
-                    figure("WALLS", "\(s.wallCount)")
-                    figure("DOORS", "\(s.doorCount)")
-                    figure("WINDOWS", "\(s.windowCount)")
-                    figure("OBJECTS", "\(s.objectCount)")
+                    figure("Walls", "\(s.wallCount)")
+                    figure("Doors", "\(s.doorCount)")
+                    figure("Windows", "\(s.windowCount)")
+                    figure("Objects", "\(s.objectCount)")
                     if let c = s.completeness {
                         figure("COMPLETE*", "\(Int(c * 100))%")
                     }
                 } else {
-                    figure("TRIANGLES", s.meshFaceCount > 0 ? "\(s.meshFaceCount / 1000)k" : "—")
-                    figure("NORTH", info.northOffset.map { String(format: "%.0f°", $0) } ?? "…")
+                    figure("Triangles", s.meshFaceCount > 0 ? "\(s.meshFaceCount / 1000)k" : "—")
+                    figure("North", info.northOffset.map { String(format: "%.0f°", $0) } ?? "…")
                 }
             }
         }

@@ -80,10 +80,10 @@ struct LightPanel: View {
             }
             if light.kind.emits {
                 HStack(alignment: .bottom, spacing: 14) {
-                    compact("OUTPUT", value: light.dimmer, range: pm.profile.minOutput...1, format: { "\(Int(($0 * 100).rounded())) %" }) { v in
+                    compact("Output", value: light.dimmer, range: pm.profile.minOutput...1, format: { "\(Int(($0 * 100).rounded())) %" }) { v in
                         update { $0.dimmer = v }
                     }
-                    compact("HEIGHT", value: light.height, range: 0.1...6, format: { UnitsFormatter.distance($0) }) { v in
+                    compact("Height", value: light.height, range: 0.1...6, format: { UnitsFormatter.distance($0) }) { v in
                         update { $0.height = v }
                     }
                 }
@@ -92,11 +92,11 @@ struct LightPanel: View {
                 if showMore {
                     HStack(spacing: 14) {
                         if pm.beamIsAdjustable, let range = pm.beamRange {
-                            compact("BEAM", value: light.beamAngle, range: range, format: { String(format: "%.0f°", $0) }) { v in
+                            compact("Beam", value: light.beamAngle, range: range, format: { String(format: "%.0f°", $0) }) { v in
                                 update { $0.beamAngle = v }
                             }
                         }
-                        compact("TILT", value: light.tilt, range: -90...45, format: { String(format: "%+.0f°", $0) }) { v in
+                        compact("Tilt", value: light.tilt, range: -90...45, format: { String(format: "%+.0f°", $0) }) { v in
                             update { $0.tilt = v }
                         }
                     }
@@ -106,10 +106,10 @@ struct LightPanel: View {
                 readout
             } else {
                 HStack(spacing: 14) {
-                    compact("WIDTH", value: light.width, range: 0.2...6, format: { UnitsFormatter.distance($0) }) { v in
+                    compact("Width", value: light.width, range: 0.2...6, format: { UnitsFormatter.distance($0) }) { v in
                         update { $0.width = v }
                     }
-                    compact("HEIGHT", value: light.height, range: 0.2...6, format: { UnitsFormatter.distance($0) }) { v in
+                    compact("Height", value: light.height, range: 0.2...6, format: { UnitsFormatter.distance($0) }) { v in
                         update { $0.height = v }
                     }
                 }
@@ -128,10 +128,19 @@ struct LightPanel: View {
                 }
                 Button(action: onDetails) { Label("All settings", systemImage: "slider.horizontal.3") }
                     .buttonStyle(HairlineButtonStyle())
-                Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
-                    .buttonStyle(HairlineButtonStyle())
                 Spacer()
-                Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                // Duplicate and Delete live in one quiet menu instead of a red link beside the buttons.
+                Menu {
+                    Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
+                    Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 40, height: 36)
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(Theme.hairlineStrong, lineWidth: 0.5))
+                }
+                .accessibilityLabel("Duplicate or delete")
             }
         }
         .padding()
@@ -149,7 +158,7 @@ struct LightPanel: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text("STAND").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text("Stand").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                     Text(light.supportValue.label).font(.fsCaption)
                     Image(systemName: "chevron.up.chevron.down").font(.fsMicro).foregroundStyle(Theme.textTertiary)
                 }
@@ -174,7 +183,7 @@ struct LightPanel: View {
             let stops = context.exposure.stops(forLux: p.total)
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("AT \(p.meter.name.uppercased())").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                    Text("At \(p.meter.name)").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary).lineLimit(1)
                     Text(readoutText(own: p.own, total: p.total, stops: stops))
                         .font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
                 }
@@ -228,7 +237,7 @@ struct ColourControls: View {
             if light.usesRGB {
                 HueSlider(hue: Binding(get: { light.hue ?? 0 }, set: { v in update { $0.hue = v } }))
                 HStack {
-                    Text("SAT").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text("Sat").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                     Slider(value: Binding(get: { light.saturation ?? 1 }, set: { v in update { $0.saturation = v } }), in: 0...1)
                         .accessibilityLabel("Saturation")
                     Text("\(Int(((light.saturation ?? 1) * 100).rounded())) %").font(.fsMono).frame(width: 44, alignment: .trailing)

@@ -7,7 +7,7 @@ enum HomeStyle {
     static let accent = Theme.accent
     static let card = Theme.surface
     static let cardRaised = Theme.surfaceRaised
-    static let corner: CGFloat = 20
+    static let corner: CGFloat = Theme.corner
     static let sectionSpacing: CGFloat = 32
     static let minTap: CGFloat = 44
 
@@ -53,49 +53,13 @@ struct HomeSectionHeader: View {
     }
 }
 
-/// Big, labelled entry point: icon, title and a one-line explanation. Disabled tiles stay
-/// readable and say why they're unavailable.
-struct HomeTile: View {
-    var title: String
-    var subtitle: String? = nil
-    var systemImage: String
-    var prominent = false
-    var disabled = false
-    /// Shorter tile for the secondary row.
-    var compact = false
-    var action: () -> Void
-
-    var body: some View {
-        let filled = prominent && !disabled
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: disabled ? "lock" : systemImage)
-                    .font(.title2)
-                    .foregroundStyle(filled ? Theme.onAccent : (disabled ? Theme.textTertiary : HomeStyle.accent))
-                    .frame(height: 30)
-                Text(title)
-                    .font(HomeStyle.headline)
-                    .foregroundStyle(filled ? Theme.onAccent : Theme.textPrimary)
-                    .multilineTextAlignment(.leading)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(HomeStyle.footnote)
-                        .foregroundStyle(filled ? Theme.onAccent.opacity(0.85) : Theme.textTertiary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: compact ? 104 : 124, alignment: .topLeading)
-            .background(filled ? HomeStyle.accent : HomeStyle.card,
-                        in: RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous).stroke(filled ? Color.clear : Theme.hairline, lineWidth: 1))
-            .opacity(disabled ? 0.6 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: HomeStyle.corner, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityHint(disabled ? (subtitle ?? "Unavailable on this device") : "")
+/// The one filled button on Home (Scan a location). Same shape as every other button in the app.
+struct HomePrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Theme.onAccent)
+            .background(HomeStyle.accent, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 

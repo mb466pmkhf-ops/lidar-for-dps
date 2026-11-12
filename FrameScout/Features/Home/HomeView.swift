@@ -58,56 +58,41 @@ struct HomeView: View {
                     }
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                    HomeTile(title: "Scan a location",
-                               subtitle: DeviceCapabilities.hasLiDAR ? "Room plan or LiDAR mesh" : "Needs a LiDAR iPhone",
-                               systemImage: "viewfinder", prominent: true, disabled: !DeviceCapabilities.hasLiDAR) {
-                        router.start(.scan(.quick))
+                // One scan button when the phone can scan, then the other ways in as a plain list.
+                // Tools the phone can't run are left out instead of shown as locked tiles; the line at
+                // the bottom says what this phone supports.
+                if DeviceCapabilities.hasLiDAR {
+                    Button { router.start(.scan(.quick)) } label: {
+                        Label("Scan a location", systemImage: "viewfinder")
+                            .font(HomeStyle.button)
+                            .frame(maxWidth: .infinity, minHeight: 52)
                     }
-                    HomeTile(title: "Viewfinder", subtitle: DeviceCapabilities.hasCamera ? "Cinema lens frame lines" : "Needs a camera",
-                               systemImage: "camera.aperture", disabled: !DeviceCapabilities.hasCamera) {
-                        router.start(.viewfinder(.quick))
-                    }
-                    HomeTile(title: "Scan an object",
-                               subtitle: ObjectCaptureModel.isSupported ? "Prop → textured 3D model" : "Needs a LiDAR iPhone",
-                               systemImage: "cube", disabled: !ObjectCaptureModel.isSupported) {
-                        router.start(.objectScan(projectID: nil))
-                    }
-                    HomeTile(title: "Measure",
-                               subtitle: DeviceCapabilities.hasLiDAR ? "AR tape, LiDAR accurate" : (DeviceCapabilities.supportsWorldTracking ? "AR tape, estimated without LiDAR" : "Needs AR camera"),
-                               systemImage: "ruler", disabled: !DeviceCapabilities.supportsWorldTracking) {
-                        router.start(.measure(.quick))
-                    }
+                    .buttonStyle(HomePrimaryButtonStyle())
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    HomeSectionHeader(title: "No scan? Start another way")
-                    HStack(spacing: 12) {
-                        HomeTile(title: "Draw a plan", subtitle: "Pick a shape, set sizes, get 3D", systemImage: "pencil.and.ruler", compact: true) {
-                            showDrawRoom = true
-                        }
-                        HomeTile(title: "Import", subtitle: "A project backup (ZIP)", systemImage: "square.and.arrow.down", compact: true) {
-                            showImporter = true
+                    HomeSectionHeader(title: "Start")
+                    VStack(spacing: 0) {
+                        ForEach(Array(startRows.enumerated()), id: \.offset) { i, row in
+                            if i > 0 { Divider().padding(.leading, 42) }
+                            HomeMenuRow(title: row.title, subtitle: row.subtitle, systemImage: row.image, action: row.action)
                         }
                     }
-                    HomeTile(title: "From a listing", subtitle: "Can't recce? Use the studio's photos and sizes", systemImage: "photo.on.rectangle.angled", compact: true) {
-                        showListing = true
-                    }
+                    .homeCard()
                 }
-
-                HomeMenuRow(title: syncTitle, subtitle: syncSubtitle,
-                            systemImage: sync.email == nil ? "person.crop.circle.badge.plus" : "checkmark.icloud") {
-                    showSync = true
-                }
-                .homeCard()
-                .accessibilityHint("Sign in or create an account to sync with the web and desktop planner")
 
                 VStack(spacing: 0) {
-                    HomeMenuRow(title: "Export", subtitle: "Unreal · USD · OBJ · GLB · ZIP", systemImage: "square.and.arrow.up") {
+                    HomeMenuRow(title: syncTitle, subtitle: syncSubtitle,
+                                systemImage: sync.email == nil ? "person.crop.circle.badge.plus" : "checkmark.icloud") {
+                        showSync = true
+                    }
+                    .accessibilityHint("Sign in or create an account to sync with the web and desktop planner")
+                    Divider().padding(.leading, 42)
+                    HomeMenuRow(title: "Export", subtitle: "Unreal, USD, OBJ, GLB or ZIP", systemImage: "square.and.arrow.up") {
                         router.open(.export(projectID: nil, location: nil))
                     }
                     Divider().padding(.leading, 42)
-                    HomeMenuRow(title: "Compare locations", subtitle: "Side by side, A vs B", systemImage: "rectangle.split.2x1") {
+                    HomeMenuRow(title: "Compare locations", subtitle: nil, systemImage: "rectangle.split.2x1") {
                         router.open(.compare)
                     }
                 }
@@ -181,6 +166,26 @@ struct HomeView: View {
         showAllProjects ? store.recentProjects : Array(store.recentProjects.prefix(collapsedProjectCount))
     }
 
+    private struct StartRow { let title: String; let subtitle: String?; let image: String; let action: () -> Void }
+
+    /// The ways to start, minus the ones this phone can't do.
+    private var startRows: [StartRow] {
+        var rows: [StartRow] = []
+        if DeviceCapabilities.hasCamera {
+            rows.append(StartRow(title: "Viewfinder", subtitle: "Frame lines for your lens", image: "camera.aperture") { router.start(.viewfinder(.quick)) })
+        }
+        if DeviceCapabilities.supportsWorldTracking {
+            rows.append(StartRow(title: "Measure", subtitle: DeviceCapabilities.hasLiDAR ? nil : "Estimated without LiDAR", image: "ruler") { router.start(.measure(.quick)) })
+        }
+        if ObjectCaptureModel.isSupported {
+            rows.append(StartRow(title: "Scan an object", subtitle: "A prop as a textured 3D model", image: "cube") { router.start(.objectScan(projectID: nil)) })
+        }
+        rows.append(StartRow(title: "Draw a plan", subtitle: "Pick a shape and type the sizes", image: "pencil.and.ruler") { showDrawRoom = true })
+        rows.append(StartRow(title: "From a listing", subtitle: "The studio's photos and sizes", image: "photo.on.rectangle.angled") { showListing = true })
+        rows.append(StartRow(title: "Import a backup", subtitle: nil, image: "square.and.arrow.down") { showImporter = true })
+        return rows
+    }
+
     private var syncTitle: String {
         if sync.config == nil { return "Sync is off" }
         return sync.email == nil ? "Sign in to sync" : "Synced with web & desktop"
@@ -231,7 +236,7 @@ struct ProjectRow: View {
                 }
             }
             .frame(width: 76, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(project.name).font(HomeStyle.headline).foregroundStyle(Theme.textPrimary).lineLimit(1)
                 Text(summary).font(HomeStyle.footnote).foregroundStyle(Theme.textTertiary).lineLimit(2)

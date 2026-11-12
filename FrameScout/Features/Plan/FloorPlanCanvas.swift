@@ -748,7 +748,7 @@ struct PlanRenderer {
             box.origin.x = min(max(box.minX, bounds.minX), max(bounds.minX, bounds.maxX - box.width))
             box.origin.y = min(max(box.minY, bounds.minY), max(bounds.minY, bounds.maxY - box.height))
             placed.append(box)
-            ctx.fill(Path(roundedRect: box, cornerRadius: 3), with: .color(Theme.background.opacity(0.7)))
+            ctx.fill(Path(roundedRect: box, cornerRadius: Theme.cornerSmall / 2), with: .color(Theme.background.opacity(0.7)))
             ctx.draw(resolved, at: CGPoint(x: box.midX, y: box.midY))
         }
     }
@@ -769,7 +769,7 @@ struct PlanRenderer {
             let resolved = ctx.resolve(text)
             let sz = resolved.measure(in: CGSize(width: 300, height: 40))
             let bg = CGRect(x: mid.x - sz.width / 2 - 5, y: mid.y - sz.height / 2 - 3, width: sz.width + 10, height: sz.height + 6)
-            ctx.fill(Path(roundedRect: bg, cornerRadius: 5), with: .color(color))
+            ctx.fill(Path(roundedRect: bg, cornerRadius: Theme.cornerSmall), with: .color(color))
             ctx.draw(resolved, at: mid)
         }
     }

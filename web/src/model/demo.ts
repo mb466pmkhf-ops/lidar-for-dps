@@ -50,7 +50,7 @@ export function demoBundle(): ProjectBundle {
 
   const location = {
     ...newLocation('Hackney Flat — Living Room'),
-    address: 'Sample location',
+    address: 'Hackney, London',
     scans: [{ id: scanID, name: 'Living room', kind: 'room' as const, createdAt: isoNow(), segmentCount: 1, deviceModel: '', notes: '',
       stats: { width: 4.8, length: 6.2, ceilingHeight: 2.74, floorAreaIsEstimate: false, wallCount: 4, doorCount: 1, windowCount: 2, openingCount: 0, floorCount: 1, objectCount: 3, objectCategories: {}, doors: [], windows: [], meshVertexCount: 0, meshFaceCount: 0 },
       northOffset: 172 }],
@@ -66,6 +66,6 @@ export function demoBundle(): ProjectBundle {
     exposure: { iso: 800, frameRate: 24, shutterAngle: 180, tStop: 5.6, lensTransmission: 0.85, ndStops: 0 },
     display: {},
   };
-  const project = { ...newProject('Sample Commercial (web)'), client: 'Demo', locations: [location] };
+  const project = { ...newProject('Family on the sofa (sample)'), client: 'Sample job', locations: [location] };
   return { project, plans: { [scanID]: plan } };
 }

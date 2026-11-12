@@ -143,7 +143,7 @@ struct VirtualCameraView: View {
             OverlayButton(systemImage: "xmark", size: 44) { dismiss() }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    TagChip(text: "ORBIT", selected: orbit) { orbit = true }
+                    TagChip(text: "Orbit", selected: orbit) { orbit = true }
                     ForEach(viewpoints) { vp in
                         TagChip(text: vp.label, selected: !orbit && selected?.id == vp.id) {
                             orbit = false
@@ -172,8 +172,8 @@ struct VirtualCameraView: View {
                 LensPicker(focalLength: Binding(get: { vp.rig.focalLength }, set: { v in update(vp) { $0.focalLength = v } }))
                 HStack(spacing: 14) {
                     compactSlider("H", value: vp.rig.height, range: 0.1...4, format: { UnitsFormatter.distance($0) }) { v in update(vp) { $0.height = v } }
-                    compactSlider("PAN", value: vp.rig.pan, range: 0...360, format: { String(format: "%.0f°", $0) }) { v in update(vp) { $0.pan = v } }
-                    compactSlider("TILT", value: vp.rig.tilt, range: -60...60, format: { String(format: "%+.0f°", $0) }) { v in update(vp) { $0.tilt = v } }
+                    compactSlider("Pan", value: vp.rig.pan, range: 0...360, format: { String(format: "%.0f°", $0) }) { v in update(vp) { $0.pan = v } }
+                    compactSlider("Tilt", value: vp.rig.tilt, range: -60...60, format: { String(format: "%+.0f°", $0) }) { v in update(vp) { $0.tilt = v } }
                 }
             }
             if sunOn {

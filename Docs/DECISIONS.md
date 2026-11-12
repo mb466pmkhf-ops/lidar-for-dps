@@ -182,3 +182,13 @@ frame didn't diffuse, and that grip didn't behave like the real thing.
   follow the brightest reading, so moving a person or a flag re-exposed the whole picture. Moving people or
   grip, or dimming a unit, no longer changes how bright the other units look.
 - Readings far below T1 (over six stops under) now read "under T0.13", not "T0".
+
+## D-016 · A written look sheet, checked in CI — 2026-11-12
+
+Vorbi asked whether the app looked "vibecoded" and then to fix what the review found: identical
+rounded tiles as the main UI, seven different corner sizes, letter-spaced capitals, dashed pills on
+every figure, gesture text over the 3D, placeholder sample names, overlapping plan labels, a demo grid
+under the 3D set and a generic cube icon in amber. The look is now written down in `Docs/LOOK.md`
+(two radii, one button shape, sentence-case labels, the stop scale as the signature colour, Home as a
+list of your work) and `scripts/check-look.mjs` fails the build on the mechanical parts. (D-013 to
+D-015 were left for the open grip, studio and camera PRs.)

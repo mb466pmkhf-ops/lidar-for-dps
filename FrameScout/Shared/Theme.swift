@@ -53,10 +53,14 @@ enum Theme {
     static let planStand = pair(hex(0x8A9391), hex(0x5C5652))
     static let sun = pair(hex(0xB36B00), UIColor(red: 0.91, green: 0.78, blue: 0.52, alpha: 1))
 
-    /// Rounded, finger-sized controls.
+    /// The look sheet (Docs/LOOK.md): two corner sizes only. `corner` for cards, sheets and panels,
+    /// `cornerSmall` for buttons, chips, fields and badges. Don't add new literal radii; CI checks.
     static let corner: CGFloat = 12
+    static let cornerSmall: CGFloat = 6
 
-    static let tracking: CGFloat = 0.2
+    /// Labels are sentence case without letter-spacing (Docs/LOOK.md). Kept as a constant so the
+    /// existing `.tracking(Theme.tracking)` calls stay valid; it is deliberately zero.
+    static let tracking: CGFloat = 0
 
     static func configureUIKitAppearance() {
         let nav = UINavigationBarAppearance()
