@@ -427,6 +427,18 @@ final class WallFader {
 /// on the plan. Scan, cameras, lights and people sit under one `world` node, so a levelling or
 /// alignment correction moves them together and they stay where they are in the room.
 @MainActor
+/// Tint a frame gel puts on the cloth, so a gelled frame reads at a glance. Drawing only.
+private func gelTint(_ f: LightFilter) -> UIColor? {
+    let id = f.id
+    func c(_ hex: Int) -> UIColor { UIColor(red: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1) }
+    if id.hasPrefix("cto") { return c(id.hasSuffix("full") ? 0xf2a65a : id.hasSuffix("half") ? 0xf6c48e : 0xf9dcb8) }
+    if id.hasPrefix("ctb") { return c(id.hasSuffix("full") ? 0x7fa6e6 : id.hasSuffix("half") ? 0xa9c3ee : 0xcdddf5) }
+    if id.hasPrefix("plus-green") { return c(0xc8e8b8) }
+    if id.hasPrefix("minus-green") { return c(0xeac0e0) }
+    if id.hasPrefix("nd") { return c(0x9a9a96) }
+    return nil
+}
+
 final class VirtualSceneModel: ObservableObject {
     @Published var loaded = false
     @Published var error: String?
@@ -1030,26 +1042,58 @@ final class VirtualSceneModel: ObservableObject {
             }
         } else {
             let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
-            let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
             let m = SCNMaterial()
-            switch l.kind {
-            case .bounce: m.diffuse.contents = UIColor.white
-            case .negative: m.diffuse.contents = UIColor(white: 0.04, alpha: 1)
-            case .diffusion: m.diffuse.contents = UIColor(white: 1, alpha: 0.55)
-            default: m.diffuse.contents = UIColor(white: 0.25, alpha: 1)
+            let rag = l.drape
+            let see = rag?.transmission ?? (l.kind == .diffusion ? 0.5 : 0)
+            var colour: UIColor
+            if let rag {
+                colour = UIColor(red: CGFloat((rag.color >> 16) & 0xff) / 255, green: CGFloat((rag.color >> 8) & 0xff) / 255,
+                                 blue: CGFloat(rag.color & 0xff) / 255, alpha: 1)
+            } else {
+                switch l.kind {
+                case .bounce: colour = .white
+                case .negative: colour = UIColor(white: 0.04, alpha: 1)
+                case .diffusion: colour = UIColor(white: 1, alpha: 1)
+                default: colour = UIColor(white: 0.25, alpha: 1)
+                }
             }
+            if let tint = l.frameGels.last.flatMap(gelTint) { colour = tint }
+            if let rag, rag.pattern == .net { colour = colour.withAlphaComponent(CGFloat(1 - rag.transmission * 0.9)) }
+            else if see > 0 { colour = colour.withAlphaComponent(CGFloat(0.85 - see * 0.4)) }
+            m.diffuse.contents = colour
+            if rag?.id.hasSuffix("lame") == true { m.lightingModel = .physicallyBased; m.metalness.contents = 0.6; m.roughness.contents = 0.4 }
             m.isDoubleSided = true
             if selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
-            board.materials = [m]
-            tilt.addChildNode(SCNNode(geometry: board))
-            // Frame round the board, then a grip head down to its stand.
+            // The rag in its frame; a floppy opened hangs its second panel below the first.
             let hw = Float(l.width / 2), hh = Float(h / 2)
-            let corners: [SIMD3<Float>] = [SIMD3(-hw, -hh, 0), SIMD3(hw, -hh, 0), SIMD3(hw, hh, 0), SIMD3(-hw, hh, 0)]
-            for i in 0..<4 { RigModels.bar(corners[i], corners[(i + 1) % 4], radius: 0.01, RigModels.steel, to: tilt, segments: 8) }
+            let tube: Float = l.width >= 1.7 ? 0.016 : l.width >= 1 ? 0.011 : 0.007
+            let open = l.floppyOpen == true && l.gripSize?.floppy == true
+            func panel(_ y0: Float, _ y1: Float) {
+                let plane = SCNPlane(width: CGFloat(l.width), height: CGFloat(y1 - y0))
+                plane.materials = [m]
+                let node = SCNNode(geometry: plane)
+                node.simdPosition = SIMD3(0, (y0 + y1) / 2, 0)
+                tilt.addChildNode(node)
+                let c: [SIMD3<Float>] = [SIMD3(-hw, y0, 0), SIMD3(hw, y0, 0), SIMD3(hw, y1, 0), SIMD3(-hw, y1, 0)]
+                for i in 0..<4 { RigModels.bar(c[i], c[(i + 1) % 4], radius: tube, RigModels.steel, to: tilt, segments: 8) }
+            }
+            panel(-hh, hh)
+            if open { panel(-3 * hh, -hh) }
             let support = l.supportValue
-            if support != .none {
-                let stud = -Float(h / 2) - 0.03
-                RigModels.bar(SIMD3(0, -Float(h / 2), 0), SIMD3(0, stud, 0), radius: 0.008, RigModels.steel, to: pan, segments: 8)
+            if support != .none && l.gripStandCount == 2 {
+                // Big frames sit on their ears between two stands and pivot there.
+                for s: Float in [-1, 1] {
+                    RigModels.add(SCNBox(width: 0.06, height: 0.1, length: 0.05, chamferRadius: 0.01), RigModels.darkMetal, to: tilt, at: SIMD3(s * (hw + 0.03), 0, 0))
+                    let side = SCNNode()
+                    side.simdPosition = SIMD3(s * (hw + 0.07), 0, 0)
+                    pan.addChildNode(side)
+                    RigModels.stand(support, headHeight: l.height, studY: -0.02, to: side)
+                }
+            } else if support != .none {
+                // Grip head under the lowest point of the frame as it's tilted.
+                let lowest = (open ? 3 * hh : hh) * abs(cos(Float(l.tilt) * .pi / 180))
+                let stud = -lowest - 0.03
+                RigModels.bar(SIMD3(0, -lowest, 0), SIMD3(0, stud, 0), radius: 0.008, RigModels.steel, to: pan, segments: 8)
                 RigModels.add(SCNCylinder(radius: 0.03, height: 0.02), RigModels.darkMetal, to: pan, at: SIMD3(0, stud, 0), euler: SIMD3(0, 0, .pi / 2))
                 RigModels.stand(support, headHeight: l.height, studY: stud - 0.02, to: pan)
             }

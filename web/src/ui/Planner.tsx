@@ -8,7 +8,7 @@ import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISS
 import { withDefaults } from '../model/exposure';
 import { eyeHeight } from '../model/characters';
 import { newCharacter, newLight, newMeter } from '../model/factory';
-import { applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
+import { GRIP_PRESETS, applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
 import {
   FURNITURE_PRESETS, OPENING_PRESETS, addObject, addSegment, findSegment, furniturePreset, openingPreset, placeFurniture, placeOpening,
   removeObject, removeSegment, replaceObject, replaceSegment, slideOpening, turnObject,
@@ -44,11 +44,7 @@ const quickLights: { label: string; kind: LightKind; profile?: string }[] = [
 ];
 const gripItems: { label: string; kind: LightKind; size?: string; drape?: string }[] = [
   { label: 'Bounce', kind: 'bounce' }, { label: 'Neg', kind: 'negative' }, { label: 'Flag', kind: 'flag' }, { label: 'Diffusion', kind: 'diffusion' },
-  { label: '4×4 floppy', kind: 'flag', size: 'floppy-4x4', drape: 'solid' },
-  { label: '24×36 net', kind: 'diffusion', size: 'flag-24x36', drape: 'net-single' },
-  { label: '6×6 silk', kind: 'diffusion', size: 'frame-6x6', drape: 'silk' },
-  { label: '8×8 Ultrabounce', kind: 'bounce', size: 'frame-8x8', drape: 'ultrabounce-white' },
-  { label: '12×12 grid cloth', kind: 'diffusion', size: 'frame-12x12', drape: 'grid-half' },
+  ...GRIP_PRESETS.map(g => ({ label: g.label, kind: drapeByID(g.drape)!.kinds[0] as LightKind, size: g.size, drape: g.drape })),
 ];
 
 const snap = (v: number) => Math.round(v * 20) / 20;

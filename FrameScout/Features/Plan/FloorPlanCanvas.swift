@@ -567,19 +567,23 @@ struct PlanRenderer {
                 var board = Path()
                 board.move(to: a)
                 board.addLine(to: b)
-                let color: Color
+                var color: Color
                 switch light.kind {
                 case .bounce: color = .white
                 case .negative: color = Color(white: 0.05)
                 case .diffusion: color = Color(white: 0.85)
                 default: color = Color(white: 0.45)
                 }
+                // A coloured rag (gold lamé, unbleached muslin…) shows its colour; nets stay dark.
+                if let rag = light.drape, rag.pattern != .net, light.kind == .bounce || light.kind == .diffusion {
+                    color = Color(red: Double((rag.color >> 16) & 0xff) / 255, green: Double((rag.color >> 8) & 0xff) / 255, blue: Double(rag.color & 0xff) / 255)
+                }
                 // An outline keeps a white bounce visible on paper and a black neg visible at night.
                 if light.kind == .negative || light.kind == .bounce {
                     ctx.stroke(board, with: .color(Theme.ink.opacity(0.7)), lineWidth: 7 * k)
                 }
                 ctx.stroke(board, with: .color(color),
-                           style: StrokeStyle(lineWidth: 5 * k, lineCap: .butt, dash: light.kind == .diffusion ? [3, 2] : []))
+                           style: StrokeStyle(lineWidth: 5 * k, lineCap: .butt, dash: light.drape?.pattern == .net ? [1, 2] : light.kind == .diffusion ? [3, 2] : []))
                 // Small tick showing which side faces the action.
                 var face = Path()
                 face.move(to: origin)

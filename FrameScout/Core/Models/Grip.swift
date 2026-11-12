@@ -82,7 +82,7 @@ enum GripCatalog {
         Drape(id: "white-full", name: "Full white diffusion", kinds: [.diffusion], transmission: 0.36, scatter: 1, reflectance: 0.35, color: 0xf1f1f1, note: "Same figure as the heavy diffusion gel (LEE datasheet)."),
         Drape(id: "net-single", name: "Single net", kinds: [.diffusion, .flag], transmission: 0.7, scatter: 0, reflectance: 0, color: 0x1a1a1a, pattern: .net, note: "General crew practice: about ½ stop. Cuts without softening."),
         Drape(id: "net-double", name: "Double net", kinds: [.diffusion, .flag], transmission: 0.5, scatter: 0, reflectance: 0, color: 0x141414, pattern: .net, note: "General crew practice: about 1 stop. Cuts without softening."),
-        Drape(id: "clear", name: "Clear (gel only)", kinds: [.diffusion], transmission: 1, scatter: 0, reflectance: 0.05, color: 0xffffff, note: "An empty frame for a colour or ND gel."),
+        Drape(id: "clear", name: "Clear (gel only)", kinds: [.diffusion], transmission: 1, scatter: 0, reflectance: 0, color: 0xffffff, note: "An empty frame for a colour or ND gel."),
     ]
 
     /// The rag a board of this kind gets when none is picked: matches the board's built-in optics.
@@ -94,6 +94,22 @@ enum GripCatalog {
         default: return nil
         }
     }
+
+    /// Ready-made grip in the Add menus (phone and web): size plus rag.
+    struct Preset: Identifiable, Hashable {
+        var id: String
+        var label: String
+        var size: String
+        var drape: String
+    }
+    static let presets: [Preset] = [
+        Preset(id: "floppy", label: "4×4 floppy", size: "floppy-4x4", drape: "solid"),
+        Preset(id: "net-24x36", label: "24×36 net", size: "flag-24x36", drape: "net-single"),
+        Preset(id: "silk-6x6", label: "6×6 silk", size: "frame-6x6", drape: "silk"),
+        Preset(id: "ultrabounce-8x8", label: "8×8 Ultrabounce", size: "frame-8x8", drape: "ultrabounce-white"),
+        Preset(id: "grid-12x12", label: "12×12 grid cloth", size: "frame-12x12", drape: "grid-half"),
+    ]
+    static func preset(id: String) -> Preset? { presets.first { $0.id == id } }
 
     static func size(id: String?) -> GripSize? { id.flatMap { id in sizes.first { $0.id == id } } }
     static func drape(id: String?) -> Drape? { id.flatMap { id in drapes.first { $0.id == id } } }

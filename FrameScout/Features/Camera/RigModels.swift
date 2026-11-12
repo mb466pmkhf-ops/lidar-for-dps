@@ -351,6 +351,12 @@ enum RigModels {
             comboStand(base: floor, top: top, at: .zero, wheels: false, to: node)
         case .rollerStand:
             comboStand(base: floor, top: top, at: .zero, wheels: true, to: node)
+        case .windUp:
+            // Crank-up stand: a combo-style base with the crank box on the first section.
+            comboStand(base: floor, top: top, at: .zero, wheels: false, to: node)
+            add(SCNBox(width: 0.09, height: 0.14, length: 0.08, chamferRadius: 0.012), darkMetal, to: node, at: SIMD3(0.06, floor + 0.95, 0))
+            bar(SIMD3(0.105, floor + 0.95, 0), SIMD3(0.17, floor + 0.95, 0), radius: 0.008, steel, to: node, segments: 8)
+            bar(SIMD3(0.17, floor + 0.95, 0), SIMD3(0.17, floor + 0.87, 0), radius: 0.006, steel, to: node, segments: 8)
         case .turtleBase:
             // Three low legs and a short riser.
             for i in 0..<3 {

@@ -81,7 +81,17 @@ export const DRAPES: Drape[] = [
   { id: 'white-full', name: 'Full white diffusion', kinds: ['diffusion'], transmission: 0.36, scatter: 1, reflectance: 0.35, color: 0xf1f1f1, note: 'Same figure as the heavy diffusion gel (LEE datasheet).' },
   { id: 'net-single', name: 'Single net', kinds: ['diffusion', 'flag'], transmission: 0.7, scatter: 0, reflectance: 0, color: 0x1a1a1a, pattern: 'net', note: `${crew}: about ½ stop. Cuts without softening.` },
   { id: 'net-double', name: 'Double net', kinds: ['diffusion', 'flag'], transmission: 0.5, scatter: 0, reflectance: 0, color: 0x141414, pattern: 'net', note: `${crew}: about 1 stop. Cuts without softening.` },
-  { id: 'clear', name: 'Clear (gel only)', kinds: ['diffusion'], transmission: 1, scatter: 0, reflectance: 0.05, color: 0xffffff, note: 'An empty frame for a colour or ND gel.' },
+  { id: 'clear', name: 'Clear (gel only)', kinds: ['diffusion'], transmission: 1, scatter: 0, reflectance: 0, color: 0xffffff, note: 'An empty frame for a colour or ND gel.' },
+];
+
+/** Ready-made grip in the Add menus (phone and web): size plus rag. */
+export interface GripPreset { id: string; label: string; size: string; drape: string }
+export const GRIP_PRESETS: GripPreset[] = [
+  { id: 'floppy', label: '4×4 floppy', size: 'floppy-4x4', drape: 'solid' },
+  { id: 'net-24x36', label: '24×36 net', size: 'flag-24x36', drape: 'net-single' },
+  { id: 'silk-6x6', label: '6×6 silk', size: 'frame-6x6', drape: 'silk' },
+  { id: 'ultrabounce-8x8', label: '8×8 Ultrabounce', size: 'frame-8x8', drape: 'ultrabounce-white' },
+  { id: 'grid-12x12', label: '12×12 grid cloth', size: 'frame-12x12', drape: 'grid-half' },
 ];
 
 export const gripSizeByID = (id?: string) => (id ? GRIP_SIZES.find(s => s.id === id) : undefined);
