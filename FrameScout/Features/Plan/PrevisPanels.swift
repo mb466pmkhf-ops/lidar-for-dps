@@ -179,7 +179,7 @@ struct MeterPanel: View {
             }
             if !reading.contributions.isEmpty {
                 let top = reading.contributions.sorted { $0.lux > $1.lux }.prefix(3)
-                Text(top.map { "\(lightName($0.lightID))\($0.viaBounce == nil ? "" : " (bounce)") \(LuxFormat.lux($0.lux))" }.joined(separator: " · "))
+                Text(top.map { "\(lightName($0.lightID))\($0.viaBounce.map { " (off \(lightName($0)))" } ?? "") \(LuxFormat.lux($0.lux))" }.joined(separator: " · "))
                     .font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(2)
             }
             HStack(spacing: 6) {

@@ -58,7 +58,7 @@ describe('exposure port', () => {
   });
 });
 
-describe('grip (D-012)', () => {
+describe('grip (D-013)', () => {
   // A narrow unit 3 m from a meter, a board half way.
   const spot = () => { const l = newLight('fresnel', { x: 0, z: 3 }); l.pan = 0; l.tilt = 0; l.height = 1.5; l.beamAngle = 12; return l; };
   const boardAt = (kind: 'flag' | 'negative' | 'bounce' | 'diffusion') => { const b = newLight(kind, { x: 0, z: 1.5 }); b.pan = 180; b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b; };
@@ -88,5 +88,16 @@ describe('grip (D-012)', () => {
     const bare = reading(side, facingFrame, buildScene([spot()])).lux;
     const soft = reading(side, facingFrame, buildScene([spot(), boardAt('diffusion')])).lux;
     expect(soft).toBeGreaterThan(bare * 4 + 1);
+  });
+});
+
+describe('changing a grip kind', () => {
+  it('renames a unit still called after its kind, and keeps a name the user gave it', async () => {
+    const { renamedForKind } = await import('../src/model/factory');
+    expect(renamedForKind('Negative fill', 'negative', 'flag')).toBe('Flag');
+    expect(renamedForKind('Neg', 'negative', 'bounce')).toBe('Bounce');
+    expect(renamedForKind('Neg 2', 'negative', 'diffusion')).toBe('Diffusion 2');
+    expect(renamedForKind('Diffusion frame 3', 'diffusion', 'negative')).toBe('Negative fill 3');
+    expect(renamedForKind('Window cutter', 'flag', 'negative')).toBe('Window cutter');
   });
 });

@@ -22,6 +22,8 @@ export function stopLabel(n: number, prefix = 'T'): string {
   const thirds = Math.round(6 * Math.log2(n));
   const fullIndex = Math.round(thirds / 3);
   const offset = thirds - fullIndex * 3;
+  // More than six stops under T1 is next to no light: say so rather than round to "T0" (same as Swift).
+  if (fullIndex < -6) return `under ${prefix}0.13`;
   const v = Math.pow(2, fullIndex / 2);
   const name = fullIndex >= 0 && fullIndex < fullStops.length ? trim(fullStops[fullIndex]) : v < 1 ? String(Math.round(v * 100) / 100) : String(Math.round(v)); // same rounding as Swift
   return offset === 1 ? `${prefix}${name} +⅓` : offset === -1 ? `${prefix}${name} −⅓` : `${prefix}${name}`;

@@ -329,7 +329,10 @@ struct LightForm: View {
                 }
                 QuirkList(quirks: KnownQuirks.fixture(pm.profile.id))
             } else {
-                Picker("Type", selection: $light.kind) {
+                Picker("Type", selection: Binding(get: { light.kind }, set: { kind in
+                    light.name = LightKind.renamed(light.name, from: light.kind, to: kind)
+                    light.kind = kind
+                })) {
                     ForEach(LightKind.allCases.filter { !$0.emits }) { Label($0.label, systemImage: $0.symbol).tag($0) }
                 }
             }

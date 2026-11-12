@@ -162,3 +162,23 @@ iPhone and on web/desktop (`SetPieces.swift` ↔ `web/src/model/setPieces.ts`, s
 - **3D on the iPhone**: a room built from the plan is rebuilt; a real scan keeps its own geometry, with hand-placed
   pieces drawn over it as simple boxes and scanned pieces that were moved or deleted hidden.
 - Not done: moving or adding walls, and changing the ceiling height after a room is drawn.
+
+## D-013 · Grip as a second source, and a steady 3D brightness — 2026-11-12
+Vorbi found that moving a person in front of a neg made every unit in the 3D view brighter, that a diffusion
+frame didn't diffuse, and that grip didn't behave like the real thing.
+- **Optics per board** (`BoardOptics` / `boardOptics`): transmission, scatter (share of what gets through that is
+  diffused) and reflectance. Defaults: bounce board 0.8 reflectance; flag 0.04 and neg 0.03 (black cloth); full
+  diffusion passes 0.5, all of it scattered, and throws 0.35 back. These are general figures, not a maker's
+  data; drapes from the grip catalogue can override them.
+- **How it is modelled**: each board is split into 3 × 3 patches. Light landing on a patch (with everything
+  else in the way) is re-emitted as a small matte source: off the lit face for what is reflected, out of the
+  far face for what a diffusion scatters. A direct ray through a board keeps only transmission × (1 − scatter).
+  One bounce only; boards don't light each other. Same maths in Swift and TypeScript, tested on both.
+- **3D picture**: flags and negs cut the beam (every unit up to six casts shadows), show a faint sheen on the
+  lit side, and the beam haze stops at them. A diffusion stops the hard beam, glows where it is lit, and lights
+  the far side as a soft source. Bounce boards light their side the same way. Still no light off walls or
+  daylight, and the on-screen note says so (amends D-011).
+- **Brightness fit**: "fitted to the screen" now follows the strongest unit at full output, 3 m off. It used to
+  follow the brightest reading, so moving a person or a flag re-exposed the whole picture. Moving people or
+  grip, or dimming a unit, no longer changes how bright the other units look.
+- Readings far below T1 (over six stops under) now read "under T0.13", not "T0".
