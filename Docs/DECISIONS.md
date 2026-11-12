@@ -162,3 +162,13 @@ iPhone and on web/desktop (`SetPieces.swift` ↔ `web/src/model/setPieces.ts`, s
 - **3D on the iPhone**: a room built from the plan is rebuilt; a real scan keeps its own geometry, with hand-placed
   pieces drawn over it as simple boxes and scanned pieces that were moved or deleted hidden.
 - Not done: moving or adding walls, and changing the ceiling height after a room is drawn.
+
+## D-016 · A written look sheet, checked in CI — 2026-11-12
+
+Vorbi asked whether the app looked "vibecoded" and then to fix what the review found: identical
+rounded tiles as the main UI, seven different corner sizes, letter-spaced capitals, dashed pills on
+every figure, gesture text over the 3D, placeholder sample names, overlapping plan labels, a demo grid
+under the 3D set and a generic cube icon in amber. The look is now written down in `Docs/LOOK.md`
+(two radii, one button shape, sentence-case labels, the stop scale as the signature colour, Home as a
+list of your work) and `scripts/check-look.mjs` fails the build on the mechanical parts. (D-013 to
+D-015 were left for the open grip, studio and camera PRs.)

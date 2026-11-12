@@ -161,9 +161,9 @@ enum DemoContent {
         location.exposureSettings = exposure
         var display = SceneDisplay()
         location.displaySettings = display
-        var project = Project(name: "Sample Commercial")
+        var project = Project(name: "Family on the sofa (sample)")
         project.id = projectID
-        project.client = "Demo"
+        project.client = "Sample job"
         project.locations = [location]
         return project
     }

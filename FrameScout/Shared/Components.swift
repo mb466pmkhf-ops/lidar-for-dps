@@ -249,7 +249,7 @@ struct TagChip: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .foregroundStyle(selected ? Theme.textPrimary : Theme.textTertiary)
-            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(selected ? Theme.accent : Theme.hairline, lineWidth: 0.5))
         if let action {
             Button(action: action) { label }.buttonStyle(.plain)
         } else {
@@ -258,8 +258,8 @@ struct TagChip: View {
     }
 }
 
-/// Square hairline button (secondary) or white block (primary) — replaces the system's
-/// rounded bordered styles.
+/// The app's one button shape (Docs/LOOK.md): filled accent (primary) or hairline (secondary),
+/// small corners, sentence case. Same shape by day and at night; only the colours change.
 struct HairlineButtonStyle: ButtonStyle {
     var prominent = false
     @Environment(\.isEnabled) private var isEnabled
@@ -272,8 +272,8 @@ struct HairlineButtonStyle: ButtonStyle {
             .foregroundStyle(prominent ? Theme.onAccent : Theme.textPrimary)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(prominent ? Color.clear : Theme.hairlineStrong, lineWidth: 0.5))
+            .background(prominent ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(prominent ? Color.clear : Theme.hairlineStrong, lineWidth: 0.5))
             .opacity(configuration.isPressed ? 0.6 : (isEnabled ? 1 : 0.35))
     }
 }
@@ -346,21 +346,20 @@ struct OverlayButton: View {
     }
 }
 
-/// Says whether a figure was measured, estimated or entered by hand. Shape and word carry the
-/// meaning (not colour alone), so it reads in sunlight, in grayscale and with VoiceOver.
+/// Says whether a figure was measured, estimated or entered by hand: a small glyph next to the
+/// number (ruler, ±, pencil) in the text colour, with the word only where it's explained
+/// (`ProvenanceLegend`). Shape carries the meaning, so it reads in sunlight, in grayscale and with
+/// VoiceOver, without a pill around every figure (Docs/LOOK.md).
 struct ProvenanceBadge: View {
     var provenance: Provenance
+    var showsLabel = false
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: provenance.symbol).font(.system(size: 9, weight: .regular))
-            Text(provenance.label.uppercased()).font(.fsMicroStrong).tracking(Theme.tracking)
+            Image(systemName: provenance.symbol).font(.system(size: 10, weight: .medium))
+            if showsLabel { Text(provenance.label).font(.fsMicroStrong) }
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .foregroundStyle(provenance == .measured ? Theme.textSecondary : Theme.sun)
-        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(provenance == .measured ? Theme.hairline : Theme.sun.opacity(0.6),
-                                    style: StrokeStyle(lineWidth: 0.5, dash: provenance == .estimated ? [2, 2] : [])))
+        .foregroundStyle(Theme.textTertiary)
         .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(provenance.label) value")
@@ -393,7 +392,7 @@ struct ProvenanceLegend: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Provenance.allCases) { p in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    ProvenanceBadge(provenance: p).accessibilityHidden(true)
+                    ProvenanceBadge(provenance: p, showsLabel: true).accessibilityHidden(true)
                     Text(p.explanation).font(.fsMicro).foregroundStyle(Theme.textTertiary)
                 }
                 .accessibilityElement(children: .ignore)

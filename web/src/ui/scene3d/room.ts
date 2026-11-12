@@ -294,7 +294,8 @@ export function buildRoom(plan: FloorPlan | undefined): RoomBuild {
   return { group, walls, centre, span };
 }
 
-/** The ground beyond the room: a metre grid that fades with distance, so the set has somewhere to stand. */
+/** The ground beyond the room: a plain floor tone that fades into the backdrop, so the set has
+ *  somewhere to stand without the "3D demo" grid (Docs/LOOK.md). */
 export function ground(): THREE.Mesh {
   const m = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
@@ -302,14 +303,9 @@ export function ground(): THREE.Mesh {
     vertexShader: `varying vec3 w; void main() { vec4 p = modelMatrix * vec4(position, 1.0); w = p.xyz; gl_Position = projectionMatrix * viewMatrix * p; }`,
     fragmentShader: `
       uniform vec2 centre; uniform float reach; varying vec3 w;
-      float line(vec2 p, float step, float width) {
-        vec2 g = abs(fract(p / step - 0.5) - 0.5) / fwidth(p / step);
-        return 1.0 - min(min(g.x, g.y) / width, 1.0);
-      }
       void main() {
-        float fade = 1.0 - smoothstep(reach * 0.25, reach, distance(w.xz, centre));
-        float a = max(line(w.xz, 1.0, 1.0) * 0.07, line(w.xz, 5.0, 1.0) * 0.14) * fade;
-        gl_FragColor = vec4(vec3(0.62, 0.66, 0.7), a);
+        float fade = 1.0 - smoothstep(reach * 0.15, reach * 0.8, distance(w.xz, centre));
+        gl_FragColor = vec4(vec3(0.16, 0.165, 0.17), 0.85 * fade);
       }`,
   });
   const g = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), m);

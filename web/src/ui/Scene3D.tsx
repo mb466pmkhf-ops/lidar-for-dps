@@ -7,6 +7,7 @@
 // are real. It shows direct light only: no light bouncing round the room, no daylight. So it is a
 // preview of the look, and the readings stay the figures to work from.
 import { useEffect, useRef, useState } from 'react';
+import { useTip } from './tips';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -100,6 +101,7 @@ export function Scene3D(p: Props) {
   // "Balanced" fits the brightness to the screen; "set stop" shows it as the camera would expose it.
   const [atStop, setAtStop] = useState(() => { try { return localStorage.getItem('framescan.3d.look') === 'stop'; } catch { return false; } });
   // Looking through a camera: its frame lines are drawn over the view.
+  const [tipSeen, hideTip] = useTip('3d-gestures');
   const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string }>();
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
@@ -497,7 +499,10 @@ export function Scene3D(p: Props) {
           </div>
         </div>
       )}
-      <div className="scene3d-hint"><span className="what">{note}</span><span className="how">Drag to look round · right-drag or two fingers to slide · scroll to zoom · click to select</span></div>
+      <div className="scene3d-hint">
+        <span className="what">{note}</span>
+        {!tipSeen && <span className="how">Drag to look round · right-drag or two fingers to slide · scroll to zoom · click to select <button className="linkish" onClick={hideTip}>Got it</button></span>}
+      </div>
       <div className="scene3d-buttons">
         <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title="Show the brightness as the camera would expose it at the set stop, instead of fitting it to the screen">At {stopLabel(p.exposure.tStop)}</button>
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>

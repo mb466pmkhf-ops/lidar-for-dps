@@ -1,4 +1,5 @@
-// The first screen: a few big, labelled things to do, then the rooms worked on most recently.
+// The first screen is your work: every room, newest first, with the ways to start a new one as
+// plain buttons above it (Docs/LOOK.md). No tile grid, no banner.
 import type { FloorPlan, Location, Project } from '../model/types';
 import { Icon } from './icons';
 
@@ -34,68 +35,65 @@ function Thumb({ plan }: { plan?: FloorPlan }) {
   );
 }
 
-function summary(l: Location) {
-  const s = l.scans.find(x => x.id === l.primaryScanID) ?? l.scans[l.scans.length - 1];
-  const parts: string[] = [];
-  if (s?.stats.width && s.stats.length) parts.push(`${s.stats.width.toFixed(1)} × ${s.stats.length.toFixed(1)} m`);
-  const lights = (l.lights ?? []).length;
-  parts.push(`${l.shots.length} shot${l.shots.length === 1 ? '' : 's'}`, `${lights} light${lights === 1 ? '' : 's'}`);
-  return parts.join(' · ');
+function edited(iso?: string) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (days < 1) return 'Today';
+  if (days < 2) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
 export function Home(p: HomeProps) {
   const all = p.projects.flatMap(pr => pr.locations.map(l => ({ pr, l })));
   const lastHit = p.last && all.find(x => x.pr.id === p.last!.projectID && x.l.id === p.last!.locationID);
-  const cont = lastHit ?? all[0];
-  // Most recently edited projects first; the sync layer stamps modifiedAt on every change.
-  const recent = [...all].sort((a, b) => (b.pr.modifiedAt ?? '').localeCompare(a.pr.modifiedAt ?? '')).slice(0, 6);
+  // Most recently edited first; the sync layer stamps modifiedAt on every change. The room you had
+  // open last goes to the top whatever its date.
+  const rooms = [...all].sort((a, b) => (b.pr.modifiedAt ?? '').localeCompare(a.pr.modifiedAt ?? ''));
+  if (lastHit) rooms.splice(0, rooms.length, lastHit, ...rooms.filter(x => x !== lastHit));
   return (
     <main className="home">
       <div className="home-inner">
-        <h1>What do you want to do?</h1>
-        <div className="tiles">
-          {cont ? (
-            <button className="tile primary" onClick={() => p.onOpen(cont.pr.id, cont.l.id)}>
-              <Icon name="planmap" />
-              <span><span className="t">Continue last plan</span><span className="s">{cont.l.name}</span></span>
-            </button>
-          ) : (
-            <button className="tile primary" onClick={p.onDemo}>
-              <Icon name="planmap" />
-              <span><span className="t">Try the sample room</span><span className="s">A lit living room to play with</span></span>
-            </button>
-          )}
-          <button className="tile" onClick={p.onDraw}>
-            <Icon name="pencil" />
-            <span><span className="t">Draw a room</span><span className="s">Pick a shape, type the sizes, get 2D and 3D</span></span>
-          </button>
-          <button className="tile" onClick={p.onListing}>
-            <Icon name="upload" />
-            <span><span className="t">From a listing</span><span className="s">Can't recce? Use the studio's photos and sizes</span></span>
-          </button>
-          <button className="tile" onClick={p.onImport}>
-            <Icon name="download" />
-            <span><span className="t">Open a file</span><span className="s">A project backup from the phone, or a saved copy</span></span>
-          </button>
-          <button className="tile" onClick={p.onSync}>
-            <Icon name="phone" />
-            <span><span className="t">{p.synced ? 'iPhone sync' : 'Sync with my iPhone'}</span><span className="s">{p.synced ? 'Signed in. Rooms you scan appear here.' : 'Sign in once and scans appear here'}</span></span>
-          </button>
+        <div className="home-head">
+          <h1>Rooms</h1>
+          <div className="actions">
+            <button className="btn primary" onClick={p.onDraw}><Icon name="pencil" /> Draw a room</button>
+            <button className="btn" onClick={p.onListing}><Icon name="upload" /> From a listing</button>
+            <button className="btn" onClick={p.onImport}><Icon name="download" /> Open a file</button>
+          </div>
         </div>
-        <div className="banner"><Icon name="phone" /><span>Scanning, measuring and the viewfinder need the iPhone app. Anything you scan there shows up here by itself once sync is on.</span></div>
-        {p.loaded && recent.length > 0 && (
-          <section style={{ display: 'grid', gap: 14 }}>
-            <h2>Recent locations</h2>
-            <div className="recent">
-              {recent.map(({ pr, l }) => (
-                <button key={l.id} className="recent-card" onClick={() => p.onOpen(pr.id, l.id)}>
-                  <Thumb plan={planOf(l, p.plansFor(pr.id))} />
-                  <span><span className="t">{l.name}</span><span className="s">{summary(l)}</span><span className="s">{pr.name}</span></span>
-                </button>
-              ))}
-            </div>
+        {!p.loaded ? <p className="muted">Loading…</p> : rooms.length === 0 ? (
+          <section className="home-empty">
+            <p>No rooms yet. Draw one, build one from a studio listing, or open the sample to see how a lit set reads.</p>
+            <div className="actions"><button className="btn" onClick={p.onDemo}><Icon name="planmap" /> Open the sample room</button></div>
           </section>
+        ) : (
+          <ul className="room-list">
+            {rooms.map(({ pr, l }) => {
+              const s = l.scans.find(x => x.id === l.primaryScanID) ?? l.scans[l.scans.length - 1];
+              const lights = (l.lights ?? []).length;
+              return (
+                <li key={l.id}>
+                  <button className="room-row" onClick={() => p.onOpen(pr.id, l.id)}>
+                    <Thumb plan={planOf(l, p.plansFor(pr.id))} />
+                    <span className="room-name"><span className="t">{l.name}</span><span className="s">{pr.name}{pr.client ? ' · ' + pr.client : ''}</span></span>
+                    <span className="room-fig mono">{s?.stats.width && s.stats.length ? `${s.stats.width.toFixed(1)} × ${s.stats.length.toFixed(1)} m` : '—'}</span>
+                    <span className="room-fig">{l.shots.length} shot{l.shots.length === 1 ? '' : 's'}</span>
+                    <span className="room-fig">{lights} light{lights === 1 ? '' : 's'}</span>
+                    <span className="room-fig faint">{edited(pr.modifiedAt)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
+        <p className="home-foot">
+          Scanning, measuring and the viewfinder are in the iPhone app.{' '}
+          {p.synced ? 'You\'re signed in, so rooms you scan there show up here.' : <>
+            <button className="linkish" onClick={p.onSync}>Sign in</button> on both and rooms you scan show up here.</>}
+        </p>
       </div>
     </main>
   );

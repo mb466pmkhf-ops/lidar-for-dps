@@ -186,7 +186,7 @@ struct LocationDetailView: View {
             button = "Continue"
         }
         return VStack(alignment: .leading, spacing: 10) {
-            Text(started ? "IN PROGRESS" : "NEXT STEP").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+            Text(started ? "In progress" : "Next step").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
             Text(title).font(.fsHeadline)
             Text(detail).font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -213,11 +213,31 @@ export function PlanCanvas(props: Props) {
 
   const inScan = (id?: string) => !id || !scanID || id === scanID;
   const key = keyLux(exposure);
-  const labelFor = (text: string, p: PlanPoint, dy = -16, strong = false) => (
-    <g pointerEvents="none">
-      <text x={sx(p.x)} y={sy(p.z) + dy} textAnchor="middle" className="plan-label" fontSize={12} fill={strong ? 'var(--ink)' : 'var(--ink2)'} stroke="var(--paper)" strokeWidth={4} paintOrder="stroke" fontFamily="Poppins, system-ui" fontWeight={400}>{text}</text>
-    </g>
-  );
+  // Labels are collected while the items draw, then placed together on top (placedLabels) so two
+  // names never print over each other: a label that would collide moves up or down a line, and a
+  // minor one that still can't fit is left out. Selected items and readings always show.
+  const labels: { text: string; x: number; y: number; strong: boolean }[] = [];
+  // Labels set off from their item (lights, cameras, people) also keep clear of every item's glyph.
+  const glyphs: { x: number; y: number }[] = [];
+  const labelFor = (text: string, p: PlanPoint, dy = -16, strong = false) => {
+    labels.push({ text, x: sx(p.x), y: sy(p.z) + dy, strong });
+    if (Math.abs(dy) >= 10 && !glyphs.some(g => g.x === sx(p.x) && g.y === sy(p.z))) glyphs.push({ x: sx(p.x), y: sy(p.z) });
+    return null;
+  };
+  const placedLabels = () => {
+    const boxes: { x0: number; x1: number; y0: number; y1: number }[] = glyphs.map(g => ({ x0: g.x - 13, x1: g.x + 13, y0: g.y - 13, y1: g.y + 13 }));
+    const hits = (b: typeof boxes[number]) => boxes.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
+    const out: ReactElement[] = [];
+    [...labels].sort((a, b) => Number(b.strong) - Number(a.strong)).forEach((l, i) => {
+      const w = l.text.length * 6.6 + 8;
+      const boxAt = (y: number) => ({ x0: l.x - w / 2, x1: l.x + w / 2, y0: y - 12, y1: y + 4 });
+      const y = [0, -15, 15, -30, 30].map(d => l.y + d).find(c => !hits(boxAt(c))) ?? (l.strong ? l.y : undefined);
+      if (y === undefined) return;
+      boxes.push(boxAt(y));
+      out.push(<text key={i} x={l.x} y={y} textAnchor="middle" className="plan-label" fontSize={12} fill={l.strong ? 'var(--ink)' : 'var(--ink2)'} stroke="var(--paper)" strokeWidth={4} paintOrder="stroke" fontFamily="Poppins, system-ui" fontWeight={400}>{l.text}</text>);
+    });
+    return <g pointerEvents="none">{out}</g>;
+  };
 
   const rotateHandle = (s: Selection, p: PlanPoint, bearing: number, r = 1.0) => {
     const h = { x: p.x + unitBearing(bearing).x * r, z: p.z + unitBearing(bearing).z * r };
@@ -450,6 +470,7 @@ export function PlanCanvas(props: Props) {
         {lights.filter(l => KIND_INFO[l.kind].emits ? !hidden.has('lights') : !hidden.has('grip')).map(drawLight)}
         {!hidden.has('people') && (location.characters ?? []).filter(c => inScan(c.scanID)).map(drawCharacter)}
         {!hidden.has('meters') && (location.meters ?? []).filter(m => inScan(m.scanID)).map(drawMeter)}
+        {placedLabels()}
         {scan?.northOffset !== undefined && (
           <g transform={`translate(${size.w - 70},${size.h - 100}) rotate(${-scan.northOffset})`} pointerEvents="none" opacity={0.8}>
             <polygon points="0,-18 6,6 0,2 -6,6" fill="var(--danger)" />

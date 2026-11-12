@@ -40,7 +40,7 @@ struct CharacterPanel: View {
             CharacterFields(character: character, update: update)
             if let reading {
                 HStack {
-                    Text("FACE").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                    Text("Face").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                     Text(faceText(reading))
                         .font(.fsMono)
                     Spacer()
@@ -113,15 +113,15 @@ struct CharacterFields: View {
                 .accessibilityHint("Switches between standing and sitting")
             }
             HStack(spacing: 14) {
-                slider("HEIGHT", value: character.height, range: character.type.heightRange, format: { UnitsFormatter.distance($0) }) { v in
+                slider("Height", value: character.height, range: character.type.heightRange, format: { UnitsFormatter.distance($0) }) { v in
                     update { $0.height = v }
                 }
-                slider("BUILD", value: character.build, range: 0...1, format: { _ in character.buildLabel }) { v in
+                slider("Build", value: character.build, range: 0...1, format: { _ in character.buildLabel }) { v in
                     update { $0.build = v }
                 }
             }
             HStack(spacing: 8) {
-                Text("SKIN").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                Text("Skin").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                 ForEach(SkinTone.allCases) { tone in
                     let c = tone.rgb
                     Button { update { $0.skinTone = tone } } label: {
@@ -169,7 +169,7 @@ struct MeterPanel: View {
             HStack(alignment: .firstTextBaseline) {
                 TextField("Name", text: Binding(get: { meter.name }, set: { v in update { $0.name = v } })).font(.fsHeadline)
                 Spacer()
-                ProvenanceBadge(provenance: .estimated)
+                ProvenanceBadge(provenance: .estimated, showsLabel: true)
             }
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 StatView(label: "Incident", value: LuxFormat.lux(reading.lux))
@@ -190,7 +190,7 @@ struct MeterPanel: View {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("HEIGHT").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        Text("Height").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                         Spacer()
                         Text(UnitsFormatter.distance(meter.height)).font(.fsMono)
                     }
@@ -200,7 +200,7 @@ struct MeterPanel: View {
                 if meter.facing == .bearing {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            Text("FACING").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                            Text("Facing").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                             Spacer()
                             Text(String(format: "%.0f°", meter.bearing)).font(.fsMono)
                         }
@@ -613,7 +613,7 @@ struct ExposureSheet: View {
     private func ndLabel(_ s: Double) -> String {
         if s == 0 { return "None" }
         let stops = Int(s)
-        return "ND " + String(format: "%.1f", s * 0.3) + " (\(stops) stop" + (stops == 1 ? ")" : "s)")
+        return "Nd " + String(format: "%.1f", s * 0.3) + " (\(stops) stop" + (stops == 1 ? ")" : "s)")
     }
 
     private var lensSection: some View {

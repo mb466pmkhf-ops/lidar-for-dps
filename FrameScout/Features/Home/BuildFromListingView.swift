@@ -55,8 +55,8 @@ struct BuildFromListingView: View {
                     FloorPlanCanvas(plan: room.plan, style: .thumbnail)
                         .frame(height: 190)
                         .padding(12)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
                     Text(reading.sizeNote).font(HomeStyle.footnote).foregroundStyle(Theme.textSecondary)
 
                     StepperRow(title: "Length", value: UnitsFormatter.distance(room.normalised.length),
@@ -75,8 +75,8 @@ struct BuildFromListingView: View {
                     Toggle(isOn: $room.door) { Text("Door on the left wall").font(HomeStyle.body) }
                         .tint(Theme.accent)
                         .padding(.horizontal, 16).frame(minHeight: 56)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     HStack {
                         Text("Add it to").font(HomeStyle.body)
@@ -88,8 +88,8 @@ struct BuildFromListingView: View {
                         .tint(Theme.accent)
                     }
                     .padding(.horizontal, 16).frame(minHeight: 56)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     Text("Sizes from a listing are saved as entered by hand, not as measurements. Check them on the day if you can.")
                         .font(HomeStyle.footnote).foregroundStyle(Theme.textSecondary)
@@ -104,7 +104,7 @@ struct BuildFromListingView: View {
                         .font(HomeStyle.button)
                         .foregroundStyle(Theme.onAccent)
                         .frame(maxWidth: .infinity, minHeight: 58)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16).padding(.vertical, 10)
@@ -150,7 +150,7 @@ struct BuildFromListingView: View {
                             Image(uiImage: photo.image)
                                 .resizable().scaledToFill()
                                 .frame(width: 96, height: 96)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
                                 .overlay(alignment: .topTrailing) {
                                     Button { photos.removeAll { $0.id == photo.id } } label: {
                                         Image(systemName: "xmark.circle.fill").font(.title3)
@@ -170,8 +170,8 @@ struct BuildFromListingView: View {
             }
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private var textSection: some View {
@@ -191,8 +191,8 @@ struct BuildFromListingView: View {
                     .frame(minHeight: 130)
             }
             .padding(8)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
             if UIPasteboard.general.hasStrings {
                 Button { if let s = UIPasteboard.general.string { text = text.isEmpty ? s : text + "\n" + s } } label: {
                     Label("Paste", systemImage: "doc.on.clipboard").font(HomeStyle.button).foregroundStyle(Theme.accent)
@@ -240,15 +240,15 @@ struct BuildFromListingView: View {
                         }
                         .foregroundStyle(Theme.accent)
                         .padding(.horizontal, 14).frame(minHeight: 52)
-                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private var shapePicker: some View {
@@ -262,8 +262,8 @@ struct BuildFromListingView: View {
                     }
                     .foregroundStyle(on ? Theme.accent : Theme.textPrimary)
                     .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(on ? Theme.surfaceRaised : Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(on ? Theme.accent : Theme.hairline, lineWidth: on ? 2 : 1))
+                    .background(on ? Theme.surfaceRaised : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(on ? Theme.accent : Theme.hairline, lineWidth: on ? 2 : 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])
@@ -275,8 +275,8 @@ struct BuildFromListingView: View {
         content
             .font(HomeStyle.body)
             .padding(.horizontal, 14).frame(minHeight: 52)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private func symbol(_ kind: ListingReader.FindingKind) -> String {

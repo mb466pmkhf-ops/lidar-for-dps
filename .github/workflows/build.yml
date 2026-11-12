@@ -63,6 +63,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Look sheet (Docs/LOOK.md)
+        run: node scripts/check-look.mjs
       - name: Web planner matches the Swift lighting maths
         working-directory: web
         run: |

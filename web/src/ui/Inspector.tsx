@@ -22,7 +22,7 @@ import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
-import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
+import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, stopColor, watts } from './format';
 import type { ReadingUnit } from './format';
 import { Icon } from './icons';
 import type { Selection } from './PlanCanvas';
@@ -635,7 +635,7 @@ function Overview(p: InspectorProps) {
         <div className="field"><span>Shutter</span><select value={e.shutterAngle} onChange={x => setE({ shutterAngle: Number(x.target.value) })}>{shutterAngles.map(v => <option key={v} value={v}>{trim(v)}°</option>)}</select><span className="val">{speedLabel(exposureTime(e))}</span></div>
         <div className="field"><span>T-stop</span><select value={e.tStop} onChange={x => setE({ tStop: Number(x.target.value) })}>{tStops.map(v => <option key={v} value={v}>{stopLabel(v)}</option>)}</select><span className="val" title="Aperture geometry for this lens">f/{fStop(e).toFixed(1)}</span></div>
         <div className="field"><span>ND</span><select value={e.ndStops} onChange={x => setE({ ndStops: Number(x.target.value) })}>{[0, 1, 2, 3, 4, 5, 6].map(v => <option key={v} value={v}>{v === 0 ? 'None' : `ND ${(v * 0.3).toFixed(1)} (${v} stop${v > 1 ? 's' : ''})`}</option>)}</select><span /></div>
-        <p className="note">An incident reading of {fmtLux(keyLux(e))} exposes a subject correctly at these settings. T-stops include lens loss; a T-stop is a camera setting, not scene brightness.</p>
+        <details className="quirks"><summary>What the key reading means</summary><p className="note">An incident reading of {fmtLux(keyLux(e))} exposes a subject correctly at these settings. T-stops include lens loss; a T-stop is a camera setting, not scene brightness.</p></details>
       </Panel>
       <Panel title="Readings">
         <div className="field"><span>Show as</span><select value={readingUnit()} onChange={x => setReadingUnit(x.target.value as ReadingUnit)}>{READING_UNITS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select><span /></div>
@@ -643,7 +643,7 @@ function Overview(p: InspectorProps) {
           const r = p.readings.get(m.key) ?? 0;
           return (
             <button key={m.key} className="meter-row row" style={{ display: 'grid', padding: '8px 0' }} onClick={() => p.select('meter' in m.source ? { kind: 'meter', id: m.source.meter } : { kind: 'character', id: m.source.character })}>
-              <span>{m.name}</span><span className="mono">≈ {fmtReading(r, e)}</span><span className="mono muted">{readingUnit() === 'lux' || readingUnit() === 'footCandles' ? stopsDelta(stopsForLux(e, r)) : ''}</span>
+              <span>{m.name}</span><span className="mono reading"><i className="stop-swatch" style={{ background: stopColor(stopsForLux(e, r)) ?? 'transparent' }} />≈ {fmtReading(r, e)}</span><span className="mono muted">{readingUnit() === 'lux' || readingUnit() === 'footCandles' ? stopsDelta(stopsForLux(e, r)) : ''}</span>
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}

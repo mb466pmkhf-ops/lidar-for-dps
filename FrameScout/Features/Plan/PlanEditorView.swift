@@ -246,6 +246,8 @@ struct PlanEditorView: View {
     @State private var fittedBounds: PlanRect?
     /// Information layers switched on above the essentials ("beams,readings"…).
     @AppStorage("plan.infoLayers") private var infoLayersRaw = ""
+    /// Gesture tips show until the user taps them away once (Docs/LOOK.md: explain once, not forever).
+    @AppStorage("tips.planGestures.seen") private var gestureTipSeen = false
     @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
     @State private var showInfoBar = false
 
@@ -418,7 +420,7 @@ struct PlanEditorView: View {
     /// One line under the exposure summary saying what the readings mean in the chosen unit.
     private var keyLine: String {
         switch readingUnit {
-        case .tStop: return "Readings are the stop a light meter would show"
+        case .tStop: return ""
         case .stops: return "Readings are over or under \(ExposureSettings.stopLabel(exposure.tStop))"
         case .lux, .footCandles: return "Key ≈ \(readingUnit.text(lux: exposure.keyLux, exposure: exposure)) for a correct exposure"
         }
@@ -465,15 +467,32 @@ struct PlanEditorView: View {
             }
             .overlay(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(tool.hint3D)
-                        .font(.fsMicro).tracking(Theme.tracking)
-                        .foregroundStyle(.white.opacity(0.8))
+                    if tool != .select {
+                        Text(tool.hint3D)
+                            .font(.fsMicro)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .allowsHitTesting(false)
+                    } else if !gestureTipSeen {
+                        Button { gestureTipSeen = true } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(tool.hint3D)
+                                    .font(.fsMicro)
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .multilineTextAlignment(.leading)
+                                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Hides this tip")
+                    }
                     if scene3D.builtFromPlan {
-                        Text("BUILT FROM THE PLAN").font(.fsMicro).tracking(Theme.tracking).foregroundStyle(.white.opacity(0.55))
+                        Text("Built from the plan").font(.fsMicro).foregroundStyle(.white.opacity(0.55))
+                            .allowsHitTesting(false)
                     }
                 }
                 .padding(8)
-                .allowsHitTesting(false)
+                // Keep clear of the view buttons on the right.
+                .padding(.trailing, 56)
             }
             .overlay(alignment: .topTrailing) {
                 VStack(spacing: 6) {
@@ -503,8 +522,8 @@ struct PlanEditorView: View {
                 .font(.system(size: 15, weight: .light))
                 .frame(width: 40, height: 40)
                 .foregroundStyle(.white)
-                .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 0.5))
+                .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -627,7 +646,7 @@ struct PlanEditorView: View {
         HStack(spacing: 6) {
             Button { withAnimation(.snappy) { showInfoBar.toggle() } } label: {
                 HStack(spacing: 4) {
-                    Text("SHOW").font(.fsLabel).tracking(Theme.tracking)
+                    Text("Show").font(.fsLabel).tracking(Theme.tracking)
                     let count = infoLayers.count + (display.luxMapOn ? 1 : 0)
                     if count > 0 && !showInfoBar { Text("+\(count)").font(.fsLabel) }
                     Image(systemName: showInfoBar ? "chevron.left" : "chevron.right").font(.fsMicro)
@@ -1354,7 +1373,7 @@ struct PlanEditorView: View {
     /// Choose what the next tap places.
     private var addPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ADD").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
+            Text("Add").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     addChip(.camera, selected: addItem == .camera)
@@ -1428,7 +1447,7 @@ struct PlanEditorView: View {
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
                 .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
-                .background(selected ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .background(selected ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1604,7 +1623,7 @@ struct PlanEditorView: View {
     /// Three steps to a first lighting plan, each one tap away.
     private var firstSteps: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("START HERE").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
+            Text("Start here").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textSecondary)
             stepButton(1, "Place a person", "figure.stand") { addItem = .person(.woman); tool = .add }
             stepButton(2, "Place the camera", "video") { addItem = .camera; tool = .add }
             Text("3  Select the person, then Light this person for a starting setup.")
@@ -1645,7 +1664,7 @@ struct PlanEditorView: View {
                     Image(systemName: "camera.aperture").foregroundStyle(Theme.textSecondary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(exposure.summary).font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
-                        Text(keyLine).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                        if !keyLine.isEmpty { Text(keyLine).font(.fsCaption).foregroundStyle(Theme.textSecondary) }
                     }
                     Spacer()
                     Image(systemName: "chevron.right").font(.fsCaption).foregroundStyle(Theme.textTertiary)
@@ -1658,7 +1677,7 @@ struct PlanEditorView: View {
             if !points.isEmpty && !sceneLights.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("READINGS").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                        Text("Readings").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                         Menu {
                             Picker("Show readings as", selection: $readingUnit) {
                                 ForEach(ReadingUnit.allCases) { unit in Text(unit.label).tag(unit) }
@@ -1671,17 +1690,18 @@ struct PlanEditorView: View {
                             .font(.fsCaption)
                             .padding(.horizontal, 10)
                             .frame(minHeight: 32)
-                            .background(Theme.surfaceRaised, in: Capsule())
+                            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
                         }
                         .accessibilityLabel("Show readings as \(readingUnit.label)")
                         Spacer()
-                        ProvenanceBadge(provenance: .estimated)
+                        ProvenanceBadge(provenance: .estimated, showsLabel: true)
                     }
                     ForEach(points.prefix(4)) { m in
                         HStack {
-                            Text(m.name).font(.fsCaption).lineLimit(1)
+                            Text(m.name).font(.fsBody).lineLimit(1)
                             Spacer()
-                            Text(readingText(analysis.reading(m.source)) ?? "—").font(.fsMono)
+                            // The reading is the point of the panel, so it's the biggest thing in it.
+                            Text(readingText(analysis.reading(m.source)) ?? "—").font(.fsValue)
                         }
                     }
                 }
@@ -1700,7 +1720,7 @@ struct PlanEditorView: View {
     private var measurePanel: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading) {
-                Text("PLAN MEASURE").font(.fsLabel).foregroundStyle(Theme.textSecondary)
+                Text("Plan measure").font(.fsLabel).foregroundStyle(Theme.textSecondary)
                 Text(measureDistance.map { UnitsFormatter.distance($0, precise: true) } ?? (measurePoints.isEmpty ? "Tap first point" : "Tap second point"))
                     .font(.fsValue)
             }
