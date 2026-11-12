@@ -1514,7 +1514,9 @@ struct PlanEditorView: View {
                         ForEach(location.scans) { s in Text(s.name).tag(Optional(s.id)) }
                     }
                 }
-XX, isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
+                Button { showExposure = true } label: { Label("Camera exposure…", systemImage: "camera.aperture") }
+                Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
+                Button { showStage = true } label: { Label("Daylight and studio set…", systemImage: "sun.horizon") }
                 if scan != nil {
                     Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
                 }
