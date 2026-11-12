@@ -21,8 +21,8 @@ struct DrawRoomView: View {
                         .font(HomeStyle.body)
                         .textInputAutocapitalization(.words)
                         .padding(.horizontal, 14).frame(minHeight: 52)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     Text("Start from a shape").font(HomeStyle.footnote).foregroundStyle(Theme.textSecondary)
                     HStack(spacing: 12) {
@@ -36,8 +36,8 @@ struct DrawRoomView: View {
                                 }
                                 .foregroundStyle(on ? Theme.accent : Theme.textPrimary)
                                 .frame(maxWidth: .infinity, minHeight: 76)
-                                .background(on ? Theme.surfaceRaised : Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(on ? Theme.accent : Theme.hairline, lineWidth: on ? 2 : 1))
+                                .background(on ? Theme.surfaceRaised : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(on ? Theme.accent : Theme.hairline, lineWidth: on ? 2 : 1))
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(on ? .isSelected : [])
@@ -47,8 +47,8 @@ struct DrawRoomView: View {
                     FloorPlanCanvas(plan: room.plan, style: .thumbnail)
                         .frame(height: 190)
                         .padding(12)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     StepperRow(title: "Length", value: UnitsFormatter.distance(room.normalised.length),
                                minus: { room.length = step(room.length, -0.1, DrawnRoom.sizeRange) },
@@ -66,8 +66,8 @@ struct DrawRoomView: View {
                     Toggle(isOn: $room.door) { Text("Door on the left wall").font(HomeStyle.body) }
                         .tint(Theme.accent)
                         .padding(.horizontal, 16).frame(minHeight: 56)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     HStack {
                         Text("Add it to").font(HomeStyle.body)
@@ -79,8 +79,8 @@ struct DrawRoomView: View {
                         .tint(Theme.accent)
                     }
                     .padding(.horizontal, 16).frame(minHeight: 56)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
 
                     Text("Sizes you set here are saved as entered by hand, not as measurements.")
                         .font(HomeStyle.footnote).foregroundStyle(Theme.textSecondary)
@@ -94,7 +94,7 @@ struct DrawRoomView: View {
                         .font(HomeStyle.button)
                         .foregroundStyle(Theme.onAccent)
                         .frame(maxWidth: .infinity, minHeight: 58)
-                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16).padding(.vertical, 10)
@@ -147,8 +147,8 @@ struct StepperRow: View {
             button("plus", "More \(title.lowercased())", plus)
         }
         .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
     }
 
@@ -157,7 +157,7 @@ struct StepperRow: View {
             Image(systemName: symbol).font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 52, height: 52)
-                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

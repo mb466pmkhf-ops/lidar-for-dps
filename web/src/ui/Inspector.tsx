@@ -24,7 +24,7 @@ import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, characterLabel, characterTypes, hairOf, hairStyles, isChild, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
-import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, watts } from './format';
+import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, stopColor, watts } from './format';
 import { Icon } from './icons';
 import { GripFields } from './GripPanel';
 import type { Selection } from './PlanCanvas';
@@ -654,7 +654,7 @@ function Overview(p: InspectorProps) {
           const r = p.readings.get(m.key) ?? 0;
           return (
             <button key={m.key} className="meter-row row" style={{ display: 'grid', padding: '8px 0' }} onClick={() => p.select('meter' in m.source ? { kind: 'meter', id: m.source.meter } : { kind: 'character', id: m.source.character })}>
-              <span>{m.name}</span><span className="mono">≈ {fmtReading(r, e)}</span><span className="mono muted" title={`Against ${stopLabel(e.tStop)} set on the camera`}>{stopsDelta(stopsForLux(e, r))}</span>
+              <span>{m.name}</span><span className="mono reading"><i className="stop-swatch" style={{ background: stopColor(stopsForLux(e, r)) ?? 'transparent' }} />≈ {fmtReading(r, e)}</span><span className="mono muted" title={`Against ${stopLabel(e.tStop)} set on the camera`}>{stopsDelta(stopsForLux(e, r))}</span>
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}

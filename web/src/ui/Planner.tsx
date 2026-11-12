@@ -171,7 +171,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
       setSelection({ kind: 'light', id: l.id });
     } else if (tool.kind === 'person') {
       const n = (location.characters ?? []).length + 1;
-      const c = newCharacter(n % 2 ? 'woman' : 'man', p, `Person ${n}`, scanID);
+      const c = newCharacter(n % 2 ? 'woman' : 'man', p, `Talent ${n}`, scanID);
       const cam = location.shots[0]?.rig ?? location.cameraPositions[0]?.rig;
       if (cam) c.facing = bearingFrom(p, cam.position);
       edit(loc => ({ ...loc, characters: [...(loc.characters ?? []), c] }));
@@ -354,7 +354,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
           <span className="sep" />
           <button className={'tool' + (isOn('select') ? ' on' : '')} onClick={() => setTool({ kind: 'select' })} title="Select and move (Esc)"><Icon name="select" /><span className="txt">Select</span></button>
           <div style={{ position: 'relative' }}>
-            <button className={'tool' + (isOn('light') ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setLightMenu(!lightMenu); }} aria-expanded={lightMenu} title="Add a light or grip (L)"><Icon name="light" /><span className="txt">+ Light</span></button>
+            <button className={'tool' + (isOn('light') ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setLightMenu(!lightMenu); }} aria-expanded={lightMenu} title="Add a light or grip (L)"><Icon name="light" /><span className="txt">Light</span></button>
             {lightMenu && (
               <div className="dialog" style={{ position: 'fixed', ...anchor, width: 300, padding: 12, zIndex: 20 }} onMouseLeave={() => setLightMenu(false)}>
                 <div className="label" style={{ marginBottom: 8 }}>Lights</div>
@@ -368,7 +368,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
           <div style={{ position: 'relative' }}>
             <button className={'tool' + (isOn('opening') || isOn('furniture') ? ' on' : '')} disabled={!calcPlan}
               onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setSetMenu(!setMenu); setLightMenu(false); }} aria-expanded={setMenu}
-              title={calcPlan ? 'Add a door, window or piece of furniture (S)' : 'Draw a room or scan one first'}><Icon name="sofa" /><span className="txt">+ Set</span></button>
+              title={calcPlan ? 'Add a door, window or piece of furniture (S)' : 'Draw a room or scan one first'}><Icon name="sofa" /><span className="txt">Set</span></button>
             {setMenu && (
               <div className="dialog" style={{ position: 'fixed', ...anchor, width: 320, padding: 12, zIndex: 20 }} onMouseLeave={() => setSetMenu(false)}>
                 <div className="label" style={{ marginBottom: 8 }}>In a wall</div>
@@ -379,9 +379,9 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
               </div>
             )}
           </div>
-          <button className={'tool' + (isOn('person') ? ' on' : '')} onClick={() => setTool({ kind: 'person' })} title="Add a person (P)"><Icon name="person" /><span className="txt">+ Person</span></button>
-          <button className={'tool' + (isOn('camera') ? ' on' : '')} onClick={() => setTool({ kind: 'camera' })} title="Add a camera (C)"><Icon name="camera" /><span className="txt">+ Camera</span></button>
-          <button className={'tool' + (isOn('meter') ? ' on' : '')} onClick={() => setTool({ kind: 'meter' })} title="Add a light meter (M)"><Icon name="meter" /><span className="txt">+ Meter</span></button>
+          <button className={'tool' + (isOn('person') ? ' on' : '')} onClick={() => setTool({ kind: 'person' })} title="Add a person (P)"><Icon name="person" /><span className="txt">Person</span></button>
+          <button className={'tool' + (isOn('camera') ? ' on' : '')} onClick={() => setTool({ kind: 'camera' })} title="Add a camera (C)"><Icon name="camera" /><span className="txt">Camera</span></button>
+          <button className={'tool' + (isOn('meter') ? ' on' : '')} onClick={() => setTool({ kind: 'meter' })} title="Add a light meter (M)"><Icon name="meter" /><span className="txt">Meter</span></button>
           <span className="sep" />
           <div style={{ position: 'relative' }}>
             <button className={'tool' + (showMenu ? ' on' : '')} onClick={e => { setAnchor(menuAnchor(e.currentTarget)); setShowMenu(!showMenu); }} aria-expanded={showMenu} title="Add information to the plan, one layer at a time">

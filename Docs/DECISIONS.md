@@ -207,3 +207,13 @@ and window panels). Maths in `Stage.swift` ↔ `web/src/model/stage.ts`, checked
   frame stays readable; viewport brightness is still not a reading.
 - The iPhone draws the set with SceneKit (simpler cove, gradient sky, area light for the LED wall); it was
   built in CI but not checked on a device.
+
+## D-016 · A written look sheet, checked in CI — 2026-11-12
+
+Vorbi asked whether the app looked "vibecoded" and then to fix what the review found: identical
+rounded tiles as the main UI, seven different corner sizes, letter-spaced capitals, dashed pills on
+every figure, gesture text over the 3D, placeholder sample names, overlapping plan labels, a demo grid
+under the 3D set and a generic cube icon in amber. The look is now written down in `Docs/LOOK.md`
+(two radii, one button shape, sentence-case labels, the stop scale as the signature colour, Home as a
+list of your work) and `scripts/check-look.mjs` fails the build on the mechanical parts. (D-013 to
+D-015 were left for the open grip, studio and camera PRs.)

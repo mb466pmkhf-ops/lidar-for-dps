@@ -38,3 +38,13 @@ export function Icon({ name, className = 'icon' }: { name: keyof typeof paths | 
     </svg>
   );
 }
+
+/** The FrameScan mark: the false-colour stop scale with the key raised, as on the plan legend. */
+export function StopMark() {
+  const cols = ['#1f296b', '#2e54cc', '#4d9ec7', '#8c8c8c', '#40bf5e', '#e68ca8', '#e0663d', '#ff2929'];
+  return (
+    <svg className="stopmark" viewBox="0 0 36 12" aria-hidden="true">
+      {cols.map((c, i) => <rect key={c} x={i * 4.5} y={i === 4 ? 0 : 3} width={4.5} height={i === 4 ? 12 : 6} fill={c} />)}
+    </svg>
+  );
+}

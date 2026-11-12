@@ -10,7 +10,7 @@ import { Home } from './Home';
 import { RoomDialog } from './RoomDialog';
 import { ListingDialog, ListingPhotosDialog, type ListingFile } from './ListingDialog';
 import { listingPhotos } from '../sync/listingPhotos';
-import { Icon } from './icons';
+import { Icon, StopMark } from './icons';
 
 function useWorkspace() {
   return useSyncExternalStore(workspace.subscribe, workspace.getProjects);
@@ -19,7 +19,7 @@ function useWorkspace() {
 function syncLabel(s: SyncState): { text: string; dot: string } {
   switch (s.kind) {
     case 'local': return { text: 'On this device only', dot: '' };
-    case 'signedOut': return { text: 'Sign in to sync', dot: 'err' };
+    case 'signedOut': return { text: 'Sign in to sync', dot: '' };
     case 'syncing': return { text: 'Syncing…', dot: 'busy' };
     case 'synced': return { text: workspace.hasPendingChanges() ? 'Saving…' : 'Synced', dot: workspace.hasPendingChanges() ? 'busy' : 'ok' };
     case 'offline': return { text: 'Offline · saved here', dot: '' };
@@ -171,7 +171,7 @@ export function App() {
         {view === 'plan' && <button className="btn ghost small menu-btn" onClick={() => setDrawer(!drawer)} aria-label="Projects"><Icon name="menu" /></button>}
         {view === 'plan'
           ? <button className="btn small" onClick={() => setView('home')}><Icon name="home" /> Home</button>
-          : <span className="brand">FrameScan</span>}
+          : <span className="brand"><StopMark /> FrameScan</span>}
         <span className="crumbs">{view === 'plan' && project ? `${project.name}${location ? ' — ' + location.name : ''}` : ''}</span>
         {view === 'plan' && location && photoCount > 0 && (
           <button className="btn small" onClick={() => setPhotosOpen(true)} title="Photos added with the listing (this browser only)">Photos ({photoCount})</button>
