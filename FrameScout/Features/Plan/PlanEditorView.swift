@@ -351,6 +351,7 @@ struct PlanEditorView: View {
         .onAppear {
             if scanID == nil { scanID = location?.primaryScan?.id }
             if fittedBounds == nil { fittedBounds = contentBounds() }
+            settlePeopleOnce()
             if lightingMode {
                 if location?.primaryScan != nil { layout = .split }
                 if location?.lightFixtures.isEmpty ?? true { tool = .add }
@@ -1424,7 +1425,15 @@ struct PlanEditorView: View {
     /// Every change made in the editor goes through here so it can be undone.
     private func edit(_ mutate: (inout Location) -> Void) {
         if let snapshot { history.willEdit(snapshot) }
-        store.updateLocation(ref, mutate)
+        let room = scan == nil ? nil : plan, sid = scan?.id
+        store.updateLocation(ref) { loc in
+            let before = loc.previsCharacters
+            mutate(&loc)
+            // People moved, added, sat down or stood up are kept out of the furniture (Placement).
+            if let settled = Placement.settle(loc.previsCharacters, plan: room, scanID: sid, before: before) {
+                loc.previsCharacters = settled
+            }
+        }
     }
 
     /// Changes the scan's 2D plan by hand: doors, windows, set pieces. Undoable like `edit`.
@@ -1434,7 +1443,20 @@ struct PlanEditorView: View {
         mutate(&next)
         guard next != plan else { return }
         if let snapshot { history.willEdit(snapshot) }
+        let previous = plan
         store.setFloorPlan(next, ref, scanID: scan.id)
+        // Seated people ride along with a moved sofa; a piece moved onto someone pushes them aside.
+        if next.objects != previous.objects, let people = location?.previsCharacters,
+           let settled = Placement.carry(people, from: previous, to: next, scanID: scan.id) {
+            store.updateLocation(ref) { $0.previsCharacters = settled }
+        }
+    }
+
+    /// People saved before furniture kept them out (or moved on another device) are settled once on opening.
+    private func settlePeopleOnce() {
+        guard let scan, let people = location?.previsCharacters, !people.isEmpty, !plan.isEmpty,
+              let settled = Placement.settle(people, plan: plan, scanID: scan.id, before: people, all: true) else { return }
+        store.updateLocation(ref) { $0.previsCharacters = settled }
     }
 
     private func restore(_ s: EditSnapshot) {
@@ -1904,17 +1926,28 @@ struct PlanEditorView: View {
         .buttonStyle(.plain)
     }
 
+    /// "Room ± 4.80 × 6.20 m · 2 people · 3 cameras · 6 lights", leaving out what isn't there.
+    private var overviewLine: String {
+        func n(_ count: Int, _ one: String, _ many: String) -> String? { count == 0 ? nil : "\(count) \(count == 1 ? one : many)" }
+        var parts: [String?] = []
+        if let scan {
+            let s = scan.stats
+            parts.append("Room \(s.marked(UnitsFormatter.dimensions(s.width, s.length), .roomSize, kind: scan.kind))")
+        }
+        parts.append(n(location?.previsCharacters.count ?? 0, "person", "people"))
+        parts.append(n((location?.cameraPositions.count ?? 0) + (location?.shots.count ?? 0), "camera", "cameras"))
+        parts.append(n(location?.lightFixtures.count ?? 0, "light", "lights"))
+        let line = parts.compactMap { $0 }.joined(separator: " · ")
+        return line.isEmpty ? "Nothing placed yet" : line
+    }
+
     private func overviewPanel(_ analysis: LightingAnalysis) -> some View {
-        // Room size gets its own row: four across truncates it on a phone.
+        // Counts and room size are context, so they share one small line; the camera settings and
+        // the readings below are what this panel is for.
         VStack(alignment: .leading, spacing: 12) {
             if isBlank { firstSteps }
-            HStack(spacing: 16) {
-                StatView(label: "Cameras", value: "\((location?.cameraPositions.count ?? 0) + (location?.shots.count ?? 0))")
-                StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
-                StatView(label: "People", value: "\(location?.previsCharacters.count ?? 0)")
-            }
-            StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length),
-                     provenance: scan.map { $0.stats.provenance(of: .roomSize, kind: $0.kind) })
+            Text(overviewLine).font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                .lineLimit(2)
             Button { showExposure = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "camera.aperture").foregroundStyle(Theme.textSecondary)

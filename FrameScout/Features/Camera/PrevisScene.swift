@@ -399,6 +399,7 @@ final class VirtualSceneModel: ObservableObject {
     /// What the room or the hand-placed overlay was last built from, so unchanged plans aren't rebuilt.
     private var builtPlan: FloorPlan?
     private var builtHand: FloorPlan?
+    private var builtHandWalls: [PlanSegment] = []
     /// Scanned set pieces moved or deleted on the plan: hidden in the scan, redrawn from the plan.
     private var replacedScanPieces: Set<UUID> = []
     private var alignment = ScanAlignment.identity
@@ -408,7 +409,7 @@ final class VirtualSceneModel: ObservableObject {
     private var lightCache: [UUID: (key: Int, node: SCNNode)] = [:]
     /// Each lit unit's SceneKit light with its on-axis output, so brightness can be re-fitted
     /// without rebuilding the unit.
-    private var viewportLights: [UUID: (light: SCNLight, onAxis: Double, full: Double)] = [:]
+    private var viewportLights: [UUID: (light: SCNLight, onAxis: Double, full: Double, on: Bool)] = [:]
     /// Soft sources standing in for light thrown back off grip and passed through diffusion (D-013).
     private let gripGlow = SCNNode()
     /// Flags, frames and boards a beam's haze stops at.
@@ -538,15 +539,19 @@ final class VirtualSceneModel: ObservableObject {
         }
         var hand = FloorPlan()
         hand.floorY = plan.floorY
-        hand.objects = plan.objects.filter { $0.byHand == true }
+        // Scanned sofas, chairs and beds are drawn again with a seat (the scan has them as plain
+        // boxes), so people sit on them rather than inside them.
+        func redrawn(_ o: PlanObject) -> Bool { o.byHand == true || Placement.seatKind(o.category) != nil }
+        hand.objects = plan.objects.filter(redrawn)
         hand.windows = plan.windows.filter { $0.byHand == true }
         hand.doors = plan.doors.filter { $0.byHand == true }
-        let kept = Set(plan.objects.filter { $0.byHand != true }.map(\.id))
+        let kept = Set(plan.objects.filter { !redrawn($0) }.map(\.id))
         let replaced = Set(scanItems.compactMap { item -> UUID? in
             guard group(for: item.category) == .furniture, let id = item.id, !kept.contains(id) else { return nil }
             return id
         })
-        guard hand != builtHand || replaced != replacedScanPieces else { return }
+        guard hand != builtHand || replaced != replacedScanPieces || plan.walls != builtHandWalls else { return }
+        builtHandWalls = plan.walls
         builtHand = hand
         replacedScanPieces = replaced
         handNode?.removeFromParentNode()
@@ -554,7 +559,7 @@ final class VirtualSceneModel: ObservableObject {
         handItems = []
         if !(hand.objects.isEmpty && hand.windows.isEmpty && hand.doors.isEmpty) {
             var items: [(node: SCNNode, category: String, id: UUID?)] = []
-            let node = SceneKitBuilder.node(for: PlanSceneBuilder.sceneGeometry(hand)) { n, info in
+            let node = SceneKitBuilder.node(for: PlanSceneBuilder.sceneGeometry(hand, seatWalls: plan.walls)) { n, info in
                 items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
             }
             scanHolder.addChildNode(node)
@@ -860,8 +865,10 @@ final class VirtualSceneModel: ObservableObject {
         let gripKey = gripHash.finalize()
         for l in lights {
             if hideGrip && !l.kind.emits { continue }
-            // Up to six units cast shadows, so flags and frames cut them.
-            let wantsShadow = l.kind.emits && l.isOn && shadowCount < 6 && l.photometrics.distribution != .omni && l.photometrics.distribution != .tube
+            // Up to six units cast shadows, so flags and frames cut them. Chosen whether a unit is on or
+            // off, so switching one never moves a shadow to another unit: the scene keeps the same lights
+            // and shadows, and SceneKit doesn't have to build new shaders (that was the pause on a switch).
+            let wantsShadow = l.kind.emits && shadowCount < 6 && l.photometrics.distribution != .omni && l.photometrics.distribution != .tube
             if wantsShadow { shadowCount += 1 }
             if l.kind.emits && l.isOn { anyOn = true }
             var h = Hasher()
@@ -890,9 +897,10 @@ final class VirtualSceneModel: ObservableObject {
         // Fit the picture to the brightest unit at full output; every unit keeps its true ratio to it.
         // It depends on the units alone, so moving a person or a flag, or dimming a unit, never
         // changes how bright the other units look.
-        let brightest = viewportLights.values.map(\.full).max() ?? 0
+        let brightest = viewportLights.values.filter(\.on).map(\.full).max() ?? 0
         for entry in viewportLights.values {
-            entry.light.intensity = SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1)
+            // A unit that is off keeps its light at zero rather than losing it (see `wantsShadow`).
+            entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1) : 0
         }
         setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest)
         // With units on, the room keeps only a trace of work light so their shadows read; the
@@ -914,8 +922,7 @@ final class VirtualSceneModel: ObservableObject {
             for side in [1, -1] {
                 let mine = optical.patches.filter { $0.board == b.id && ($0.normal.dot(b.normal) > 0 ? 1 : -1) == side }
                 let total = mine.reduce(0) { $0 + $1.intensity }
-                guard total > 0 else { continue }
-                for q in mine {
+                for q in total > 0 ? mine : [] {
                     // A patch facing away from its unit is light that came through the frame.
                     guard let e = optical.emitters.first(where: { $0.id == q.lightID }), (e.position - q.centre).dot(q.normal) < 0 else { continue }
                     let d = q.centre - b.centre
@@ -925,16 +932,18 @@ final class VirtualSceneModel: ObservableObject {
                 }
                 // Same scale as the units: a source's intensity against the brightest unit's at 3 m.
                 let share = brightest > 0 ? total / 9 / brightest : 0
-                guard share > 1e-4 else { continue }
-                var centre = LightingCalculator.Point(x: 0, y: 0, z: 0)
-                for q in mine { centre = centre + q.centre * (q.intensity / total) }
+                // Every face keeps its light, dark when nothing reaches it, so the number of lights
+                // doesn't change when a unit is switched (see `wantsShadow`).
+                let lit = share > 1e-4
+                var centre = lit ? LightingCalculator.Point(x: 0, y: 0, z: 0) : b.centre
+                if lit { for q in mine { centre = centre + q.centre * (q.intensity / total) } }
                 let normal = b.normal * Double(side)
                 let light = SCNLight()
                 light.type = .spot
                 light.spotInnerAngle = 30
                 light.spotOuterAngle = 170
                 light.color = UIColor.white
-                light.intensity = CGFloat(800 * min(share, 1))
+                light.intensity = lit ? CGFloat(800 * min(share, 1)) : 0
                 light.attenuationStartDistance = 0.3
                 light.attenuationEndDistance = 14
                 light.attenuationFalloffExponent = 2
@@ -993,7 +1002,12 @@ final class VirtualSceneModel: ObservableObject {
                 let stud = RigModels.yoke(RigModels.headSize(l, pm: pm), hanging: hanging, to: pan)
                 RigModels.stand(support, headHeight: l.height, studY: stud, to: pan)
             }
-            if l.isOn && pm.flux > 0 {
+            var atFull = l
+            atFull.dimmer = 1
+            atFull.isOn = true
+            let full = atFull.photometrics
+            let on = l.isOn && pm.flux > 0
+            if full.flux > 0 {
                 let light = SCNLight()
                 switch pm.distribution {
                 case .omni, .tube:
@@ -1013,9 +1027,7 @@ final class VirtualSceneModel: ObservableObject {
                     light.color = UIColor.white
                     light.temperature = CGFloat(pm.kelvin)
                 }
-                var atFull = l
-                atFull.dimmer = 1
-                viewportLights[l.id] = (light, pm.illuminanceOnAxis(at: 3), atFull.photometrics.illuminanceOnAxis(at: 3))
+                viewportLights[l.id] = (light, on ? pm.illuminanceOnAxis(at: 3) : 0, full.illuminanceOnAxis(at: 3), on)
                 light.attenuationStartDistance = 0.3
                 light.attenuationEndDistance = 14
                 light.attenuationFalloffExponent = 2
@@ -1041,7 +1053,7 @@ final class VirtualSceneModel: ObservableObject {
                 // Just in front of the head so the unit doesn't shadow itself.
                 lightNode.simdPosition = SIMD3(0, 0, -0.14)
                 tilt.addChildNode(lightNode)
-                if showBeams {
+                if showBeams && on {
                     let origin = SIMD3<Float>(0, 0, -0.1)
                     let q = pan.simdOrientation * tilt.simdOrientation
                     let start = pan.simdPosition + q.act(origin)

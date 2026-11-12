@@ -131,6 +131,8 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
     var scanID: UUID? = nil
     /// nil means the type's usual hair; see `hairStyle`.
     var hair: HairStyle? = nil
+    /// Sitting on a sofa, chair or bed: its seat height (m, see `Placement`). nil = the usual chair height.
+    var seatHeight: Double? = nil
 
     var hairStyle: HairStyle { hair ?? type.defaultHair }
 
@@ -143,7 +145,7 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
         self.scanID = scanID
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, type, height, build, skinTone, position, facing, posture, scanID, hair }
+    enum CodingKeys: String, CodingKey { case id, name, type, height, build, skinTone, position, facing, posture, scanID, hair, seatHeight }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -160,6 +162,7 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
         posture = try c.decodeIfPresent(CharacterPosture.self, forKey: .posture) ?? posture
         scanID = try c.decodeIfPresent(UUID.self, forKey: .scanID)
         hair = (try? c.decodeIfPresent(String.self, forKey: .hair)).flatMap { HairStyle(rawValue: $0) }
+        seatHeight = try? c.decodeIfPresent(Double.self, forKey: .seatHeight)
     }
 
     var proportions: FigureProportions { FigureProportions(self) }
@@ -218,7 +221,8 @@ struct FigureProportions {
         armLength = h * 0.36
         let standingHip = h * 0.52
         sitting = c.posture == .sitting
-        seatHeight = sitting ? min(0.45, standingHip * 0.5) : 0
+        // On a sofa, chair or bed: its seat (Placement); otherwise a usual chair height.
+        seatHeight = sitting ? (c.seatHeight ?? min(0.45, standingHip * 0.5)) : 0
         // Sitting lowers everything above the hips to a seat (thighs horizontal).
         let drop = sitting ? standingHip - seatHeight : 0
         hipHeight = standingHip - drop

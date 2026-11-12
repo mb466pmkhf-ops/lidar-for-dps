@@ -32,8 +32,8 @@ import { readingShort } from './format';
 import { Icon } from './icons';
 import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
 import { buildRoom, ground, type WallRecord } from './scene3d/room';
-import { board, cameraModel, head, meterModel, person, stand, yoke } from './scene3d/models';
-import { beam } from './scene3d/beam';
+import { board, cameraModel, glowLevel, head, meterModel, person, relight, stand, yoke } from './scene3d/models';
+import { beam, beamStrength, type ReachCache } from './scene3d/beam';
 import { backdrop, backdropCorner, skyTexture, type BackdropBuild } from './scene3d/stage';
 import { SHEER_TRANSMISSION, backdropLayout, curtainPass, daylightLevels, environment, floorInfo, inwardNormal, sunPlacement } from '../model/stage';
 import { kelvinRGB } from '../model/kelvin';
@@ -89,9 +89,10 @@ function cookie(pm: ResolvedPhotometrics, l: LightFixture, half: number): THREE.
 function dispose(root: THREE.Object3D) {
   root.traverse(o => {
     const m = o as THREE.Mesh;
-    if (m.isMesh) { m.geometry.dispose(); const mm = m.material as THREE.Material; if (!mm.userData.shared) mm.dispose(); }
+    if (m.isMesh) { m.geometry.dispose(); const mm = m.material as THREE.Material; if (mm.userData.release) mm.userData.release(); else if (!mm.userData.shared) mm.dispose(); }
     const s = o as THREE.SpotLight;
-    if (s.isSpotLight) { s.map?.dispose(); s.shadow.map?.dispose(); }
+    if (s.isSpotLight) s.map?.dispose();
+    if ((o as THREE.Light).isLight) (o as THREE.Light).shadow?.dispose(); // point lights' shadow maps too
   });
 }
 
@@ -107,6 +108,11 @@ interface Api {
   centre: THREE.Vector3; span: number;
   tags: { el: HTMLElement; at: THREE.Vector3 }[];
   invalidate(frames?: number): void;
+  /** Parts taken out of the scene, freed after the next frame is drawn. Freeing them first would let
+   *  the graphics card drop shaders the replacement parts are about to use, and build them again. */
+  trash: THREE.Object3D[];
+  /** Shaders are being prepared off the main thread where the browser can; nothing is drawn till then. */
+  warming?: boolean; warmed?: boolean;
 }
 
 export function Scene3D(p: Props) {
@@ -123,9 +129,12 @@ export function Scene3D(p: Props) {
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
   const [noLight, setNoLight] = useState(false);
+  const [warming, setWarming] = useState(false);
   // What is already built, by item: a change to one light leaves the others (and their shadow maps) alone.
   const built = useRef(new Map<string, { key: string; obj: THREE.Object3D }>());
   const roomGen = useRef(0);
+  // Beam reach maps already traced, so switching a unit off and on doesn't trace its beam again.
+  const reachCache = useRef<ReachCache>(new Map());
   const viewPlan = useRef<FloorPlan | undefined | null>(null);
 
   // Renderer, camera, controls: once.
@@ -211,7 +220,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -243,9 +252,11 @@ export function Scene3D(p: Props) {
         a.wallGroups[i]?.traverse(o => { o.userData.cut = w.level < 0.5; });
       });
       if (fading) invalidate();
-      if (pending <= 0) { streak = 0; return; }
+      if (a.warming || pending <= 0) { streak = 0; return; }
       pending--;
       composer.render();
+      for (const o of a.trash) dispose(o);
+      a.trash.length = 0;
       // Reading tags follow their points.
       const w = el.clientWidth, h = el.clientHeight;
       for (const t of a.tags) {
@@ -282,6 +293,7 @@ export function Scene3D(p: Props) {
     renderer.domElement.addEventListener('pointerup', pu);
     return () => {
       cancelAnimationFrame(frame); ro.disconnect(); controls.dispose();
+      for (const o of api.current?.trash ?? []) dispose(o);
       composer.dispose(); target.dispose(); renderer.dispose();
       renderer.domElement.remove();
     };
@@ -290,8 +302,7 @@ export function Scene3D(p: Props) {
   // The room, from the floor plan.
   useEffect(() => {
     const a = api.current!;
-    dispose(a.room);
-    a.room.clear();
+    if (a.room.children.length) { const old = new THREE.Group(); old.add(...a.room.children); a.trash.push(old); }
     roomGen.current++;
     a.renderer.shadowMap.needsUpdate = true;
     const fl = floorInfo(p.location.studio?.floor);
@@ -324,8 +335,7 @@ export function Scene3D(p: Props) {
       next.set(id, { key, obj });
       return obj;
     };
-    dispose(a.marks);
-    a.marks.clear();
+    if (a.marks.children.length) { const old = new THREE.Group(); old.add(...a.marks.children); a.trash.push(old); }
     const { location: loc, scanID, selection } = p;
     const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase();
     const isSel = (kind: string, id: string) => selection?.kind === kind && selection.id === id;
@@ -430,8 +440,13 @@ export function Scene3D(p: Props) {
       }
     }
     // Every unit that can cast a shadow does, up to the budget, so grip blocks it (point-like units too).
-    const shadowed = new Set([...lit]
-      .sort((x, y) => illuminanceOnAxis(y.pm, 3) - illuminanceOnAxis(x.pm, 3)).slice(0, SHADOW_LIGHTS).map(x => x.l.id));
+    // Ranked at full output whether on or off, so switching or dimming one never moves a shadow to
+    // another unit: the number of lights and shadows stays the same, and the graphics card doesn't
+    // have to rebuild every surface's shader (that pause was most of a switch's delay).
+    const full = (l: LightFixture) => illuminanceOnAxis(photometrics({ ...l, isOn: true, dimmer: 1 }), 3);
+    const shadowed = new Set(hidden.has('lights') ? [] : p.lights.filter(l => KIND_INFO[l.kind].emits)
+      .map(l => ({ id: l.id, e: full(l) })).filter(x => x.e > 0)
+      .sort((x, y) => y.e - x.e).slice(0, SHADOW_LIGHTS).map(x => x.id));
 
     const beams: { l: LightFixture; pm: ResolvedPhotometrics; pan: THREE.Object3D }[] = [];
     for (const l of p.lights) {
@@ -443,7 +458,9 @@ export function Scene3D(p: Props) {
       // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
       const showBeam = !!p.beams || selected;
       const hasMap = shadowed.has(l.id);
-      const pan = keep(`light:${l.id}`, `${JSON.stringify(l)}|${hasMap}`, () => {
+      // Switching and dimming don't rebuild the unit (nor re-trace its beam): see `relight` below.
+      const shape = JSON.stringify({ ...l, isOn: undefined, dimmer: undefined });
+      const pan = keep(`light:${l.id}`, `${shape}|${hasMap}`, () => {
         const pan = new THREE.Group();
         pan.position.set(l.position.x, l.height, l.position.z);
         pan.rotation.y = -rad(l.pan);
@@ -473,7 +490,7 @@ export function Scene3D(p: Props) {
           const stud = yoke(size.half, size.below, support === 'overhead' || support === 'megaBoom', pan);
           stand(support, l.height, stud, pan);
         }
-        if (!l.isOn || pm.peakIntensity <= 0) return pan;
+        // An unit that is off keeps its lamp at zero, for the same reason as the shadow ranking above.
         const z = -(size.front + 0.02);
         if (pm.distribution === 'beam' || pm.distribution === 'lambertian') {
           // With the calculator's falloff projected, the cone only needs to be wide enough to hold it.
@@ -507,14 +524,20 @@ export function Scene3D(p: Props) {
           tilt.add(point);
           pan.userData.lamp = point;
         }
-        pan.userData.tilt = tilt; pan.userData.front = z; pan.userData.color = color;
+        pan.userData.tilt = tilt; pan.userData.front = z; pan.userData.color = color; pan.userData.level = glowLevel(pm);
         return pan;
       });
+      pan.userData.shape = shape;
       if (pm && l.isOn && pm.peakIntensity > 0 && showBeam) beams.push({ l, pm, pan });
-      else if (pan.userData.beam) { pan.userData.tilt.remove(pan.userData.beam); dispose(pan.userData.beam); pan.userData.beam = undefined; pan.userData.beamKey = undefined; }
-      // Brightness follows the shared scale without rebuilding the unit.
+      else if (pan.userData.beam) { pan.userData.tilt.remove(pan.userData.beam); a.trash.push(pan.userData.beam); pan.userData.beam = undefined; pan.userData.beamKey = undefined; }
+      // On or off, output, colour and brightness on the shared scale follow without rebuilding the unit.
       const lamp = pan.userData.lamp as THREE.Light | undefined;
-      if (lamp && pm) lamp.intensity = pm.peakIntensity * scale;
+      if (pm && pan.userData.level !== undefined) {
+        const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
+        relight(pan, color, l.isOn, glowLevel(pm), pan.userData.level);
+        pan.userData.color = color;
+        if (lamp) { lamp.color.copy(color); lamp.intensity = pm.peakIntensity * scale; }
+      }
     }
 
     // Grip as a second source, from the calculator's own patches: each lit face of a board becomes
@@ -530,8 +553,7 @@ export function Scene3D(p: Props) {
         for (const side of [1, -1]) {
           const mine = optical.patches.filter(q => q.board === b.id && Math.sign(q.normal.x * b.normal.x + q.normal.y * b.normal.y + q.normal.z * b.normal.z) === side);
           const total = mine.reduce((s, q) => s + q.intensity, 0);
-          if (!(total > 0)) continue;
-          for (const q of mine) {
+          for (const q of total > 0 ? mine : []) {
             // A patch facing away from its unit is light that came through the frame; what is
             // reflected shows through the face's own albedo instead.
             const e = optical.emitters.find(x => x.id === q.lightID);
@@ -542,10 +564,12 @@ export function Scene3D(p: Props) {
             const j = Math.max(0, Math.min(PATCHES - 1, Math.floor((up - b.lo) / Math.max(1e-6, b.hi - b.lo) * PATCHES)));
             glow[side][j * PATCHES + i] += q.intensity / patchArea;
           }
-          if (total * scale < 1e-4) continue;
-          const c = mine.reduce((s, q) => s.add(v(q.centre.x, q.centre.y, q.centre.z).multiplyScalar(q.intensity / total)), v(0, 0, 0));
+          // Every face keeps its soft spot, dark when nothing reaches it, so the count of lights in
+          // the scene doesn't change when a unit is switched (see the shadow ranking above).
+          const lit = total * scale >= 1e-4;
+          const c = lit ? mine.reduce((s, q) => s.add(v(q.centre.x, q.centre.y, q.centre.z).multiplyScalar(q.intensity / total)), v(0, 0, 0)) : v(b.centre.x, b.centre.y, b.centre.z);
           const n = v(b.normal.x, b.normal.y, b.normal.z).multiplyScalar(side);
-          const spot = new THREE.SpotLight(0xffffff, total * scale, 0, rad(84), 1, 2);
+          const spot = new THREE.SpotLight(0xffffff, lit ? total * scale : 0, 0, rad(84), 1, 2);
           spot.position.copy(c).addScaledVector(n, 0.03);
           spot.target.position.copy(c).addScaledVector(n, 1);
           a.marks.add(spot, spot.target);
@@ -601,7 +625,7 @@ export function Scene3D(p: Props) {
       keep(`meter:${m.id}`, JSON.stringify(m), () => { const g = meterModel(m); g.userData.sel = { kind: 'meter', id: m.id } satisfies Selection; return g; });
       if (isSel('meter', m.id)) ring(m.position.x, m.position.z, 0.22);
     }
-    for (const [id, e] of old) if (next.get(id)?.obj !== e.obj) { a.items.remove(e.obj); dispose(e.obj); }
+    for (const [id, e] of old) if (next.get(id)?.obj !== e.obj) { a.items.remove(e.obj); a.trash.push(e.obj); }
     built.current = next;
 
     // Beams last, once everything that can stand in one is built: the haze stops at the room, at
@@ -610,18 +634,31 @@ export function Scene3D(p: Props) {
     const blockers = [...surfaces, ...[...next.values()].map(e => e.obj).filter(o => o.userData.blocks)];
     const inTheWay = `${roomGen.current}|${JSON.stringify(p.lights.filter(l => !KIND_INFO[l.kind].emits))}|${JSON.stringify((loc.characters ?? []).map(c => [c.position, c.height, c.posture, c.facing]))}`;
     for (const { l, pm, pan } of beams) {
-      const key = `${JSON.stringify(l)}|${inTheWay}`;
-      if (pan.userData.beamKey === key) continue;
+      const key = `${pan.userData.shape}|${inTheWay}`;
+      if (pan.userData.beamKey === key) {
+        const u = pan.userData.beam?.userData.uniforms;
+        if (u) { u.color.value.copy(pan.userData.color); u.strength.value = beamStrength(pm); }
+        continue;
+      }
       const tilt = pan.userData.tilt as THREE.Object3D;
-      if (pan.userData.beam) { tilt.remove(pan.userData.beam); dispose(pan.userData.beam); }
+      if (pan.userData.beam) { tilt.remove(pan.userData.beam); a.trash.push(pan.userData.beam); }
       a.items.updateMatrixWorld(true);
       const origin = new THREE.Vector3(0, 0, pan.userData.front).applyMatrix4(tilt.matrixWorld);
       const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
-      const b = beam(l, pm, origin, q, pan.userData.color, blockers.filter(o => o !== pan));
+      const b = beam(l, pm, origin, q, pan.userData.color, blockers.filter(o => o !== pan), { store: reachCache.current, key: inTheWay });
       if (b) { b.position.set(0, 0, pan.userData.front); tilt.add(b); }
       pan.userData.beam = b; pan.userData.beamKey = key;
     }
     a.renderer.shadowMap.needsUpdate = true;
+    // The first time round, prepare every surface's shader before drawing. Where the browser can
+    // compile in the background (KHR_parallel_shader_compile) the window stays responsive meanwhile
+    // instead of freezing on the first frame.
+    if (!a.warmed) {
+      a.warmed = true; a.warming = true; setWarming(true);
+      const done = () => { if (!a.warming) return; a.warming = false; setWarming(false); a.invalidate(3); };
+      a.renderer.compileAsync(a.scene, a.camera).then(done, done);
+      setTimeout(done, 5000); // never wait longer than this: drawing compiles whatever is left
+    }
 
     // Reading tags: the calculator's figures, in the unit chosen in the panel.
     const tagEl = tagHost.current!;
@@ -683,7 +720,7 @@ export function Scene3D(p: Props) {
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
 
   const what = p.location.daylight?.isOn ? 'Units and grip, sun and sky through the windows; no light off the walls.' : 'Units and grip only, no light off the walls, no daylight.';
-  const note = noLight ? 'No lights on: the room is shown under a plain work light.'
+  const note = warming ? 'Preparing the 3D view…' : noLight ? 'No lights on: the room is shown under a plain work light.'
     : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. ${what} Estimate.`
     : `Preview: brightness fitted to the strongest source. ${what} Use the readings for exposure.`;
 

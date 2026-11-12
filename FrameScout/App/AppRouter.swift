@@ -65,5 +65,8 @@ final class AppRouter: ObservableObject {
 
     func open(_ route: Route) { path.append(route) }
     func popToRoot() { path = NavigationPath() }
+    /// Replaces the whole stack, so Back walks up through these screens (e.g. Home › project › room › plan)
+    /// wherever the user started from, instead of piling a second copy of the project on top.
+    func show(_ routes: [Route]) { path = NavigationPath(routes) }
     func start(_ flow: CaptureFlow) { capture = flow }
 }

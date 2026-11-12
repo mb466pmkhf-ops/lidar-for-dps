@@ -224,3 +224,21 @@ under the 3D set and a generic cube icon in amber. The look is now written down 
 (two radii, one button shape, sentence-case labels, the stop scale as the signature colour, Home as a
 list of your work) and `scripts/check-look.mjs` fails the build on the mechanical parts. (D-013 to
 D-015 were left for the open grip, studio and camera PRs.)
+
+## D-017 · People stay out of the furniture — 2026-11-12
+
+Vorbi saw a standing person inside the sofa in the 3D view. People are now settled against the plan's
+set pieces whenever a person or a piece is edited (`Core/Models/Placement.swift` ↔ `web/src/model/placement.ts`,
+same cases tested on both sides):
+
+- A standing person is moved to the nearest clear floor beside a piece (never through a wall).
+- A sitting person dropped on or next to a sofa, chair or bed sits on it: hips on the seat, facing out
+  (a turn of up to 45° is kept), at the seat's height, stored as the optional `seatHeight` on the person.
+  Switching a person to Sitting within 0.6 m of a seat sits them on it; switching back to Standing steps
+  them out in front.
+- Seated people move with their sofa when it is moved or turned; a piece moved onto a standing person
+  pushes them aside. People saved earlier are settled once when the plan opens.
+- Seat heights are the drawn shapes (sofa cushion ≤ 0.44 m, chair ≤ 0.485 m, bed mattress), not measurements,
+  and no figure is shown for them. The iPhone now draws sofas, chairs and beds with a seat, back and arms
+  (scanned ones too) instead of solid boxes, so a seated figure isn't hidden inside the box.
+- Not covered: people overlapping each other, lights or stands; furniture overlapping furniture.

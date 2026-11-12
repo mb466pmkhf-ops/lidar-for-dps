@@ -27,22 +27,30 @@ struct LocationDetailView: View {
 
     private func content(_ location: Location) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ScreenHeading(title: location.name)
-                header(location)
-                nextStep(location)
-                toolGrid(location)
-                keyFigures(location)
-                planCard(location)
-                tagsCard(location)
+            // The room view starts with the plan. The figures are one small line under it, then one
+            // list of where to go next, then the details you set once (address, tags, scans).
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ScreenHeading(title: location.name)
+                    if let project = store.project(ref.projectID) {
+                        Text(project.name).font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                planHero(location)
+                goToList(location)
+                if !captureRows.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ListSectionTitle(title: "Capture")
+                        RowList(rows: captureRows)
+                    }
+                }
                 photosCard(location)
-                measurementsCard(location)
-                camerasCard(location)
-                lightingCard(location)
-                notesCard(location)
+                detailsCard(location)
                 scansCard(location)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
         .fsScreen()
         .fsWrappingTitle(location.name)
@@ -92,204 +100,241 @@ struct LocationDetailView: View {
 
     // MARK: Sections
 
-    private func header(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let project = store.project(ref.projectID) {
-                Text(project.name).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-            }
-            TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
-                .font(.fsBody)
-            HStack(spacing: 12) {
-                Label(location.dateScanned.map { "Scanned \(UnitsFormatter.shortDate($0))" } ?? "Not scanned yet",
-                      systemImage: "calendar")
-                if let c = location.coordinate {
-                    Label(String(format: "%.4f, %.4f", c.latitude, c.longitude), systemImage: "location")
+    /// The plan, big, at the top. Tapping it (or the button) opens the plan screen. Without a plan
+    /// yet, the same spot says how to get one.
+    @ViewBuilder
+    private func planHero(_ location: Location) -> some View {
+        if let scan = location.primaryScan, let plan = store.floorPlan(ref, scanID: scan.id) {
+            VStack(alignment: .leading, spacing: 10) {
+                Button { router.open(.lighting(ref)) } label: {
+                    FloorPlanCanvas(plan: plan, overlay: previewOverlay(location, scan: scan), style: .full)
+                        .frame(height: 300)
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
+                        .contentShape(Rectangle())
                 }
-            }
-            .font(.fsCaption)
-            .foregroundStyle(Theme.textSecondary)
-            Button {
-                Task {
-                    if let fix = await locator.currentFix() {
-                        store.updateLocation(ref) { loc in
-                            loc.coordinate = fix.coordinate
-                            if loc.address.isEmpty, let a = fix.address { loc.address = a }
-                            if let tz = fix.timeZoneIdentifier { loc.timeZoneIdentifier = tz }
-                        }
-                    }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Plan of \(location.name)")
+                .accessibilityHint("Opens the plan")
+                figures(location, scan: scan)
+                Button { router.open(.lighting(ref)) } label: {
+                    Label(planButtonTitle(location), systemImage: "map")
+                        .font(HomeStyle.button)
+                        .frame(maxWidth: .infinity, minHeight: 52)
                 }
-            } label: {
-                Label(locator.isLocating ? "Locating…" : (location.coordinate == nil ? "Use current GPS position" : "Update GPS position"),
-                      systemImage: "location.fill")
-                    .font(.fsCaptionStrong)
+                .buttonStyle(HomePrimaryButtonStyle())
             }
-            .disabled(locator.isLocating)
-            if let error = locator.lastError {
-                Text(error).font(.fsCaption).foregroundStyle(Theme.danger)
-            }
-        }
-    }
-
-    private func toolGrid(_ location: Location) -> some View {
-        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-        return LazyVGrid(columns: columns, spacing: 10) {
-            SmallTool(title: "Scan", symbol: "viewfinder.circle", disabled: !DeviceCapabilities.hasLiDAR) {
-                router.start(.scan(CaptureTarget(ref)))
-            }
-            SmallTool(title: "Measure", symbol: "ruler", disabled: !DeviceCapabilities.supportsWorldTracking) {
-                router.start(.measure(CaptureTarget(ref)))
-            }
-            SmallTool(title: "Viewfinder", symbol: "camera.viewfinder", disabled: !DeviceCapabilities.hasCamera) {
-                router.start(.viewfinder(CaptureTarget(ref)))
-            }
-            // One way into the plan: cameras, people and lights all live there.
-            SmallTool(title: "Lighting plan", symbol: "lightbulb") { router.open(.lighting(ref)) }
-            SmallTool(title: "Shots", symbol: "film") { router.open(.shots(ref)) }
-            SmallTool(title: "3D View", symbol: "cube", disabled: location.primaryScan == nil) {
-                router.start(.virtualCamera(ref, cameraID: nil))
-            }
-            SmallTool(title: "Sun", symbol: "sun.max") { router.open(.sun(ref)) }
-            SmallTool(title: "Notes", symbol: "note.text") { router.open(.notes(ref)) }
-            SmallTool(title: "Export", symbol: "square.and.arrow.up") {
-                router.open(.export(projectID: ref.projectID, location: ref))
-            }
-        }
-    }
-
-    /// The one obvious thing to do next on this location: scan it, start the plan, or carry on with it.
-    private func nextStep(_ location: Location) -> some View {
-        let hasScan = location.primaryScan != nil
-        let lights = location.lightFixtures.count
-        let cameras = location.cameraPositions.count + location.shots.count
-        let people = location.previsCharacters.count
-        let started = lights + cameras + people > 0
-        let canScan = DeviceCapabilities.hasLiDAR
-        let title: String
-        let detail: String
-        let button: String
-        if !hasScan && !started {
-            title = canScan ? "Scan the room first" : "Start a plan"
-            detail = canScan
-                ? "Walk the room slowly with the phone. The plan, the 3D view and the light readings all build on the scan."
-                : "This device has no LiDAR, so you can't scan here. You can still lay out a plan by hand."
-            button = canScan ? "Scan this room" : "Open the plan"
-        } else if !started {
-            title = "Plan the lighting"
-            detail = "Place a person, then the camera, then pick a starting setup. It's all one screen, in 2D and 3D."
-            button = "Start the lighting plan"
         } else {
-            title = "Lighting plan"
-            detail = [people > 0 ? "\(people) \(people == 1 ? "person" : "people")" : nil,
-                      cameras > 0 ? "\(cameras) camera\(cameras == 1 ? "" : "s")" : nil,
-                      lights > 0 ? "\(lights) light\(lights == 1 ? "" : "s")" : nil]
-                .compactMap { $0 }.joined(separator: "  ·  ")
-            button = "Continue"
+            noPlanYet(location)
         }
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(started ? "In progress" : "Next step").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-            Text(title).font(.fsHeadline)
-            Text(detail).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+    }
+
+    private func planButtonTitle(_ location: Location) -> String {
+        location.lightFixtures.isEmpty && location.cameraPositions.isEmpty && location.previsCharacters.isEmpty
+            ? "Start the plan" : "Open the plan"
+    }
+
+    /// Room size and what's on the plan, as two small lines. Provenance marks stay on the sizes.
+    private func figures(_ location: Location, scan: ScanRecord) -> some View {
+        let s = scan.stats
+        var room = [s.marked(UnitsFormatter.dimensions(s.width, s.length), .roomSize, kind: scan.kind),
+                    s.marked(UnitsFormatter.area(s.floorArea), .floorArea, kind: scan.kind)]
+        if s.ceilingHeight != nil {
+            room.append("ceiling \(s.marked(UnitsFormatter.distance(s.ceilingHeight), .ceilingHeight, kind: scan.kind))")
+        }
+        if s.doorCount + s.windowCount > 0 {
+            room.append("\(s.doorCount) door\(s.doorCount == 1 ? "" : "s"), \(s.windowCount) window\(s.windowCount == 1 ? "" : "s")")
+        }
+        let planned = plannedLine(location)
+        let low = (s.ceilingHeight ?? 9) < 2.7
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(room.joined(separator: " · "))
+                .font(.fsCaption).foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Button(button) {
-                    if !hasScan && !started && canScan { router.start(.scan(CaptureTarget(ref))) } else { router.open(.lighting(ref)) }
-                }
-                .buttonStyle(HairlineButtonStyle(prominent: true))
-                if !hasScan && !started && canScan {
-                    Button("Plan without a scan") { router.open(.lighting(ref)) }
-                        .buttonStyle(HairlineButtonStyle())
-                }
+            if low, let c = s.minCeilingHeight ?? s.ceilingHeight {
+                Text("Low ceiling: lowest point \(UnitsFormatter.distance(c))").font(.fsCaption).foregroundStyle(Theme.textPrimary)
             }
+            if !planned.isEmpty {
+                Text(planned).font(.fsCaption).foregroundStyle(Theme.textTertiary)
+            }
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func plannedLine(_ location: Location) -> String {
+        func n(_ count: Int, _ one: String, _ many: String) -> String? { count == 0 ? nil : "\(count) \(count == 1 ? one : many)" }
+        return [n(location.previsCharacters.count, "person", "people"),
+                n(location.cameraPositions.count + location.shots.count, "camera", "cameras"),
+                n(location.lightFixtures.count, "light", "lights")]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// No scan or drawn plan yet: one card that says what to do, in the spot the plan will take.
+    private func noPlanYet(_ location: Location) -> some View {
+        let canScan = DeviceCapabilities.hasLiDAR
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(canScan ? "Scan the room first" : "No plan yet").font(.fsHeadline)
+            Text(canScan
+                 ? "Walk the room slowly with the phone. The plan, the 3D view and the readings all build on the scan."
+                 : "This phone can't scan. Lay out a plan by hand, or draw the room from Home with its sizes.")
+                .font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if canScan {
+                Button { router.start(.scan(CaptureTarget(ref))) } label: {
+                    Label("Scan this room", systemImage: "viewfinder")
+                        .font(HomeStyle.button)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(HomePrimaryButtonStyle())
+            }
+            Button(canScan ? "Plan without a scan" : "Open the plan") { router.open(.lighting(ref)) }
+                .buttonStyle(HairlineButtonStyle(prominent: !canScan))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
     }
 
-    @ViewBuilder
-    private func keyFigures(_ location: Location) -> some View {
-        if let scan = location.primaryScan {
-            let s = scan.stats
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "Key figures", systemImage: "ruler")
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
-                    GridRow {
-                        StatView(label: "Room", value: UnitsFormatter.dimensions(s.width, s.length),
-                                 provenance: s.provenance(of: .roomSize, kind: scan.kind))
-                        StatView(label: "Floor area", value: UnitsFormatter.area(s.floorArea),
-                                 provenance: s.provenance(of: .floorArea, kind: scan.kind))
-                    }
-                    GridRow {
-                        StatView(label: "Ceiling", value: UnitsFormatter.distance(s.ceilingHeight),
-                                 detail: s.minCeilingHeight.map { "lowest \(UnitsFormatter.distance($0))" },
-                                 highlight: (s.ceilingHeight ?? 9) < 2.7,
-                                 provenance: s.provenance(of: .ceilingHeight, kind: scan.kind))
-                        StatView(label: "Doors · Windows", value: "\(s.doorCount) · \(s.windowCount)")
-                    }
-                }
-                if !s.objectCategories.isEmpty {
-                    Text(s.objectCategories.sorted { $0.key < $1.key }.map { "\($0.value)× \($0.key)" }.joined(separator: "  ·  "))
-                        .font(.fsCaption).foregroundStyle(Theme.textSecondary)
-                }
-            }
-            .card()
+    /// Everything else about this room, as one list with the same rows as Home.
+    private func goToList(_ location: Location) -> some View {
+        let shots = location.shots.count
+        let lastMeasure = location.measurements.last
+        let firstNote = location.quickNotes.first?.text
+            ?? [location.notes, location.lightingNotes, location.productionNotes].first(where: { !$0.isEmpty })
+        return VStack(alignment: .leading, spacing: 8) {
+            ListSectionTitle(title: "This location")
+            RowList(rows: [
+                RowItem(title: "Shots", subtitle: shots == 0 ? "Turn camera positions into a shot list" : nil,
+                        systemImage: "film", trailing: shots == 0 ? nil : "\(shots)") { router.open(.shots(ref)) },
+                RowItem(title: "Sun and daylight", subtitle: location.coordinate == nil ? "Needs the GPS position (in Details)" : "Sun path, golden hour, light through the windows",
+                        systemImage: "sun.max") { router.open(.sun(ref)) },
+                RowItem(title: "Measurements", subtitle: lastMeasure.map { "\($0.label.isEmpty ? $0.kind.label : $0.label) \(UnitsFormatter.distance($0.value))" },
+                        systemImage: "ruler", trailing: location.measurements.isEmpty ? nil : "\(location.measurements.count)") { router.open(.measurements(ref)) },
+                RowItem(title: "Notes", subtitle: firstNote.map { String($0.prefix(80)) } ?? "Power, access, lighting, production",
+                        systemImage: "note.text") { router.open(.notes(ref)) },
+            ])
         }
     }
 
-    @ViewBuilder
-    private func planCard(_ location: Location) -> some View {
-        if let scan = location.primaryScan, let plan = store.floorPlan(ref, scanID: scan.id) {
+    /// Camera tools this phone can run; the others are left out, as on Home.
+    private var captureRows: [RowItem] {
+        var rows: [RowItem] = []
+        if DeviceCapabilities.hasLiDAR, store.location(ref)?.primaryScan != nil {
+            rows.append(RowItem(title: "Scan again", subtitle: "A fresh scan; older ones stay under Scans", systemImage: "viewfinder") {
+                router.start(.scan(CaptureTarget(ref)))
+            })
+        }
+        if DeviceCapabilities.supportsWorldTracking {
+            rows.append(RowItem(title: "Measure", subtitle: DeviceCapabilities.hasLiDAR ? "Tape measure in AR" : "Tape measure in AR, estimated without LiDAR",
+                                systemImage: "ruler") { router.start(.measure(CaptureTarget(ref))) })
+        }
+        if DeviceCapabilities.hasCamera {
+            rows.append(RowItem(title: "Viewfinder", subtitle: "Frame lines for your lens", systemImage: "camera.aperture") {
+                router.start(.viewfinder(CaptureTarget(ref)))
+            })
+        }
+        return rows
+    }
+
+    /// Address, GPS and tags: set once, so they sit below the things you use every time.
+    private func detailsCard(_ location: Location) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ListSectionTitle(title: "Details")
             VStack(alignment: .leading, spacing: 10) {
-                SectionHeader(title: "Plan", systemImage: "map")
-                FloorPlanCanvas(plan: plan, overlay: miniOverlay(location, scan: scan), style: .full)
-                    .frame(height: 260)
-                    .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-                    .onTapGesture { router.open(.lighting(ref)) }
-                Text("Tap to open the lighting plan.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                TextField("Address / general location", text: store.binding(for: ref).address, axis: .vertical)
+                    .font(.fsBody)
+                HStack(spacing: 12) {
+                    Label(location.dateScanned.map { "Scanned \(UnitsFormatter.shortDate($0))" } ?? "Not scanned yet",
+                          systemImage: "calendar")
+                    if let c = location.coordinate {
+                        Label(String(format: "%.4f, %.4f", c.latitude, c.longitude), systemImage: "location")
+                    }
+                }
+                .font(.fsCaption)
+                .foregroundStyle(Theme.textSecondary)
+                Button {
+                    Task {
+                        if let fix = await locator.currentFix() {
+                            store.updateLocation(ref) { loc in
+                                loc.coordinate = fix.coordinate
+                                if loc.address.isEmpty, let a = fix.address { loc.address = a }
+                                if let tz = fix.timeZoneIdentifier { loc.timeZoneIdentifier = tz }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(locator.isLocating ? "Locating…" : (location.coordinate == nil ? "Use current GPS position" : "Update GPS position"),
+                          systemImage: "location.fill")
+                        .font(.fsCaptionStrong)
+                        .frame(minHeight: 36)
+                }
+                .disabled(locator.isLocating)
+                if let error = locator.lastError {
+                    Text(error).font(.fsCaption).foregroundStyle(Theme.danger)
+                }
+                Divider()
+                FlowLayout(spacing: 8) {
+                    ForEach(LocationTag.allCases) { tag in
+                        TagChip(text: tag.label, selected: location.tags.contains(tag)) {
+                            store.updateLocation(ref) { loc in
+                                if loc.tags.contains(tag) { loc.tags.remove(tag) } else { loc.tags.insert(tag) }
+                            }
+                        }
+                    }
+                }
             }
             .card()
         }
     }
 
-    private func miniOverlay(_ location: Location, scan: ScanRecord) -> PlanOverlay {
+    /// The plan preview shows what's been placed (cameras, lights, people) without labels or beams.
+    private func previewOverlay(_ location: Location, scan: ScanRecord) -> PlanOverlay {
         var o = PlanOverlay()
         o.showGrid = false
-        for c in location.cameraPositions where c.scanID == nil || c.scanID == scan.id {
+        o.showLightLabels = false
+        o.showPeopleLabels = false
+        o.showAllBeams = false
+        let inScan: (UUID?) -> Bool = { $0 == nil || $0 == scan.id }
+        for c in location.cameraPositions where inScan(c.scanID) {
             o.cameras.append(PlanCameraMarker(id: c.id, label: c.name, rig: c.rig, reach: 3))
         }
-        for s in location.shots where s.scanID == nil || s.scanID == scan.id {
+        for s in location.shots where inScan(s.scanID) {
             o.cameras.append(PlanCameraMarker(id: s.id, label: String(format: "S%02d", s.number), rig: s.rig, isShot: true, reach: 3))
+        }
+        for light in location.lightFixtures where inScan(light.scanID) {
+            var marker = PlanLightMarker(light: light)
+            if light.kind.emits { marker.tint = light.photometrics.color }
+            o.lights.append(marker)
+        }
+        for c in location.previsCharacters where inScan(c.scanID) {
+            let p = c.proportions
+            o.people.append(PlanPersonMarker(id: c.id, name: c.name, position: c.position, facing: c.facing,
+                                             shoulderWidth: p.shoulderWidth, depth: p.chestDepth, headRadius: p.headWidth / 2,
+                                             skin: c.skinTone.rgb, reading: nil))
         }
         if let north = scan.northOffset { o.northWorldBearing = 360 - north }
         return o
     }
 
-    private func tagsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Tags", systemImage: "tag")
-            FlowLayout(spacing: 8) {
-                ForEach(LocationTag.allCases) { tag in
-                    TagChip(text: tag.label, selected: location.tags.contains(tag)) {
-                        store.updateLocation(ref) { loc in
-                            if loc.tags.contains(tag) { loc.tags.remove(tag) } else { loc.tags.insert(tag) }
-                        }
-                    }
-                }
-            }
-        }
-        .card()
-    }
-
     private func photosCard(_ location: Location) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Photos (\(location.photos.count))", systemImage: "photo.on.rectangle",
-                          action: { router.open(.photos(ref)) }, actionLabel: "All")
+            HStack {
+                ListSectionTitle(title: location.photos.isEmpty ? "Photos" : "Photos (\(location.photos.count))")
+                Spacer()
+                if !location.photos.isEmpty {
+                    Button("See all") { router.open(.photos(ref)) }
+                        .font(.fsCaptionStrong).foregroundStyle(Theme.accent)
+                        .frame(minHeight: 36)
+                }
+            }
             if !location.photos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Array(location.photos.suffix(12).reversed())) { photo in
                             StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 300)
                                 .frame(width: 110, height: 82)
-                                .clipShape(Rectangle())
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
                                 .onTapGesture { router.open(.photos(ref)) }
                         }
                     }
@@ -305,108 +350,17 @@ struct LocationDetailView: View {
                 .buttonStyle(HairlineButtonStyle())
             }
         }
-        .card()
     }
 
-    private func measurementsCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Measurements (\(location.measurements.count))", systemImage: "ruler",
-                          action: { router.open(.measurements(ref)) }, actionLabel: "All")
-            ForEach(Array(location.measurements.suffix(5).reversed())) { m in
-                HStack {
-                    Image(systemName: m.kind.symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
-                    Text(m.label.isEmpty ? m.kind.label : m.label)
-                    Spacer()
-                    Text(UnitsFormatter.distance(m.value)).font(.fsMono)
-                }
-            }
-            if location.measurements.isEmpty {
-                Text("Use Measure (AR), measure on the plan, or generate room measurements from the scan.")
-                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
-            }
-        }
-        .card()
-    }
-
-    private func lightingCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Lighting (\(location.lightFixtures.count))", systemImage: "lightbulb",
-                          action: { router.open(.lighting(ref)) }, actionLabel: "Diagram")
-            ForEach(location.lightFixtures) { light in
-                HStack {
-                    let rgb = Kelvin.rgb(light.colorTemperature)
-                    Image(systemName: light.kind.symbol).font(.system(size: 14, weight: .light))
-                        .foregroundStyle(light.kind.emits && light.isOn ? Color(red: rgb.r, green: rgb.g, blue: rgb.b) : Theme.textTertiary)
-                        .frame(width: 24)
-                    VStack(alignment: .leading) {
-                        Text(light.role.map { "\(light.name) · \($0.label)" } ?? light.name)
-                        Text(light.summary).font(.fsCaption).foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer()
-                }
-            }
-            if location.lightFixtures.isEmpty {
-                Text("Open the lighting plan, place a person and choose “Light this person”, or add units one by one with Add.")
-                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
-            }
-        }
-        .card()
-    }
-
-    private func camerasCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Cameras & shots", systemImage: "video", action: { router.open(.lighting(ref)) }, actionLabel: "Plan")
-            ForEach(location.cameraPositions) { c in
-                HStack {
-                    Image(systemName: "video.fill").font(.system(size: 14, weight: .light)).foregroundStyle(Theme.textTertiary).frame(width: 24)
-                    VStack(alignment: .leading) {
-                        Text(c.name)
-                        Text("\(c.rig.lensSummary) · h \(UnitsFormatter.distance(c.rig.height))")
-                            .font(.fsCaption).foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer()
-                    Button { router.start(.virtualCamera(ref, cameraID: c.id)) } label: { Image(systemName: "cube") }
-                        .disabled(location.primaryScan == nil)
-                }
-            }
-            if !location.shots.isEmpty {
-                Button { router.open(.shots(ref)) } label: {
-                    Label("\(location.shots.count) shots planned", systemImage: "film")
-                }
-            }
-            if location.cameraPositions.isEmpty && location.shots.isEmpty {
-                Text("Open the lighting plan and use Add → Camera to place a camera position.")
-                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
-            }
-        }
-        .card()
-    }
-
-    private func notesCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Notes", systemImage: "note.text", action: { router.open(.notes(ref)) }, actionLabel: "Edit")
-            ForEach(location.quickNotes.prefix(6)) { note in
-                Label(note.text, systemImage: note.category.symbol).font(.fsBody)
-            }
-            ForEach([("General", location.notes), ("Lighting", location.lightingNotes), ("Production", location.productionNotes)], id: \.0) { title, text in
-                if !text.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-                        Text(text).font(.fsBody).lineLimit(4)
-                    }
-                }
-            }
-            if location.quickNotes.isEmpty && location.notes.isEmpty && location.lightingNotes.isEmpty && location.productionNotes.isEmpty {
-                Text("Nothing yet — add lighting, power, access and production notes.").font(.fsCaption).foregroundStyle(Theme.textTertiary)
-            }
-        }
-        .card()
-    }
-
+    @ViewBuilder
     private func scansCard(_ location: Location) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Scans (\(location.scans.count))", systemImage: "cube.transparent")
-            ForEach(location.scans) { scan in
+        // Only worth a section once there's a scan to look at; "scan this room" sits in the plan's spot.
+        if !location.scans.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+            ListSectionTitle(title: location.scans.count == 1 ? "Scan" : "Scans (\(location.scans.count))")
+            VStack(spacing: 0) {
+            ForEach(Array(location.scans.enumerated()), id: \.element.id) { i, scan in
+                if i > 0 { Divider().padding(.leading, 36) }
                 Button { router.open(.scanDetail(ref, scanID: scan.id)) } label: {
                     HStack {
                         Image(systemName: scan.kind == .room ? "cube.transparent" : "square.stack.3d.down.forward")
@@ -418,20 +372,20 @@ struct LocationDetailView: View {
                         }
                         Spacer()
                         if scan.id == location.primaryScan?.id {
-                            Text("primary").font(.fsMono).foregroundStyle(Theme.textTertiary)
+                            Text("In use").font(.fsCaption).foregroundStyle(Theme.textTertiary)
                         }
-                        Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
                     }
+                    .frame(minHeight: HomeStyle.minTap)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            if location.scans.isEmpty {
-                Text(DeviceCapabilities.hasLiDAR ? "No scan yet. Tap Scan to capture the space with LiDAR."
-                                                 : "This device has no LiDAR, so it cannot scan. Scans made on a LiDAR iPhone/iPad can be imported via a project backup.")
-                    .font(.fsCaption).foregroundStyle(Theme.textTertiary)
             }
+            .homeCard()
         }
-        .card()
+        }
     }
 
     private func shareReport() {
@@ -454,29 +408,5 @@ struct LocationDetailView: View {
             }
             pickerItems = []
         }
-    }
-}
-
-struct SmallTool: View {
-    var title: String
-    var symbol: String
-    var disabled = false
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 18, weight: .ultraLight)).foregroundStyle(Theme.textSecondary)
-                Text(title).font(.fsLabel).tracking(Theme.tracking)
-                    .foregroundStyle(Theme.textPrimary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 72)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).stroke(Theme.hairline, lineWidth: 0.5))
-            .opacity(disabled ? 0.35 : 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityHint(disabled ? "Not available on this device" : "")
     }
 }

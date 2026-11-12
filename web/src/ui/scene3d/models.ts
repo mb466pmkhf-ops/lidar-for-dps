@@ -7,7 +7,7 @@ import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometr
 import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
 import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
 import { boardOptics } from '../../model/calculator';
-import { hairOf, isChild, shapeBlend, skinRGB } from '../../model/characters';
+import { hairOf, isChild, seatHeightOf, shapeBlend, skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
   bar, cached, fabricBump, fresnelTexture, gridTexture, ledTexture, limb, mat, mesh, rbox, v,
@@ -115,9 +115,38 @@ export function yoke(half: number, below: number, hanging: boolean, parent: THRE
 
 /** The glowing face of a unit. Off, it is a plain diffuser. Brightness here is for looks only. */
 function glow(color: THREE.Color, on: boolean, level: number, map?: THREE.Texture) {
-  return on
-    ? new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: level, emissiveMap: map ?? null, roughness: 0.6, metalness: 0 })
-    : new THREE.MeshStandardMaterial({ color: 0xcfcfcb, map: map ?? null, roughness: 0.75, metalness: 0 });
+  // On and off use the same texture slots, so they share one shader, and `relight` can switch a
+  // built unit without rebuilding it.
+  const m = new THREE.MeshStandardMaterial({ emissiveMap: map ?? null, map: map ?? null, metalness: 0 });
+  m.userData.glow = level;
+  setGlow(m, color, on, level);
+  return m;
+}
+function setGlow(m: THREE.MeshStandardMaterial, color: THREE.Color, on: boolean, level: number) {
+  m.color.set(on ? 0x000000 : 0xcfcfcb);
+  m.emissive.copy(on ? color : BLACK_COLOUR);
+  m.emissiveIntensity = on ? level : 0;
+  m.roughness = on ? 0.6 : 0.75;
+}
+function setShade(m: THREE.MeshStandardMaterial, color: THREE.Color, on: boolean, level: number) {
+  m.color.set(on ? 0x000000 : 0xd8d2c6);
+  m.emissive.copy(on ? color : BLACK_COLOUR);
+  m.emissiveIntensity = on ? level * 0.22 : 0;
+}
+const BLACK_COLOUR = new THREE.Color(0x000000);
+
+/** How bright a unit's face glows, from its output. */
+export function glowLevel(pm: ResolvedPhotometrics) { return 2.2 + 1.6 * Math.min(1, Math.log10(1 + pm.flux / 800) / 2); }
+
+/** Switches, dims or recolours a unit built by `head` in place: only material values change, so
+ *  nothing is rebuilt and no shader is compiled. `built` is the glow level it was built with. */
+export function relight(root: THREE.Object3D, color: THREE.Color, on: boolean, level: number, built: number) {
+  root.traverse(o => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (!m || !(o as THREE.Mesh).isMesh) return;
+    if (m.userData.glow !== undefined) setGlow(m, color, on, m.userData.glow * level / built);
+    else if (m.userData.shade) setShade(m, color, on, level);
+  });
 }
 
 /** Four leaves hinged round a face of half-size `hs` at depth `front`; each sits at its cut angle. */
@@ -145,7 +174,7 @@ export interface HeadSize { half: number; below: number; front: number }
 export function head(l: LightFixture, pm: ResolvedPhotometrics, color: THREE.Color, parent: THREE.Object3D): HeadSize {
   const p = fixtureProfile(l);
   const on = l.isOn;
-  const level = 2.2 + 1.6 * Math.min(1, Math.log10(1 + pm.flux / 800) / 2);
+  const level = glowLevel(pm);
   const mod = pm.modifier?.id ?? '';
   const doors = l.barnDoors && pm.barnDoorsAvailable ? l.barnDoors : undefined;
   let size: HeadSize;
@@ -188,7 +217,9 @@ export function head(l: LightFixture, pm: ResolvedPhotometrics, color: THREE.Col
     case 'practical': {
       // A table or floor lamp: bulb, fabric shade, and its own slim pole (added by the caller).
       mesh(new THREE.SphereGeometry(0.035, 16, 12), glow(color, on, level * 1.6), parent, v(0, 0, 0));
-      const shade = new THREE.MeshStandardMaterial({ color: on ? 0x000000 : 0xd8d2c6, emissive: on ? color : 0x000000, emissiveIntensity: on ? level * 0.22 : 0, roughness: 0.9, side: THREE.DoubleSide });
+      const shade = new THREE.MeshStandardMaterial({ roughness: 0.9, side: THREE.DoubleSide });
+      shade.userData.shade = true;
+      setShade(shade, color, on, level);
       mesh(new THREE.CylinderGeometry(0.11, 0.17, 0.2, 32, 1, true), shade, parent, v(0, 0.03, 0));
       size = { half: 0.1, below: 0.1, front: 0 };
       break;
@@ -489,7 +520,7 @@ export function person(c: PrevisCharacter): THREE.Group {
   const h = c.height, sitting = c.posture === 'sitting';
   const child = isChild(c.type), fem = shapeBlend[c.type] ?? 0.5, bust = !child && fem > 0.75;
   const headH = h / (child ? 6 : 7.5), r = headH / 2;
-  const hip0 = h * 0.52, seat = Math.min(0.45, hip0 * 0.5), drop = sitting ? hip0 - seat : 0;
+  const hip0 = h * 0.52, drop = sitting ? hip0 - seatHeightOf(c) : 0;
   const hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop;
   const build = Math.min(Math.max(c.build, 0), 1);
   const sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem);
@@ -570,10 +601,12 @@ export function person(c: PrevisCharacter): THREE.Group {
   for (const s of [-1, 1]) {
     const hip = v(s * hw * 0.5, hipY - h * 0.008, 0);
     const knee = sitting ? v(s * hw * 0.68, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.5, h * 0.285, -h * 0.008);
-    const ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006);
+    // On a high seat (a child on a sofa, anyone on a bed) the feet hang clear of the floor.
+    const ankleY = sitting ? Math.max(h * 0.055, hipY - h * 0.23) : h * 0.055;
+    const ankle = sitting ? v(s * hw * 0.68, ankleY, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006);
     taper(hip, knee, tr, sr * 1.08, legsM, g);
     taper(knee, ankle, sr * 1.05, sr * 0.82, legsM, g);
-    const foot = v(ankle.x, 0, ankle.z);
+    const foot = v(ankle.x, ankleY - h * 0.055, ankle.z);
     mesh(rbox(h * 0.05, h * 0.012, h * 0.152, h * 0.005), soleM, g, foot.clone().add(v(0, h * 0.006, -h * 0.038)));
     blob(h * 0.027, shoeM, g, foot.clone().add(v(0, h * 0.026, -h * 0.078)), 0.95, 0.62, 1.55);   // toe box
     blob(h * 0.029, shoeM, g, foot.clone().add(v(0, h * 0.03, h * 0.006)), 0.9, 0.95, 1.05);      // heel and collar
