@@ -21,10 +21,11 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
 import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
-import { lightSupport } from '../model/rigging';
+import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
 import { boardOptics, buildScene, type MeterPoint } from '../model/calculator';
+import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
 import { Icon } from './icons';
@@ -448,8 +449,14 @@ export function Scene3D(p: Props) {
         const support = lightSupport(l);
         if (!pm) {
           pan.userData.blocks = true; // the haze of a beam stops at it
-          const h = board(l, tilt, boardOptics(l.kind).reflectance);
-          if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
+          const { lowest } = board(l, tilt, (drapeOptics(l) ?? boardOptics(l.kind)).reflectance, l.tilt);
+          if (support !== 'none' && gripStandCount(l) === 2) {
+            // Big frames sit on their ears between two stands and pivot there.
+            for (const s of [-1, 1]) {
+              const side = new THREE.Group(); side.position.x = s * (l.width / 2 + 0.07); pan.add(side);
+              stand(support, l.height, -0.02, side);
+            }
+          } else if (support !== 'none') { bar(v(0, -lowest, 0), v(0, -lowest - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -lowest - 0.05, pan); }
           return pan;
         }
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
@@ -514,7 +521,6 @@ export function Scene3D(p: Props) {
         // Per face, how bright each of the calculator's patches glows with light passed through it
         // (cd/m²), so a frame lit by a narrow beam shows a hot spot, not an even sheet.
         const glow: Record<number, Float32Array> = { 1: new Float32Array(PATCHES * PATCHES), [-1]: new Float32Array(PATCHES * PATCHES) };
-        const ab = { x: b.b.x - b.a.x, z: b.b.z - b.a.z }, abLen2 = ab.x * ab.x + ab.z * ab.z || 1;
         const patchArea = b.area / (PATCHES * PATCHES);
         for (const side of [1, -1]) {
           const mine = optical.patches.filter(q => q.board === b.id && Math.sign(q.normal.x * b.normal.x + q.normal.y * b.normal.y + q.normal.z * b.normal.z) === side);
@@ -525,8 +531,10 @@ export function Scene3D(p: Props) {
             // reflected shows through the face's own albedo instead.
             const e = optical.emitters.find(x => x.id === q.lightID);
             if (!e || (e.position.x - q.centre.x) * q.normal.x + (e.position.y - q.centre.y) * q.normal.y + (e.position.z - q.centre.z) * q.normal.z >= 0) continue;
-            const i = Math.min(PATCHES - 1, Math.floor(((q.centre.x - b.a.x) * ab.x + (q.centre.z - b.a.z) * ab.z) / abLen2 * PATCHES));
-            const j = Math.min(PATCHES - 1, Math.floor((q.centre.y - b.bottom) / Math.max(1e-6, b.top - b.bottom) * PATCHES));
+            const d = { x: q.centre.x - b.centre.x, y: q.centre.y - b.centre.y, z: q.centre.z - b.centre.z };
+            const along = d.x * b.right.x + d.y * b.right.y + d.z * b.right.z, up = d.x * b.up.x + d.y * b.up.y + d.z * b.up.z;
+            const i = Math.max(0, Math.min(PATCHES - 1, Math.floor((along + b.halfWidth) / Math.max(1e-6, 2 * b.halfWidth) * PATCHES)));
+            const j = Math.max(0, Math.min(PATCHES - 1, Math.floor((up - b.lo) / Math.max(1e-6, b.hi - b.lo) * PATCHES)));
             glow[side][j * PATCHES + i] += q.intensity / patchArea;
           }
           if (total * scale < 1e-4) continue;

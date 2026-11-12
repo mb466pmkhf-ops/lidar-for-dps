@@ -3,7 +3,7 @@ import Foundation
 /// What holds a lighting unit or a board. Drawn in 3D and listed on the plan; it never changes the
 /// light maths. Heights are typical published ranges for the class of stand, not a specific model.
 enum LightSupport: String, Codable, CaseIterable, Identifiable {
-    case cStand, comboStand, turtleBase, megaBoom, rollerStand, overhead, floor, none
+    case cStand, comboStand, turtleBase, megaBoom, rollerStand, windUp, overhead, floor, none
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum LightSupport: String, Codable, CaseIterable, Identifiable {
         case .turtleBase: return "Turtle base"
         case .megaBoom: return "MegaBoom"
         case .rollerStand: return "Roller stand"
+        case .windUp: return "Wind-up stand"
         case .overhead: return "Rigged overhead"
         case .floor: return "On the floor"
         case .none: return "No stand"
@@ -28,6 +29,7 @@ enum LightSupport: String, Codable, CaseIterable, Identifiable {
         case .turtleBase: return 0.2...0.75
         case .megaBoom: return 1.5...4.5
         case .rollerStand: return 1.4...4.9
+        case .windUp: return 1.7...4.6
         case .overhead, .floor, .none: return nil
         }
     }
@@ -37,7 +39,8 @@ enum LightSupport: String, Codable, CaseIterable, Identifiable {
     var boomReach: Double { self == .megaBoom ? 2.2 : 0 }
 
     /// What the app picks when the user hasn't: practicals sit on their own, space lights hang, very
-    /// low units go on a turtle base, heavy heads and big frames on a combo, the rest on a C-stand.
+    /// low units go on a turtle base, 6×6 and bigger frames on wind-ups, heavy heads and 4×4 frames on
+    /// a combo, the rest on a C-stand.
     static func automatic(for light: LightFixture) -> LightSupport {
         switch light.kind {
         case .practical: return .none
@@ -46,6 +49,7 @@ enum LightSupport: String, Codable, CaseIterable, Identifiable {
         }
         if light.height < 0.15 { return .floor }
         if light.height < 0.75 { return .turtleBase }
+        if GripCatalog.gripKinds.contains(light.kind) && light.width >= 1.7 { return .windUp }
         switch light.kind {
         case .bounce, .negative, .diffusion: return light.width >= 1 ? .comboStand : .cStand
         case .flag: return .cStand

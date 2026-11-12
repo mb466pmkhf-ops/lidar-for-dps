@@ -10,6 +10,7 @@ import { withDefaults } from '../model/exposure';
 import { environment } from '../model/stage';
 import { eyeHeight } from '../model/characters';
 import { newCamera, newCharacter, newLight, newMeter } from '../model/factory';
+import { GRIP_PRESETS, applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
 import {
   FURNITURE_PRESETS, OPENING_PRESETS, addObject, addSegment, findSegment, furniturePreset, openingPreset, placeFurniture, placeOpening,
   removeObject, removeSegment, replaceObject, replaceSegment, slideOpening, turnObject,
@@ -23,7 +24,7 @@ const Scene3D = lazy(() => import('./Scene3D').then(m => ({ default: m.Scene3D }
 
 type Tool =
   | { kind: 'select' }
-  | { kind: 'light'; light: LightKind; profile?: string }
+  | { kind: 'light'; light: LightKind; profile?: string; size?: string; drape?: string }
   | { kind: 'person' }
   | { kind: 'meter' }
   | { kind: 'camera' }
@@ -44,8 +45,9 @@ const quickLights: { label: string; kind: LightKind; profile?: string }[] = [
   { label: 'Practical', kind: 'practical', profile: 'bulb-tungsten-100' },
   { label: 'Lantern', kind: 'spaceLight', profile: 'lantern-300-bi' },
 ];
-const gripItems: { label: string; kind: LightKind }[] = [
+const gripItems: { label: string; kind: LightKind; size?: string; drape?: string }[] = [
   { label: 'Bounce', kind: 'bounce' }, { label: 'Neg', kind: 'negative' }, { label: 'Flag', kind: 'flag' }, { label: 'Diffusion', kind: 'diffusion' },
+  ...GRIP_PRESETS.map(g => ({ label: g.label, kind: drapeByID(g.drape)!.kinds[0] as LightKind, size: g.size, drape: g.drape })),
 ];
 
 const snap = (v: number) => Math.round(v * 20) / 20;
@@ -158,6 +160,13 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
       const count = (location.lights ?? []).filter(x => x.kind === l.kind).length;
       l.name = `${KIND_INFO[l.kind].label}${count ? ' ' + (count + 1) : ''}`;
       if (!KIND_INFO[l.kind].emits) l.height = 1.5;
+      const size = gripSizeByID(tool.size), rag = drapeByID(tool.drape);
+      if (size) l = applyGripSize(l, size);
+      if (rag) l = applyDrape(l, rag);
+      if (size || rag) {
+        const same = (location.lights ?? []).filter(x => x.gripSizeID === l.gripSizeID && x.drapeID === l.drapeID).length;
+        l.name = gripLabel(l) + (same ? ' ' + (same + 1) : '');
+      }
       edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), l] }));
       setSelection({ kind: 'light', id: l.id });
     } else if (tool.kind === 'person') {
@@ -351,8 +360,8 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
                 <div className="label" style={{ marginBottom: 8 }}>Lights</div>
                 <div className="chips">{quickLights.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, profile: q.profile }); setLightMenu(false); }}>{q.label}</button>)}</div>
                 <div className="label" style={{ margin: '12px 0 8px' }}>Grip</div>
-                <div className="chips">{gripItems.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind }); setLightMenu(false); }}>{q.label}</button>)}</div>
-                <p className="note">Pick any fixture type after placing it.</p>
+                <div className="chips">{gripItems.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, size: q.size, drape: q.drape }); setLightMenu(false); }}>{q.label}</button>)}</div>
+                <p className="note">Pick any fixture type, or any size, rag and gel for grip, after placing it.</p>
               </div>
             )}
           </div>

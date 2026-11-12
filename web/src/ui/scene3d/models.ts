@@ -4,7 +4,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BarnDoors, CameraRig, LightFixture, LightMeter, PrevisCharacter } from '../../model/types';
 import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometrics';
-import { cameraSupport, type LightSupport } from '../../model/rigging';
+import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
+import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
+import { boardOptics } from '../../model/calculator';
 import { hairOf, isChild, shapeBlend, skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
@@ -63,6 +65,15 @@ export function stand(support: LightSupport, height: number, top: number, parent
       legs(v(0, 0, 0), floor + 0.6, 0.62, 0.018, { braced: true, wheels: true });
       riser(0, 0, floor + 0.25, top, 0.027, parent);
       break;
+    case 'windUp': {
+      // Crank-up stand: wide braced legs, a fat inner column and the crank box on the first section.
+      legs(v(0, 0, 0), floor + 0.7, 0.75, 0.02, { braced: true });
+      riser(0, 0, floor + 0.3, top, 0.032, parent);
+      mesh(rbox(0.09, 0.14, 0.08, 0.015), SATIN, parent, v(0.06, floor + 0.95, 0));
+      bar(v(0.105, floor + 0.95, 0), v(0.17, floor + 0.95, 0), 0.008, CHROME, parent);
+      bar(v(0.17, floor + 0.95, 0), v(0.17, floor + 0.87, 0), 0.006, CHROME, parent); // crank handle
+      break;
+    }
     case 'turtleBase':
       legs(v(0, 0, 0), floor + 0.07, 0.36, 0.012, {});
       bar(v(0, floor + 0.04, 0), v(0, top, 0), 0.016, STEEL, parent);
@@ -253,28 +264,69 @@ function softboxOn(pm: ResolvedPhotometrics, color: THREE.Color, on: boolean, le
   return z0 + depth + 0.01;
 }
 
-/** A flag, bounce, neg or diffusion frame. */
-/** Grip on its frame: two faces back to back, so each side can show what it does with the light
- *  (the far face of a diffusion glows with what it passes; see Scene3D). Face `+1` looks the way the
- *  board faces (the calculator's normal), `-1` the other way. Each face's albedo is the board's
- *  reflectance, so a flag or neg shows a faint sheen on the side the light hits. */
-export function board(l: LightFixture, parent: THREE.Object3D, reflectance: number): number {
+/** Tint a frame gel puts on the cloth, so a gelled frame reads at a glance. Drawing only. */
+function gelTint(id: string): number | undefined {
+  if (id.startsWith('cto')) return id.endsWith('full') ? 0xf2a65a : id.endsWith('half') ? 0xf6c48e : 0xf9dcb8;
+  if (id.startsWith('ctb')) return id.endsWith('full') ? 0x7fa6e6 : id.endsWith('half') ? 0xa9c3ee : 0xcdddf5;
+  if (id.startsWith('plus-green')) return 0xc8e8b8;
+  if (id.startsWith('minus-green')) return 0xeac0e0;
+  if (id.startsWith('nd')) return 0x9a9a96;
+  return undefined;
+}
+
+function checkerTexture(): THREE.Texture {
+  return cached('tex:checker', () => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d')!;
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { g.fillStyle = (x + y) % 2 ? '#c9ccd0' : '#f6f6f4'; g.fillRect(x * 32, y * 32, 32, 32); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  });
+}
+
+/** Grip on its frame with its rag: two faces back to back, so each side can show what it does with the
+ *  light (the far face of a diffusion glows with what it passes; see Scene3D). Face `+1` looks the way
+ *  the board faces (the calculator's normal), `-1` the other way. A plain face's albedo is the board's
+ *  reflectance, so a flag or neg shows a faint sheen on the side the light hits; coloured rags (lamé,
+ *  muslin, checkerboard) and frame gels show their colour; nets stay see-through. A floppy opened shows
+ *  its second panel below the first. Returns the frame's height and how far its lowest point sits below
+ *  the pivot (pan space). */
+export function board(l: LightFixture, parent: THREE.Object3D, reflectance: number, tiltDeg = 0): { h: number; lowest: number } {
   const h = (l.boardHeight as number | undefined) ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
   const w = l.width;
-  const albedo = new THREE.Color().setRGB(reflectance, reflectance, reflectance, THREE.LinearSRGBColorSpace);
+  const rag = drape(l);
+  const open = l.floppyOpen === true && gripSize(l)?.floppy === true;
+  const lo = open ? -h * 1.5 : -h / 2, hi = h / 2;
+  const see = (drapeOptics(l) ?? boardOptics(l.kind)).transmission;
+  const tint = frameGels(l).map(g => gelTint(g.id)).filter((x): x is number => x !== undefined).pop();
+  const coloured = rag && (rag.kinds[0] === 'bounce' && rag.id !== 'white-board' || rag.pattern === 'checker');
+  const lame = rag?.id.endsWith('lame') === true;
+  const big = w >= 1.7, tube = big ? 0.016 : w >= 1 ? 0.011 : 0.007;
   for (const side of [1, -1]) {
-    const face = mat(0xffffff, { roughness: l.kind === 'bounce' || l.kind === 'diffusion' ? 0.92 : 1, metalness: 0, side: THREE.FrontSide });
-    face.color.copy(albedo);
+    const face = mat(0xffffff, { roughness: lame ? 0.38 : l.kind === 'bounce' || l.kind === 'diffusion' ? 0.92 : 1, metalness: lame ? 0.6 : 0, side: THREE.FrontSide });
+    if (coloured) face.color.set(rag!.color);
+    else face.color.setRGB(reflectance, reflectance, reflectance, THREE.LinearSRGBColorSpace);
+    if (tint !== undefined) face.color.multiply(new THREE.Color(tint));
+    if (rag?.pattern === 'checker') face.map = checkerTexture();
+    if (rag?.pattern === 'net') { face.color.set(rag.color); Object.assign(face, { transparent: true, opacity: 1 - rag.transmission * 0.9, depthWrite: false }); }
+    // A rag that lets light through lets you see through it a little too, so a silk doesn't hide the set.
+    else if (see > 0) Object.assign(face, { transparent: true, opacity: 1 - see * 0.8, depthWrite: false });
     // The board's normal is the way a unit would point: local −Z. The plane faces +Z, so turn the front face round.
-    const m = mesh(new THREE.PlaneGeometry(w - 0.02, h - 0.02), face, parent, v(0, 0, side * -0.002), side > 0 ? new THREE.Euler(0, Math.PI, 0) : undefined);
+    const m = mesh(new THREE.PlaneGeometry(w - tube * 2, hi - lo - tube * 2), face, parent, v(0, (lo + hi) / 2, side * -0.002), side > 0 ? new THREE.Euler(0, Math.PI, 0) : undefined);
     m.userData.face = side;
+    if (rag?.pattern === 'net') { m.userData.noShadow = true; m.userData.noAO = true; }
   }
-  // A slim metal frame round the cloth.
-  for (const s of [-1, 1]) {
-    bar(v(-w / 2, (s * h) / 2, 0), v(w / 2, (s * h) / 2, 0), 0.008, l.kind === 'flag' ? SATIN : STEEL, parent);
-    bar(v((s * w) / 2, -h / 2, 0), v((s * w) / 2, h / 2, 0), 0.008, l.kind === 'flag' ? SATIN : STEEL, parent);
-  }
-  return h;
+  // The frame round the rag (two panels for an opened floppy).
+  const frameMat = l.kind === 'flag' || l.kind === 'negative' ? SATIN : STEEL;
+  const panel = (y0: number, y1: number) => {
+    for (const y of [y0, y1]) bar(v(-w / 2, y, 0), v(w / 2, y, 0), tube, frameMat, parent);
+    for (const s of [-1, 1]) bar(v((s * w) / 2, y0, 0), v((s * w) / 2, y1, 0), tube, frameMat, parent);
+  };
+  panel(-h / 2, h / 2);
+  if (open) panel(-h * 1.5, -h / 2);
+  // Ears at the sides of a big frame, where it pivots on its stands.
+  if (gripStandCount(l) === 2) for (const s of [-1, 1]) mesh(rbox(0.06, 0.1, 0.05, 0.01), SATIN, parent, v(s * (w / 2 + 0.03), 0, 0));
+  return { h, lowest: -lo * Math.abs(Math.cos(rad(tiltDeg))) };
 }
 
 // MARK: Camera

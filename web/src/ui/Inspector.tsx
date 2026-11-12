@@ -26,6 +26,7 @@ import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
 import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, watts } from './format';
 import { Icon } from './icons';
+import { GripFields } from './GripPanel';
 import type { Selection } from './PlanCanvas';
 
 export function Slider({ label, value, min, max, step, format, onChange }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onChange(v: number): void }) {
@@ -239,14 +240,17 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
           <div className="chips" style={{ marginBottom: 12 }}>
             {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k, name: renamedForKind(l.name, l.kind, k) })}>{KIND_INFO[k].label}</button>)}
           </div>
+          <GripFields light={l} replace={replace} />
           <Slider label="Width" value={l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
+          <Slider label="Tilt" value={l.tilt} min={-90} max={90} step={1} format={signedDeg} onChange={v => set({ tilt: v }, false)} />
+          <div className="chips" style={{ margin: '-4px 0 10px 122px' }}>
+            <button className={'chip' + (Math.abs(l.tilt) < 0.5 ? ' on' : '')} onClick={() => set({ tilt: 0 })}>Upright</button>
+            <button className={'chip' + (Math.abs(l.tilt) > 89.5 ? ' on' : '')} onClick={() => set({ tilt: 90 })}>Flat overhead</button>
+          </div>
           <StandField light={l} replace={replace} />
-          <p className="note">{l.kind === 'bounce' ? 'Throws back light that lands on it, as a soft source the size of the board (one bounce, 80 % white board).'
-            : l.kind === 'diffusion' ? 'Stops the hard beam. About half the light comes out of the far side, spread as a soft source the size of the lit part of the frame; about a third is thrown back.'
-            : 'Stops all light going through it. Black cloth throws a few percent back off the side the light hits.'} Estimate.</p>
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
       </div>

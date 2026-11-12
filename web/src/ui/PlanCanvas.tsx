@@ -12,6 +12,7 @@ import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
 import { readingShort, stopColor, stopLegend } from './format';
 import { setPieceName } from '../model/setPieces';
+import { drape, gripSpan } from '../model/grip';
 
 export type Selection =
   | { kind: 'light'; id: string }
@@ -328,12 +329,18 @@ export function PlanCanvas(props: Props) {
       );
     } else {
       const half = (l.width / 2) * v.scale;
-      const fill = l.kind === 'bounce' ? 'var(--paper)' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? 'var(--ink2)' : 'var(--occ)';
+      const rag = drape(l);
+      // Seen from above, a tilted frame covers its face's depth along the facing line (flat overhead: the whole frame).
+      const span = gripSpan(l), sinT = Math.sin((l.tilt * Math.PI) / 180);
+      const ya = (span.bottom - l.height) * sinT * v.scale, yb = (span.top - l.height) * sinT * v.scale;
+      const y0 = Math.min(-3, Math.min(ya, yb)), y1 = Math.max(3, Math.max(ya, yb));
+      const fill = rag && rag.kinds[0] !== 'flag' && rag.kinds[0] !== 'negative' && rag.pattern !== 'net' ? '#' + rag.color.toString(16).padStart(6, '0')
+        : l.kind === 'bounce' ? 'var(--paper)' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? 'var(--ink2)' : 'var(--occ)';
       g.push(
         <g key="body" transform={`translate(${cx},${cy}) rotate(${l.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <rect x={-Math.max(half, 8)} y={-3} width={Math.max(half, 8) * 2} height={6} fill={fill} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={l.kind === 'diffusion' ? '4 3' : undefined} />
+          <rect x={-Math.max(half, 8)} y={y0} width={Math.max(half, 8) * 2} height={y1 - y0} fill={fill} fillOpacity={y1 - y0 > 8 ? 0.55 : 1} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={rag?.pattern === 'net' ? '1 2' : l.kind === 'diffusion' ? '4 3' : undefined} />
           <line x1={0} y1={-3} x2={0} y2={-12} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={1.5} />
-          <rect x={-Math.max(half, 14)} y={-12} width={Math.max(half, 14) * 2} height={24} fill="transparent" />
+          <rect x={-Math.max(half, 14)} y={Math.min(-12, y0)} width={Math.max(half, 14) * 2} height={Math.max(12, y1) - Math.min(-12, y0)} fill="transparent" />
         </g>,
       );
     }

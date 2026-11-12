@@ -83,10 +83,14 @@ enum LightingCalculator {
             var kind: LightKind
             var centre: Point
             var normal: Point
-            var a: PlanPoint
-            var b: PlanPoint
-            var bottom: Double
-            var top: Double
+            /// The face is a rectangle round the pivot (`centre`, the stand's head), turned by pan and
+            /// tilt: `right` is level, `up` lies in the face. It spans ±halfWidth along `right` and
+            /// lo…hi along `up`; an opened floppy hangs its second panel below, so lo < −hi.
+            var right: Point
+            var up: Point
+            var halfWidth: Double
+            var lo: Double
+            var hi: Double
             var area: Double
             var optics: BoardOptics
             /// Fraction that goes straight through, unscattered, when the board is in the way.
@@ -136,12 +140,14 @@ enum LightingCalculator {
                                             photometrics: l.photometrics,
                                             barnDoors: l.barnDoorSettings))
                 } else {
-                    let side = PlanPoint.unit(bearing: l.pan + 90) * (l.width / 2)
-                    let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
+                    let span = l.gripSpan
+                    let optics = l.drapeOptics.map { BoardOptics(transmission: $0.transmission, scatter: $0.scatter, reflectance: $0.reflectance) }
+                        ?? BoardOptics.defaults(for: l.kind)
                     boards.append(Board(id: l.id, kind: l.kind, centre: Point(l.position, height: l.height), normal: axis,
-                                        a: l.position - side, b: l.position + side,
-                                        bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h,
-                                        optics: BoardOptics.defaults(for: l.kind)))
+                                        right: LightingCalculator.direction(bearing: l.pan + 90, tilt: 0),
+                                        up: LightingCalculator.direction(bearing: l.pan, tilt: l.tilt + 90),
+                                        halfWidth: span.width / 2, lo: span.bottom - l.height, hi: span.top - l.height,
+                                        area: span.width * (span.top - span.bottom), optics: optics))
                 }
             }
             patches = LightingCalculator.secondarySources(self)
@@ -185,9 +191,9 @@ enum LightingCalculator {
             let patchArea = board.area / Double(n * n), radius = (patchArea / .pi).squareRoot()
             for i in 0..<n {
                 for j in 0..<n {
-                    let f = (Double(i) + 0.5) / Double(n)
-                    let p = board.a + (board.b - board.a) * f
-                    let centre = Point(x: p.x, y: board.bottom + (Double(j) + 0.5) / Double(n) * (board.top - board.bottom), z: p.z)
+                    let x = ((Double(i) + 0.5) / Double(n) - 0.5) * 2 * board.halfWidth
+                    let y = board.lo + (Double(j) + 0.5) / Double(n) * (board.hi - board.lo)
+                    let centre = board.centre + board.right * x + board.up * y
                     for e in scene.emitters {
                         let side = (e.position - centre).dot(board.normal)
                         if side == 0 { continue }
@@ -285,11 +291,16 @@ enum LightingCalculator {
 
     private static func boardsPass(_ a: Point, _ b: Point, scene: Scene, ignoring: [UUID]) -> Double {
         var t = 1.0
+        let ab = b - a
         for board in scene.boards where !ignoring.contains(board.id) {
-            guard let hit = intersect(a.plan, b.plan, board.a, board.b) else { continue }
-            let s = hit.0
-            let y = a.y + s * (b.y - a.y)
-            guard y >= board.bottom, y <= board.top else { continue }
+            // Where the ray crosses the board's plane, and whether that's inside the face.
+            let across = ab.dot(board.normal)
+            guard abs(across) > 1e-12 else { continue }
+            let s = (board.centre - a).dot(board.normal) / across
+            guard s > 1e-4, s < 1 - 1e-4 else { continue }
+            let q = a + ab * s - board.centre
+            let y = q.dot(board.up)
+            guard abs(q.dot(board.right)) <= board.halfWidth + 1e-9, y >= board.lo - 1e-9, y <= board.hi + 1e-9 else { continue }
             t *= board.directTransmission // what a diffusion scatters comes out as its own soft source
             if t <= 0 { return 0 }
         }
