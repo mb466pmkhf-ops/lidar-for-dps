@@ -2,8 +2,9 @@ import Foundation
 
 /// Stand-in people for blocking, framing and lighting. Proportions follow standard figure-drawing
 /// ratios (adults about 7.5 heads tall, children about 6), scaled by height and build.
+/// `universal` is an adult with no male or female features: in-between shoulders and hips, cropped hair.
 enum CharacterType: String, Codable, CaseIterable, Identifiable {
-    case man, woman, girl, boy
+    case man, woman, universal, girl, boy
 
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
@@ -12,6 +13,7 @@ enum CharacterType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .man: return "figure.stand"
         case .woman: return "figure.stand.dress"
+        case .universal: return "figure"
         case .girl, .boy: return "figure.child"
         }
     }
@@ -20,12 +22,47 @@ enum CharacterType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .man: return 1.78
         case .woman: return 1.65
+        case .universal: return 1.71
         case .girl: return 1.30
         case .boy: return 1.34
         }
     }
 
+    /// Body shape from broader shoulders / narrower hips (0) to narrower shoulders / wider hips (1).
+    var shapeBlend: Double {
+        switch self {
+        case .man, .boy: return 0
+        case .woman: return 1
+        case .universal: return 0.5
+        case .girl: return 0.6
+        }
+    }
+
+    var defaultHair: HairStyle {
+        switch self {
+        case .man, .boy: return .short
+        case .woman: return .long
+        case .universal: return .cropped
+        case .girl: return .tied
+        }
+    }
+
     var heightRange: ClosedRange<Double> { isChild ? 0.8...1.75 : 1.4...2.1 }
+}
+
+enum HairStyle: String, Codable, CaseIterable, Identifiable {
+    case cropped, short, long, tied, bald
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cropped: return "Cropped"
+        case .short: return "Short"
+        case .long: return "Long"
+        case .tied: return "Tied back"
+        case .bald: return "None"
+        }
+    }
 }
 
 enum CharacterPosture: String, Codable, CaseIterable, Identifiable {
@@ -92,6 +129,10 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
     var facing: Double = 180
     var posture: CharacterPosture = .standing
     var scanID: UUID? = nil
+    /// nil means the type's usual hair; see `hairStyle`.
+    var hair: HairStyle? = nil
+
+    var hairStyle: HairStyle { hair ?? type.defaultHair }
 
     init(name: String, type: CharacterType, position: PlanPoint, facing: Double = 180, scanID: UUID? = nil) {
         self.name = name
@@ -102,11 +143,13 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
         self.scanID = scanID
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, type, height, build, skinTone, position, facing, posture, scanID }
+    enum CodingKeys: String, CodingKey { case id, name, type, height, build, skinTone, position, facing, posture, scanID, hair }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try c.decodeIfPresent(CharacterType.self, forKey: .type) ?? .man
+        // A type this build doesn't know (added in a newer version) falls back to the universal figure.
+        let raw = try c.decodeIfPresent(String.self, forKey: .type)
+        let type = raw.map { CharacterType(rawValue: $0) ?? .universal } ?? .man
         self.init(name: try c.decodeIfPresent(String.self, forKey: .name) ?? type.label, type: type,
                   position: try c.decodeIfPresent(PlanPoint.self, forKey: .position) ?? .zero)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? id
@@ -116,6 +159,7 @@ struct PrevisCharacter: Identifiable, Codable, Hashable {
         facing = try c.decodeIfPresent(Double.self, forKey: .facing) ?? facing
         posture = try c.decodeIfPresent(CharacterPosture.self, forKey: .posture) ?? posture
         scanID = try c.decodeIfPresent(UUID.self, forKey: .scanID)
+        hair = (try? c.decodeIfPresent(String.self, forKey: .hair)).flatMap { HairStyle(rawValue: $0) }
     }
 
     var proportions: FigureProportions { FigureProportions(self) }
@@ -162,19 +206,13 @@ struct FigureProportions {
         let heads = c.type.isChild ? 6.0 : 7.5
         let head = h / heads
         let b = min(max(c.build, 0), 1) - 0.5           // −0.5 … 0.5
-        let broad: Double = {
-            switch c.type {
-            case .man: return 1.0
-            case .woman: return 0.9
-            case .boy, .girl: return 0.92
-            }
-        }()
+        let broad: Double = c.type.isChild ? 0.92 : 1.0 - 0.1 * c.type.shapeBlend
         headHeight = head
         headWidth = head * 0.72 * (1 + b * 0.12)
         shoulderWidth = h * 0.245 * broad * (1 + b * 0.25)
         chestDepth = h * 0.12 * (1 + b * 0.55)
-        waistWidth = h * 0.16 * (c.type == .woman ? 0.92 : 1) * (1 + b * 0.6)
-        hipWidth = h * (c.type == .woman ? 0.2 : 0.185) * (1 + b * 0.35)
+        waistWidth = h * 0.16 * (c.type.isChild ? 1 : 1 - 0.08 * c.type.shapeBlend) * (1 + b * 0.6)
+        hipWidth = h * (c.type.isChild ? 0.185 : 0.185 + 0.015 * c.type.shapeBlend) * (1 + b * 0.35)
         armRadius = h * 0.026 * (1 + b * 0.45)
         legRadius = h * 0.04 * (1 + b * 0.4)
         armLength = h * 0.36

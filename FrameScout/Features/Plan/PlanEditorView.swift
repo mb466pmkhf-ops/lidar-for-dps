@@ -1405,9 +1405,11 @@ struct PlanEditorView: View {
                     }
                 }
             case .person(let type):
-                HStack(spacing: 6) {
-                    ForEach(CharacterType.allCases) { t in
-                        TagChip(text: t.label, selected: type == t) { addItem = .person(t) }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(CharacterType.allCases) { t in
+                            TagChip(text: t.label, selected: type == t) { addItem = .person(t) }
+                        }
                     }
                 }
             case .camera:
