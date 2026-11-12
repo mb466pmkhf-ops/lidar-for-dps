@@ -57,3 +57,36 @@ describe('exposure port', () => {
     expect(stopsDelta(-0.66)).toBe('−⅔');
   });
 });
+
+describe('grip (D-012)', () => {
+  // A narrow unit 3 m from a meter, a board half way.
+  const spot = () => { const l = newLight('fresnel', { x: 0, z: 3 }); l.pan = 0; l.tilt = 0; l.height = 1.5; l.beamAngle = 12; return l; };
+  const boardAt = (kind: 'flag' | 'negative' | 'bounce' | 'diffusion') => { const b = newLight(kind, { x: 0, z: 1.5 }); b.pan = 180; b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b; };
+  const meter = vec(0, 1.5, 0), facingLight = direction(180, 0);
+
+  it('a flag or neg cuts the beam completely', () => {
+    for (const k of ['flag', 'negative'] as const) expect(reading(meter, facingLight, buildScene([spot(), boardAt(k)])).lux).toBe(0);
+  });
+
+  it('a flag throws a little light back off the side the light hits, a bounce board much more', () => {
+    const front = vec(0.8, 1.5, 2.2), facingBoard = direction(311, 0); // beside the unit, looking back at the board
+    const flag = reading(front, facingBoard, buildScene([spot(), boardAt('flag')]));
+    const bounce = reading(front, facingBoard, buildScene([spot(), boardAt('bounce')]));
+    expect(flag.lux).toBeGreaterThan(0);
+    expect(flag.contributions.every(c => c.viaBounce)).toBe(true);
+    expect(flag.lux / bounce.lux).toBeCloseTo(0.04 / 0.8, 6);
+  });
+
+  it('a diffusion frame passes less light but spreads it, so the edge of the beam gets more', () => {
+    const open = reading(meter, facingLight, buildScene([spot()])).lux;
+    const diffused = reading(meter, facingLight, buildScene([spot(), boardAt('diffusion')]));
+    expect(diffused.lux).toBeGreaterThan(0);
+    expect(diffused.lux).toBeLessThan(open * 0.5);
+    expect(diffused.contributions.every(c => c.viaBounce)).toBe(true); // nothing comes straight through
+    // Well outside the bare beam, but in front of the frame.
+    const side = vec(1.2, 1.5, 0.3), facingFrame = direction(180 - 40, 0);
+    const bare = reading(side, facingFrame, buildScene([spot()])).lux;
+    const soft = reading(side, facingFrame, buildScene([spot(), boardAt('diffusion')])).lux;
+    expect(soft).toBeGreaterThan(bare * 4 + 1);
+  });
+});
