@@ -7,6 +7,35 @@ enum LightKind: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Short name crews use for grip (also the plan's add buttons and the built-in setups).
+    var shortName: String? {
+        switch self {
+        case .bounce: return "Bounce"
+        case .negative: return "Neg"
+        case .flag: return "Flag"
+        case .diffusion: return "Diffusion"
+        default: return nil
+        }
+    }
+
+    /// The name a unit should take when its kind changes: a name that is still the old kind's own
+    /// ("Negative fill", "Neg 2") follows the change ("Flag", "Flag 2"); a name the user gave it stays.
+    /// Same rule as `renamedForKind` on the web.
+    static func renamed(_ name: String, from: LightKind, to: LightKind) -> String {
+        if from == to { return name }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let pairs: [(String?, String)] = [(from.label, to.label), (from.shortName, to.shortName ?? to.label)]
+        for (own, next) in pairs {
+            guard let own else { continue }
+            if trimmed.lowercased() == own.lowercased() { return next }
+            if let space = trimmed.lastIndex(of: " ") {
+                let head = trimmed[..<space], tail = trimmed[trimmed.index(after: space)...]
+                if !tail.isEmpty, tail.allSatisfy(\.isNumber), head.lowercased() == own.lowercased() { return "\(next) \(tail)" }
+            }
+        }
+        return name
+    }
+
     var label: String {
         switch self {
         case .fresnel: return "Fresnel"

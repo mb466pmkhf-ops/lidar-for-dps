@@ -15,10 +15,49 @@ struct HomeView: View {
     @State private var showListing = false
     @AppStorage(Theme.nightKey) private var night = false
     @State private var importMessage: String?
+    /// Projects sit at the top of Home, so only the most recent few show until the user expands the list.
+    @State private var showAllProjects = false
+    private let collapsedProjectCount = 4
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: HomeStyle.sectionSpacing) {
+                // Projects first: returning users go straight back to their work.
+                VStack(alignment: .leading, spacing: 12) {
+                    HomeSectionHeader(title: "Projects", action: {
+                        newProjectName = ""
+                        showNewProject = true
+                    }, actionLabel: "New")
+                    if store.recentProjects.isEmpty {
+                        EmptyStateView(systemImage: "film", title: "No projects yet",
+                                       message: "Make a project for each production, then add locations, scans and props to it.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(visibleProjects.enumerated()), id: \.element.id) { i, project in
+                                if i > 0 { Divider().padding(.leading, 88) }
+                                Button { router.open(.project(project.id)) } label: {
+                                    ProjectRow(project: project)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { projectMenu(project) }
+                            }
+                        }
+                        .homeCard()
+                        if store.recentProjects.count > collapsedProjectCount {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) { showAllProjects.toggle() }
+                            } label: {
+                                Label(showAllProjects ? "Show fewer" : "Show all \(store.recentProjects.count) projects",
+                                      systemImage: showAllProjects ? "chevron.up" : "chevron.down")
+                                    .font(HomeStyle.button)
+                                    .foregroundStyle(HomeStyle.accent)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     HomeTile(title: "Scan a location",
                                subtitle: DeviceCapabilities.hasLiDAR ? "Room plan or LiDAR mesh" : "Needs a LiDAR iPhone",
@@ -73,29 +112,6 @@ struct HomeView: View {
                     }
                 }
                 .homeCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    HomeSectionHeader(title: "Projects", action: {
-                        newProjectName = ""
-                        showNewProject = true
-                    }, actionLabel: "New")
-                    if store.recentProjects.isEmpty {
-                        EmptyStateView(systemImage: "film", title: "No projects yet",
-                                       message: "Make a project for each production, then add locations, scans and props to it.")
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(store.recentProjects.prefix(12).enumerated()), id: \.element.id) { i, project in
-                                if i > 0 { Divider().padding(.leading, 88) }
-                                Button { router.open(.project(project.id)) } label: {
-                                    ProjectRow(project: project)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu { projectMenu(project) }
-                            }
-                        }
-                        .homeCard()
-                    }
-                }
 
                 Label(DeviceCapabilities.summary, systemImage: DeviceCapabilities.hasLiDAR ? "checkmark.circle" : "info.circle")
                     .font(HomeStyle.footnote)
@@ -159,6 +175,10 @@ struct HomeView: View {
         } message: {
             Text(importMessage ?? "")
         }
+    }
+
+    private var visibleProjects: [Project] {
+        showAllProjects ? store.recentProjects : Array(store.recentProjects.prefix(collapsedProjectCount))
     }
 
     private var syncTitle: String {

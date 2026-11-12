@@ -1,7 +1,7 @@
 import Foundation
 
 // Studio builds, daylight and window dressing. Ported to web/src/model/stage.ts with the same ids,
-// numbers and rules (tests on both sides, parity in CI). See Docs/DECISIONS.md D-013.
+// numbers and rules (tests on both sides, parity in CI). See Docs/DECISIONS.md D-014.
 //
 // - A studio backdrop (cyc, chroma screen, paper roll or LED wall) stands against one wall, and the
 //   floor can be given a finish. Only the LED wall gives light in the readings; the others are

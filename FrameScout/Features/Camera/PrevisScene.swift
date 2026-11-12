@@ -109,78 +109,7 @@ enum SceneKitBuilder {
 
     // MARK: People
 
-    /// Mannequin with believable proportions: clear silhouette, skin-toned head and hands,
-    /// neutral clothing so the light on it reads. A small nose shows which way the person faces.
-    static func figure(_ c: PrevisCharacter, selected: Bool) -> SCNNode {
-        let p = c.proportions
-        let root = SCNNode()
-        let skin = material(uiColor(c.skinTone.rgb), roughness: 0.55)
-        let top = material(UIColor(white: 0.55, alpha: 1), roughness: 0.85)
-        let legs = material(UIColor(white: 0.32, alpha: 1), roughness: 0.85)
-        if selected {
-            for m in [top, legs] { m.emission.contents = UIColor(white: 0.18, alpha: 1) }
-        }
-        func capsule(_ r: Double, _ length: Double, _ m: SCNMaterial) -> SCNNode {
-            let g = SCNCapsule(capRadius: CGFloat(r), height: CGFloat(max(length, 2 * r + 0.001)))
-            g.materials = [m]
-            return SCNNode(geometry: g)
-        }
-        func place(_ n: SCNNode, _ x: Double, _ y: Double, _ z: Double) -> SCNNode {
-            n.simdPosition = SIMD3(Float(x), Float(y), Float(z))
-            root.addChildNode(n)
-            return n
-        }
-        let legSpread = p.hipWidth * 0.26
-        if p.sitting {
-            // Thighs forward (−Z is the facing direction), shins down to the floor.
-            let thigh = p.hipHeight * 0.0 + p.legRadius
-            for s in [-1.0, 1.0] {
-                let t = capsule(p.legRadius, c.height * 0.25, legs)
-                t.simdEulerAngles = SIMD3(Float.pi / 2, 0, 0)
-                _ = place(t, s * legSpread, p.seatHeight + thigh, -c.height * 0.11)
-                let shin = capsule(p.legRadius * 0.85, p.seatHeight + p.legRadius, legs)
-                _ = place(shin, s * legSpread, (p.seatHeight + p.legRadius) / 2, -c.height * 0.23)
-            }
-            // A stool so a seated figure doesn't float.
-            let seat = SCNBox(width: CGFloat(p.hipWidth * 1.3), height: CGFloat(p.seatHeight), length: CGFloat(p.hipWidth * 1.2), chamferRadius: 0.01)
-            seat.materials = [material(UIColor(white: 0.2, alpha: 1))]
-            _ = place(SCNNode(geometry: seat), 0, p.seatHeight / 2, 0.02)
-        } else {
-            for s in [-1.0, 1.0] {
-                let leg = capsule(p.legRadius, p.hipHeight, legs)
-                _ = place(leg, s * legSpread, p.hipHeight / 2, 0)
-            }
-        }
-        // Hips and torso.
-        let hip = SCNBox(width: CGFloat(p.hipWidth), height: CGFloat(c.height * 0.09), length: CGFloat(p.chestDepth * 0.95), chamferRadius: CGFloat(p.chestDepth * 0.4))
-        hip.materials = [legs]
-        _ = place(SCNNode(geometry: hip), 0, p.hipHeight + c.height * 0.02, 0)
-        let torsoHeight = p.shoulderHeight - p.hipHeight
-        let torso = SCNBox(width: CGFloat(p.shoulderWidth * 0.86), height: CGFloat(torsoHeight), length: CGFloat(p.chestDepth),
-                           chamferRadius: CGFloat(min(p.chestDepth, p.shoulderWidth) * 0.45))
-        torso.materials = [top]
-        _ = place(SCNNode(geometry: torso), 0, p.hipHeight + torsoHeight / 2 + c.height * 0.02, 0)
-        // Arms hang from the shoulders.
-        for s in [-1.0, 1.0] {
-            let arm = capsule(p.armRadius, p.armLength, top)
-            _ = place(arm, s * (p.shoulderWidth / 2 - p.armRadius * 0.4), p.shoulderHeight - p.armLength / 2 + p.armRadius, 0)
-            let hand = SCNSphere(radius: CGFloat(p.armRadius * 1.15))
-            hand.materials = [skin]
-            _ = place(SCNNode(geometry: hand), s * (p.shoulderWidth / 2 - p.armRadius * 0.4), p.shoulderHeight - p.armLength + p.armRadius * 0.4, 0)
-        }
-        // Neck and head.
-        let neck = SCNCylinder(radius: CGFloat(p.headWidth * 0.3), height: CGFloat(p.neckBase - p.shoulderHeight + p.headHeight * 0.25))
-        neck.materials = [skin]
-        _ = place(SCNNode(geometry: neck), 0, (p.shoulderHeight + p.neckBase) / 2 + p.headHeight * 0.1, 0)
-        let head = SCNSphere(radius: CGFloat(p.headWidth / 2))
-        head.materials = [skin]
-        let headNode = place(SCNNode(geometry: head), 0, p.top - p.headHeight / 2, 0)
-        headNode.scale = SCNVector3(1, Float(p.headHeight / p.headWidth), 1.1)
-        let nose = SCNBox(width: CGFloat(p.headWidth * 0.16), height: CGFloat(p.headHeight * 0.16), length: CGFloat(p.headWidth * 0.25), chamferRadius: 0.004)
-        nose.materials = [skin]
-        _ = place(SCNNode(geometry: nose), 0, p.eyeHeight - p.headHeight * 0.12, -p.headWidth * 0.55)
-        return root
-    }
+    // The figure itself is in FigureModel.swift.
 
     // MARK: Cameras
 
@@ -467,7 +396,11 @@ final class VirtualSceneModel: ObservableObject {
     private var lightCache: [UUID: (key: Int, node: SCNNode)] = [:]
     /// Each lit unit's SceneKit light with its on-axis output, so brightness can be re-fitted
     /// without rebuilding the unit.
-    private var viewportLights: [UUID: (light: SCNLight, onAxis: Double)] = [:]
+    private var viewportLights: [UUID: (light: SCNLight, onAxis: Double, full: Double)] = [:]
+    /// Soft sources standing in for light thrown back off grip and passed through diffusion (D-013).
+    private let gripGlow = SCNNode()
+    /// Flags, frames and boards a beam's haze stops at.
+    private var beamBlockers: [LightFixture] = []
     /// True while the sun has been placed from a real date and time (the viewfinder's sun study).
     private var sunIsSet = false
     private var markerCache: [UUID: (key: Int, node: SCNNode)] = [:]
@@ -516,7 +449,7 @@ final class VirtualSceneModel: ObservableObject {
 
         scene.rootNode.addChildNode(grid)
         scene.rootNode.addChildNode(world)
-        for n in [scanHolder, markers, subjectMarks, lightRig, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
+        for n in [scanHolder, markers, subjectMarks, lightRig, gripGlow, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
         let ring = SCNTorus(ringRadius: 0.4, pipeRadius: 0.012)
         ring.firstMaterial = SceneKitBuilder.material(.white, constant: true)
         selectionRing.geometry = ring
@@ -905,13 +838,18 @@ final class VirtualSceneModel: ObservableObject {
     /// a projected mask, and beam rays that stop at the room. Viewport brightness is a visual guide
     /// only (D-011); lux comes from `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
     /// doesn't rebuild (and re-shadow) the whole rig every frame.
-    func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false) {
+    func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false, plan: FloorPlan? = nil) {
         var anyOn = false
         var shadowCount = 0
         var keep = Set<UUID>()
+        beamBlockers = lights.filter { !$0.kind.emits }
+        var gripHash = Hasher()
+        gripHash.combine(beamBlockers)
+        let gripKey = gripHash.finalize()
         for l in lights {
             if hideGrip && !l.kind.emits { continue }
-            let wantsShadow = l.kind.emits && l.isOn && shadowCount < 4 && l.photometrics.distribution != .omni && l.photometrics.distribution != .tube
+            // Up to six units cast shadows, so flags and frames cut them.
+            let wantsShadow = l.kind.emits && l.isOn && shadowCount < 6 && l.photometrics.distribution != .omni && l.photometrics.distribution != .tube
             if wantsShadow { shadowCount += 1 }
             if l.kind.emits && l.isOn { anyOn = true }
             var h = Hasher()
@@ -920,6 +858,7 @@ final class VirtualSceneModel: ObservableObject {
             h.combine(showLabels)
             h.combine(showBeams)
             h.combine(wantsShadow)
+            if l.kind.emits && showBeams { h.combine(gripKey) } // a beam is redrawn when grip in its way moves
             h.combine(floorY)
             h.combine(sceneGeneration)
             let key = h.finalize()
@@ -936,16 +875,88 @@ final class VirtualSceneModel: ObservableObject {
             lightCache[id] = nil
             viewportLights[id] = nil
         }
-        // Fit the picture to the brightest unit; every other unit keeps its true ratio to it.
-        let brightest = viewportLights.values.map(\.onAxis).max() ?? 0
+        // Fit the picture to the brightest unit at full output; every unit keeps its true ratio to it.
+        // It depends on the units alone, so moving a person or a flag, or dimming a unit, never
+        // changes how bright the other units look.
+        let brightest = viewportLights.values.map(\.full).max() ?? 0
         for entry in viewportLights.values {
             entry.light.intensity = SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1)
         }
+        setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest)
         // With units on, the room keeps only a trace of work light so their shadows read; the
         // stand-in sun is for an unlit room (or the viewfinder's sun study).
         ambientNode.light?.intensity = anyOn ? 60 : 450
         scene.lightingEnvironment.intensity = anyOn ? 0.25 : 0.6
         if !sunIsSet { sunNode.light?.intensity = anyOn ? 0 : 900 }
+    }
+
+    /// Grip as a second source, from the calculator's own patches (D-013): each lit face of a board
+    /// gets a soft spot facing out of it, and the far face of a diffusion glows where it is lit.
+    private func setGripGlow(_ lights: [LightFixture], plan: FloorPlan?, brightest: Double) {
+        gripGlow.childNodes.forEach { $0.removeFromParentNode() }
+        let n = LightingCalculator.Scene.patchesPerSide
+        let optical = LightingCalculator.Scene(lights: lights.filter { !$0.kind.emits || $0.isOn }, plan: plan)
+        for b in optical.boards {
+            var glow: [Int: [Double]] = [1: Array(repeating: 0, count: n * n), -1: Array(repeating: 0, count: n * n)]
+            let ab = b.b - b.a
+            let abLen2 = max(1e-9, ab.x * ab.x + ab.z * ab.z)
+            let patchArea = b.area / Double(n * n)
+            for side in [1, -1] {
+                let mine = optical.patches.filter { $0.board == b.id && ($0.normal.dot(b.normal) > 0 ? 1 : -1) == side }
+                let total = mine.reduce(0) { $0 + $1.intensity }
+                guard total > 0 else { continue }
+                for q in mine {
+                    // A patch facing away from its unit is light that came through the frame.
+                    guard let e = optical.emitters.first(where: { $0.id == q.lightID }), (e.position - q.centre).dot(q.normal) < 0 else { continue }
+                    let i = min(n - 1, Int(((q.centre.x - b.a.x) * ab.x + (q.centre.z - b.a.z) * ab.z) / abLen2 * Double(n)))
+                    let j = min(n - 1, Int((q.centre.y - b.bottom) / max(1e-6, b.top - b.bottom) * Double(n)))
+                    glow[side]![max(0, j) * n + max(0, i)] += q.intensity / patchArea
+                }
+                // Same scale as the units: a source's intensity against the brightest unit's at 3 m.
+                let share = brightest > 0 ? total / 9 / brightest : 0
+                guard share > 1e-4 else { continue }
+                var centre = LightingCalculator.Point(x: 0, y: 0, z: 0)
+                for q in mine { centre = centre + q.centre * (q.intensity / total) }
+                let normal = b.normal * Double(side)
+                let light = SCNLight()
+                light.type = .spot
+                light.spotInnerAngle = 30
+                light.spotOuterAngle = 170
+                light.color = UIColor.white
+                light.intensity = CGFloat(800 * min(share, 1))
+                light.attenuationStartDistance = 0.3
+                light.attenuationEndDistance = 14
+                light.attenuationFalloffExponent = 2
+                let node = SCNNode()
+                node.light = light
+                let from = centre + normal * 0.03, to = centre + normal
+                node.simdPosition = SIMD3(Float(from.x), Float(floorY + from.y), Float(from.z))
+                node.look(at: SCNVector3(Float(to.x), Float(floorY + to.y), Float(to.z)))
+                gripGlow.addChildNode(node)
+            }
+            guard let boardNode = lightCache[b.id]?.node else { continue }
+            for side in [1, -1] {
+                guard let face = boardNode.childNode(withName: "face\(side)", recursively: true)?.geometry?.firstMaterial else { continue }
+                let values = glow[side]!
+                let peak = values.max() ?? 0
+                // A diffusion's far face, as bright against a white card lit by the brightest unit at 3 m.
+                let level = brightest > 0 ? min(1, peak * .pi / brightest) : 0
+                guard level > 0.002 else { if face.emission.contents is UIImage { face.emission.contents = nil }; continue }
+                let image = UIGraphicsImageRenderer(size: CGSize(width: n, height: n)).image { ctx in
+                    for j in 0..<n {
+                        for i in 0..<n {
+                            // Face +1 is turned round, so its picture runs the other way along the board;
+                            // image rows run top down.
+                            let v = values[j * n + (side > 0 ? n - 1 - i : i)] / peak * level
+                            UIColor(white: CGFloat(pow(v, 1 / 2.2)), alpha: 1).setFill()
+                            ctx.fill(CGRect(x: i, y: n - 1 - j, width: 1, height: 1))
+                        }
+                    }
+                }
+                face.emission.contents = image
+                face.emission.magnificationFilter = .linear
+            }
+        }
     }
 
     private func buildLight(_ l: LightFixture, selected: Bool, showLabels: Bool, showBeams: Bool, shadow: Bool) -> SCNNode {
@@ -991,7 +1002,9 @@ final class VirtualSceneModel: ObservableObject {
                     light.color = UIColor.white
                     light.temperature = CGFloat(pm.kelvin)
                 }
-                viewportLights[l.id] = (light, pm.illuminanceOnAxis(at: 3))
+                var atFull = l
+                atFull.dimmer = 1
+                viewportLights[l.id] = (light, pm.illuminanceOnAxis(at: 3), atFull.photometrics.illuminanceOnAxis(at: 3))
                 light.attenuationStartDistance = 0.3
                 light.attenuationEndDistance = 14
                 light.attenuationFalloffExponent = 2
@@ -1030,18 +1043,25 @@ final class VirtualSceneModel: ObservableObject {
             }
         } else {
             let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
-            let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
-            let m = SCNMaterial()
-            switch l.kind {
-            case .bounce: m.diffuse.contents = UIColor.white
-            case .negative: m.diffuse.contents = UIColor(white: 0.04, alpha: 1)
-            case .diffusion: m.diffuse.contents = UIColor(white: 1, alpha: 0.55)
-            default: m.diffuse.contents = UIColor(white: 0.25, alpha: 1)
+            // Two faces back to back, so each side can show what it does with the light: albedo is
+            // the board's reflectance (a faint sheen on black cloth), and the far face of a
+            // diffusion glows with what it passes (`setGripGlow`). Face +1 looks the way the board faces.
+            let reflectance = BoardOptics.defaults(for: l.kind).reflectance
+            for side in [1, -1] {
+                let board = SCNPlane(width: CGFloat(l.width), height: CGFloat(h))
+                let m = SCNMaterial()
+                m.lightingModel = .physicallyBased
+                m.diffuse.contents = UIColor(white: CGFloat(pow(reflectance, 1 / 2.2)), alpha: 1)
+                m.roughness.contents = 0.95
+                m.metalness.contents = 0
+                if selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
+                board.materials = [m]
+                let face = SCNNode(geometry: board)
+                face.name = "face\(side)"
+                face.simdPosition = SIMD3(0, 0, Float(side) * -0.002)
+                if side > 0 { face.simdEulerAngles = SIMD3(0, .pi, 0) }
+                tilt.addChildNode(face)
             }
-            m.isDoubleSided = true
-            if selected { m.emission.contents = UIColor.white.withAlphaComponent(0.35) }
-            board.materials = [m]
-            tilt.addChildNode(SCNNode(geometry: board))
             // Frame round the board, then a grip head down to its stand.
             let hw = Float(l.width / 2), hh = Float(h / 2)
             let corners: [SIMD3<Float>] = [SIMD3(-hw, -hh, 0), SIMD3(hw, -hh, 0), SIMD3(hw, hh, 0), SIMD3(-hw, hh, 0)]
@@ -1076,6 +1096,22 @@ final class VirtualSceneModel: ObservableObject {
                 let p = start + d * t
                 if roomFootprint.map({ p.x >= $0.lo.x && p.x <= $0.hi.x && p.z >= $0.lo.y && p.z <= $0.hi.y }) ?? true { best = t }
             }
+        }
+        // Flags, frames and boards stop the beam too.
+        for g in beamBlockers {
+            let n = LightingCalculator.direction(bearing: g.pan, tilt: g.tilt)
+            let r = LightingCalculator.direction(bearing: g.pan + 90, tilt: 0)
+            let u = r.cross(n).normalized
+            let normal = SIMD3<Float>(Float(n.x), Float(n.y), Float(n.z))
+            let denom = simd_dot(d, normal)
+            guard abs(denom) > 1e-5 else { continue }
+            let centre = SIMD3<Float>(Float(g.position.x), Float(floorY + g.height), Float(g.position.z))
+            let t = simd_dot(centre - start, normal) / denom
+            guard t > 0.05, t < (best ?? maxLength) else { continue }
+            let off = start + d * t - centre
+            let h = g.boardHeight ?? (g.kind == .flag ? min(g.width, 0.9) : g.width)
+            if abs(simd_dot(off, SIMD3(Float(r.x), Float(r.y), Float(r.z)))) <= Float(g.width / 2),
+               abs(simd_dot(off, SIMD3(Float(u.x), Float(u.y), Float(u.z)))) <= Float(h / 2) { best = t }
         }
         let end = start + d * (best ?? maxLength)
         let results = scanHolder.hitTestWithSegment(from: SCNVector3(start.x, start.y, start.z), to: SCNVector3(end.x, end.y, end.z),

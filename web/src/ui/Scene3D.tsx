@@ -4,9 +4,11 @@
 //
 // What the picture is, and isn't (Docs/DECISIONS.md D-006, D-011): each unit's brightness, colour,
 // beam shape and barn-door cut come from the same photometric model as the readings, and shadows
-// are real. It shows direct light only: no light bouncing round the room. Daylight (sun through the
-// windows, the sky as soft light from each window) and an LED wall use the readings' levels on the
-// same scale (D-013). So it is a preview of the look, and the readings stay the figures to work from.
+// are real. Grip does what the calculator says it does: flags and negs cut the beam and show a faint
+// sheen where they are hit, bounce boards throw light back, and a diffusion frame stops the hard beam
+// and glows as a soft source on its far side (D-013). Daylight (sun through the windows, the sky as soft
+// light from each window) and an LED wall use the readings' levels on the same scale (D-014). No light
+// off walls, floor or ceiling. So it is a preview of the look, and the readings stay the figures to work from.
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -22,7 +24,7 @@ import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, pho
 import { lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
-import type { MeterPoint } from '../model/calculator';
+import { boardOptics, buildScene, type MeterPoint } from '../model/calculator';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
 import { Icon } from './icons';
@@ -54,7 +56,9 @@ interface Props {
 }
 
 type Quality = 0 | 1 | 2; // 2 = everything on, 1 = no ambient occlusion, 0 = plain
-const SHADOW_LIGHTS = 4;
+const SHADOW_LIGHTS = 6;
+/** The calculator splits each board into this many patches a side (PATCHES in calculator.ts). */
+const PATCHES = 3;
 const DEFAULT_FOV = 42;
 
 /** How the unit's light falls off across its cone, and where the barn doors cut it: the calculator's
@@ -342,10 +346,11 @@ export function Scene3D(p: Props) {
     const scan = loc.scans.find(s => s.id === scanID);
     const env = environment(loc, p.plan, scan);
     const daylight = loc.daylight?.isOn ? { sun: sunPlacement(loc, scan), levels: daylightLevels(loc.daylight.sky ?? 'clear', sunPlacement(loc, scan).elevation) } : undefined;
-    const measured = [...(p.readings?.values() ?? [])].filter(x => x > 0);
-    const brightest = measured.length ? Math.max(...measured)
-      : Math.max(0, ...lit.map(x => illuminanceOnAxis(x.pm, 3)), (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWall?.luminance ?? 0) * 1.5);
-    // Fitted to the screen, the brightest reading sits a little over mid-grey.
+    // Fitted to the screen, the brightest unit at full output, 3 m off, sits a little over mid-grey
+    // (or the daylight or LED wall when they are brighter). It depends on the sources alone: moving a
+    // person, a flag or a frame, or dimming a unit, never changes how bright the other units look.
+    const brightest = Math.max(0, ...lit.map(x => illuminanceOnAxis(photometrics({ ...x.l, dimmer: 1 }), 3)),
+      (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWall?.luminance ?? 0) * 1.5);
     const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
     const scale = reference > 0 ? Math.PI / reference : 0;
     const dark = lit.length === 0 && !(daylight && daylight.levels.skyHorizontal > 0) && !env?.ledWall;
@@ -418,9 +423,11 @@ export function Scene3D(p: Props) {
       if (b.ledFace) b.ledFace.emissiveIntensity = nits * scale * 1.6; // the content map averages about 0.6
       if (b.ledLight) b.ledLight.intensity = nits * scale;
     }
-    const shadowed = new Set([...lit].filter(x => x.pm.distribution === 'beam' || x.pm.distribution === 'lambertian')
+    // Every unit that can cast a shadow does, up to the budget, so grip blocks it (point-like units too).
+    const shadowed = new Set([...lit]
       .sort((x, y) => illuminanceOnAxis(y.pm, 3) - illuminanceOnAxis(x.pm, 3)).slice(0, SHADOW_LIGHTS).map(x => x.l.id));
 
+    const beams: { l: LightFixture; pm: ResolvedPhotometrics; pan: THREE.Object3D }[] = [];
     for (const l of p.lights) {
       const info = KIND_INFO[l.kind];
       if (info.emits ? hidden.has('lights') : hidden.has('grip')) continue;
@@ -430,7 +437,7 @@ export function Scene3D(p: Props) {
       // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
       const showBeam = !!p.beams || selected;
       const hasMap = shadowed.has(l.id);
-      const pan = keep(`light:${l.id}`, `${JSON.stringify(l)}|${hasMap}|${showBeam ? roomGen.current : ''}`, () => {
+      const pan = keep(`light:${l.id}`, `${JSON.stringify(l)}|${hasMap}`, () => {
         const pan = new THREE.Group();
         pan.position.set(l.position.x, l.height, l.position.z);
         pan.rotation.y = -rad(l.pan);
@@ -440,7 +447,8 @@ export function Scene3D(p: Props) {
         pan.add(tilt);
         const support = lightSupport(l);
         if (!pm) {
-          const h = board(l, tilt);
+          pan.userData.blocks = true; // the haze of a beam stops at it
+          const h = board(l, tilt, boardOptics(l.kind).reflectance);
           if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
           return pan;
         }
@@ -476,26 +484,91 @@ export function Scene3D(p: Props) {
           pan.userData.lamp = spot;
         } else {
           const point = new THREE.PointLight(color, 0, 0, 2);
+          point.position.set(0, 0, z);
+          if (hasMap) {
+            point.castShadow = true;
+            point.shadow.mapSize.set(512, 512);
+            point.shadow.camera.near = 0.12; point.shadow.camera.far = 18;
+            point.shadow.bias = -0.0008; point.shadow.normalBias = 0.025;
+            point.shadow.radius = 2.5;
+          }
           tilt.add(point);
           pan.userData.lamp = point;
         }
-        if (showBeam) {
-          pan.updateMatrixWorld(true);
-          const origin = new THREE.Vector3(0, 0, z).applyMatrix4(tilt.matrixWorld);
-          const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
-          const b = beam(l, pm, origin, q, color, surfaces);
-          if (b) { b.position.set(0, 0, z); tilt.add(b); }
-        }
+        pan.userData.tilt = tilt; pan.userData.front = z; pan.userData.color = color;
         return pan;
       });
+      if (pm && l.isOn && pm.peakIntensity > 0 && showBeam) beams.push({ l, pm, pan });
+      else if (pan.userData.beam) { pan.userData.tilt.remove(pan.userData.beam); dispose(pan.userData.beam); pan.userData.beam = undefined; pan.userData.beamKey = undefined; }
       // Brightness follows the shared scale without rebuilding the unit.
       const lamp = pan.userData.lamp as THREE.Light | undefined;
       if (lamp && pm) lamp.intensity = pm.peakIntensity * scale;
     }
 
+    // Grip as a second source, from the calculator's own patches: each lit face of a board becomes
+    // a soft spot facing out of it, and the far face of a diffusion glows with what it passes.
+    if (!hidden.has('grip')) {
+      const optical = buildScene([...lit.map(x => x.l), ...p.lights.filter(l => !KIND_INFO[l.kind].emits)], p.plan);
+      for (const b of optical.boards) {
+        const obj = next.get(`light:${b.id}`)?.obj;
+        // Per face, how bright each of the calculator's patches glows with light passed through it
+        // (cd/m²), so a frame lit by a narrow beam shows a hot spot, not an even sheet.
+        const glow: Record<number, Float32Array> = { 1: new Float32Array(PATCHES * PATCHES), [-1]: new Float32Array(PATCHES * PATCHES) };
+        const ab = { x: b.b.x - b.a.x, z: b.b.z - b.a.z }, abLen2 = ab.x * ab.x + ab.z * ab.z || 1;
+        const patchArea = b.area / (PATCHES * PATCHES);
+        for (const side of [1, -1]) {
+          const mine = optical.patches.filter(q => q.board === b.id && Math.sign(q.normal.x * b.normal.x + q.normal.y * b.normal.y + q.normal.z * b.normal.z) === side);
+          const total = mine.reduce((s, q) => s + q.intensity, 0);
+          if (!(total > 0)) continue;
+          for (const q of mine) {
+            // A patch facing away from its unit is light that came through the frame; what is
+            // reflected shows through the face's own albedo instead.
+            const e = optical.emitters.find(x => x.id === q.lightID);
+            if (!e || (e.position.x - q.centre.x) * q.normal.x + (e.position.y - q.centre.y) * q.normal.y + (e.position.z - q.centre.z) * q.normal.z >= 0) continue;
+            const i = Math.min(PATCHES - 1, Math.floor(((q.centre.x - b.a.x) * ab.x + (q.centre.z - b.a.z) * ab.z) / abLen2 * PATCHES));
+            const j = Math.min(PATCHES - 1, Math.floor((q.centre.y - b.bottom) / Math.max(1e-6, b.top - b.bottom) * PATCHES));
+            glow[side][j * PATCHES + i] += q.intensity / patchArea;
+          }
+          if (total * scale < 1e-4) continue;
+          const c = mine.reduce((s, q) => s.add(v(q.centre.x, q.centre.y, q.centre.z).multiplyScalar(q.intensity / total)), v(0, 0, 0));
+          const n = v(b.normal.x, b.normal.y, b.normal.z).multiplyScalar(side);
+          const spot = new THREE.SpotLight(0xffffff, total * scale, 0, rad(84), 1, 2);
+          spot.position.copy(c).addScaledVector(n, 0.03);
+          spot.target.position.copy(c).addScaledVector(n, 1);
+          a.marks.add(spot, spot.target);
+        }
+        obj?.traverse(o => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || !m.userData.face) return;
+          const side = m.userData.face as number;
+          const mm = m.material as THREE.MeshStandardMaterial;
+          const peak = Math.max(...glow[side]);
+          mm.emissiveMap?.dispose();
+          mm.emissiveMap = null;
+          mm.emissiveIntensity = 0;
+          if (peak * scale > 1e-4) {
+            // Face +1 is turned round, so its texture runs the other way along the board.
+            const data = new Uint8Array(PATCHES * PATCHES * 4);
+            for (let j = 0; j < PATCHES; j++) for (let i = 0; i < PATCHES; i++) {
+              const g = glow[side][j * PATCHES + (side > 0 ? PATCHES - 1 - i : i)] / peak;
+              const c = Math.round(255 * g);
+              data.set([c, c, c, 255], (j * PATCHES + i) * 4);
+            }
+            const tex = new THREE.DataTexture(data, PATCHES, PATCHES, THREE.RGBAFormat);
+            tex.magFilter = tex.minFilter = THREE.LinearFilter;
+            tex.needsUpdate = true;
+            mm.emissive.setScalar(1);
+            mm.emissiveMap = tex;
+            mm.emissiveIntensity = peak * scale;
+          }
+          mm.needsUpdate = true;
+        });
+      }
+    }
+
     if (!hidden.has('people')) for (const c of loc.characters ?? []) {
       if (!inScan(c.scanID)) continue;
-      keep(`character:${c.id}`, JSON.stringify(c), () => { const g = person(c); g.userData.sel = { kind: 'character', id: c.id } satisfies Selection; return g; });
+      keep(`character:${c.id}`, JSON.stringify(c), () => { const g = person(c); g.userData.sel = { kind: 'character', id: c.id } satisfies Selection; g.userData.blocks = true; return g; });
       if (isSel('character', c.id)) ring(c.position.x, c.position.z, 0.42);
     }
 
@@ -517,6 +590,24 @@ export function Scene3D(p: Props) {
     }
     for (const [id, e] of old) if (next.get(id)?.obj !== e.obj) { a.items.remove(e.obj); dispose(e.obj); }
     built.current = next;
+
+    // Beams last, once everything that can stand in one is built: the haze stops at the room, at
+    // flags, frames and boards, and at people, so a flagged beam shows nothing past the flag.
+    // A beam is redrawn when its unit, the room or anything in the way changes.
+    const blockers = [...surfaces, ...[...next.values()].map(e => e.obj).filter(o => o.userData.blocks)];
+    const inTheWay = `${roomGen.current}|${JSON.stringify(p.lights.filter(l => !KIND_INFO[l.kind].emits))}|${JSON.stringify((loc.characters ?? []).map(c => [c.position, c.height, c.posture, c.facing]))}`;
+    for (const { l, pm, pan } of beams) {
+      const key = `${JSON.stringify(l)}|${inTheWay}`;
+      if (pan.userData.beamKey === key) continue;
+      const tilt = pan.userData.tilt as THREE.Object3D;
+      if (pan.userData.beam) { tilt.remove(pan.userData.beam); dispose(pan.userData.beam); }
+      a.items.updateMatrixWorld(true);
+      const origin = new THREE.Vector3(0, 0, pan.userData.front).applyMatrix4(tilt.matrixWorld);
+      const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
+      const b = beam(l, pm, origin, q, pan.userData.color, blockers.filter(o => o !== pan));
+      if (b) { b.position.set(0, 0, pan.userData.front); tilt.add(b); }
+      pan.userData.beam = b; pan.userData.beamKey = key;
+    }
     a.renderer.shadowMap.needsUpdate = true;
 
     // Reading tags: the calculator's figures, in the unit chosen in the panel.
@@ -578,10 +669,10 @@ export function Scene3D(p: Props) {
   };
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
 
-  const what = p.location.daylight?.isOn ? 'Direct light, sun and sky through the windows; no bounce.' : 'Direct light only, no bounce or daylight.';
+  const what = p.location.daylight?.isOn ? 'Units and grip, sun and sky through the windows; no light off the walls.' : 'Units and grip only, no light off the walls, no daylight.';
   const note = noLight ? 'No lights on: the room is shown under a plain work light.'
     : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. ${what} Estimate.`
-    : `Preview: brightness fitted to the screen. ${what} Use the readings for exposure.`;
+    : `Preview: brightness fitted to the strongest source. ${what} Use the readings for exposure.`;
 
   return (
     <div className="scene3d" ref={host}>

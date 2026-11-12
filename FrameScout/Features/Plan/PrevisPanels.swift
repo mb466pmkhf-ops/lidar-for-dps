@@ -2,16 +2,10 @@ import SwiftUI
 
 /// Bottom panel for a stand-in person: type, height, build, skin tone and posture in one place.
 struct CharacterPanel: View {
-    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
+    @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
 
     private func faceText(_ reading: (lux: Double, stops: Double)) -> String {
-        let value = readingUnit.text(lux: reading.lux, exposure: exposure)
-        switch readingUnit {
-        case .tStop: return "≈ \(value)"
-        case .stops: return "≈ \(value) at \(ExposureSettings.stopLabel(exposure.tStop))"
-        case .lux, .footCandles:
-            return "≈ \(value) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: reading.lux))) at \(ExposureSettings.stopLabel(exposure.tStop))"
-        }
+        "\(ReadingFormat.text(lux: reading.lux, exposure: exposure, extra: readingExtra)) · \(ExposureSettings.stopsDelta(reading.stops)) at \(ExposureSettings.stopLabel(exposure.tStop))"
     }
 
     let character: PrevisCharacter
@@ -95,18 +89,22 @@ struct CharacterFields: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                ForEach(CharacterType.allCases) { t in
-                    TagChip(text: t.label, selected: character.type == t) {
-                        update { c in
-                            // Keep a height the user chose; an untouched one follows the type.
-                            guard c.type != t else { return }
-                            let untouched = abs(c.height - c.type.defaultHeight) < 0.005
-                            c.type = t
-                            if untouched || !t.heightRange.contains(c.height) { c.height = t.defaultHeight }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(CharacterType.allCases) { t in
+                            TagChip(text: t.label, selected: character.type == t) {
+                                update { c in
+                                    // Keep a height the user chose; an untouched one follows the type.
+                                    guard c.type != t else { return }
+                                    let untouched = abs(c.height - c.type.defaultHeight) < 0.005
+                                    c.type = t
+                                    if untouched || !t.heightRange.contains(c.height) { c.height = t.defaultHeight }
+                                }
+                            }
+                            .accessibilityHint(t == .universal ? "An adult with no male or female features" : "")
                         }
                     }
                 }
-                Spacer()
                 TagChip(text: character.posture == .sitting ? "Sitting" : "Standing", selected: true) {
                     update { $0.posture = $0.posture == .sitting ? .standing : .sitting }
                 }
@@ -136,6 +134,16 @@ struct CharacterFields: View {
                     .accessibilityAddTraits(character.skinTone == tone ? .isSelected : [])
                 }
             }
+            HStack(spacing: 8) {
+                Text("HAIR").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(HairStyle.allCases) { style in
+                            TagChip(text: style.label, selected: character.hairStyle == style) { update { $0.hair = style } }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -156,6 +164,7 @@ struct CharacterFields: View {
 
 /// Bottom panel for a placed light meter: the reading, what makes it up, and a target.
 struct MeterPanel: View {
+    @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     let meter: LightMeter
     let reading: LightingCalculator.Reading
     let exposure: ExposureSettings
@@ -172,14 +181,16 @@ struct MeterPanel: View {
                 ProvenanceBadge(provenance: .estimated)
             }
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                StatView(label: "Incident", value: LuxFormat.lux(reading.lux))
-                StatView(label: "Stop", value: ExposureSettings.stopLabel(exposure.tStop(forLux: reading.lux)))
+                StatView(label: "Stop", value: ReadingFormat.stop(lux: reading.lux, exposure: exposure))
                 StatView(label: "vs \(ExposureSettings.stopLabel(exposure.tStop))", value: ExposureSettings.stopsDelta(stops),
                          highlight: abs(stops) <= 1.0 / 6)
+                if let more = readingExtra.text(lux: reading.lux) {
+                    StatView(label: "Incident", value: more)
+                }
             }
             if !reading.contributions.isEmpty {
                 let top = reading.contributions.sorted { $0.lux > $1.lux }.prefix(3)
-                Text(top.map { "\(lightName($0.lightID))\($0.viaBounce == nil ? "" : " (bounce)") \(LuxFormat.lux($0.lux))" }.joined(separator: " · "))
+                Text(top.map { "\(lightName($0.lightID))\($0.viaBounce.map { " (off \(lightName($0)))" } ?? "") \(LuxFormat.lux($0.lux))" }.joined(separator: " · "))
                     .font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(2)
             }
             HStack(spacing: 6) {
@@ -535,9 +546,54 @@ struct LayersSheet: View {
     }
 }
 
+/// The two camera settings changed most on a set, a third of a stop per tap, right where the readings are.
+/// Every reading on the plan follows at once. The full set (shutter, frame rate, ND, lens) is in the sheet.
+struct ExposureQuickBar: View {
+    @Binding var exposure: ExposureSettings
+    var onMore: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 8) {
+            stepper("T-STOP", ExposureSettings.stopLabel(exposure.tStop),
+                    down: { exposure.tStop = ExposureSettings.steppedStop(exposure.tStop, thirds: -1) },
+                    up: { exposure.tStop = ExposureSettings.steppedStop(exposure.tStop, thirds: 1) },
+                    name: "T-stop")
+            stepper("ISO", "\(Int(exposure.iso))",
+                    down: { exposure.iso = ExposureSettings.steppedISO(exposure.iso, by: -1) },
+                    up: { exposure.iso = ExposureSettings.steppedISO(exposure.iso, by: 1) },
+                    name: "ISO")
+            if let onMore {
+                Button(action: onMore) {
+                    Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("All camera settings")
+            }
+        }
+    }
+
+    private func stepper(_ label: String, _ value: String, down: @escaping () -> Void, up: @escaping () -> Void, name: String) -> some View {
+        HStack(spacing: 0) {
+            Button(action: down) { Image(systemName: "minus").frame(width: 36, height: 44) }
+                .accessibilityLabel("\(name) down a third")
+            VStack(spacing: 0) {
+                Text(label).font(.fsMicro).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                Text(value).font(.fsMono).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            Button(action: up) { Image(systemName: "plus").frame(width: 36, height: 44) }
+                .accessibilityLabel("\(name) up a third")
+        }
+        .buttonStyle(.plain)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+    }
+}
+
 /// Camera settings that turn lux into stops.
 struct ExposureSheet: View {
     @Binding var exposure: ExposureSettings
+    @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -547,9 +603,10 @@ struct ExposureSheet: View {
                 sensitivitySection
                 shutterSection
                 lensSection
+                readingsSection
             }
             .fsScreen()
-            .navigationTitle("Camera exposure")
+            .navigationTitle("Camera settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
@@ -569,6 +626,18 @@ struct ExposureSheet: View {
         }
     }
 
+    private var readingsSection: some View {
+        Section {
+            Picker("After the stop, show", selection: $readingExtra) {
+                ForEach(ReadingExtra.allCases) { Text($0.label).tag($0) }
+            }
+        } header: {
+            Text("Readings")
+        } footer: {
+            Text("Readings always show the T-stop a light meter would give at these settings first. Lux or foot-candles can follow it.")
+        }
+    }
+
     private var sensitivitySection: some View {
         Section("Sensitivity") {
             Picker("ISO", selection: $exposure.iso) {
@@ -580,7 +649,7 @@ struct ExposureSheet: View {
     }
 
     private var isoOptions: [Double] {
-        var v = ExposureSettings.isoPresets
+        var v = ExposureSettings.isoSteps
         if !v.contains(exposure.iso) { v.append(exposure.iso); v.sort() }
         return v
     }
@@ -657,9 +726,9 @@ struct ExposureSheet: View {
         }
     }
 
-    /// Thirds of a stop from T1 to T22, plus the current value.
+    /// Thirds of a stop from T1 to T32, plus the current value.
     private var stops: [Double] {
-        var v = (0...27).map { pow(2, Double($0) / 6) }
+        var v = (0...30).map { ExposureSettings.thirdStop($0) }
         if !v.contains(where: { abs($0 - exposure.tStop) < 0.01 }) { v.append(exposure.tStop); v.sort() }
         return v
     }

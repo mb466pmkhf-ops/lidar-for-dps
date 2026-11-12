@@ -3,7 +3,7 @@ import UIKit
 
 /// Daylight through the windows (sun, sky, cloud) and a studio build (backdrop and floor) for one
 /// location. The figures here come from a standard sky model, not from the location, so they are
-/// labelled estimated (Docs/DECISIONS.md D-013).
+/// labelled estimated (Docs/DECISIONS.md D-014).
 struct StageSheet: View {
     @Binding var location: Location
     let plan: FloorPlan?

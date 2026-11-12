@@ -2,30 +2,29 @@
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, CharacterType, ScanRecord } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, ScanRecord } from '../model/types';
 import { StudioPanel, DaylightPanel, CurtainField } from './StagePanels';
 import { ambientName, type Environment } from '../model/stage';
 import {
   FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
 } from '../model/setPieces';
-import { uuid } from '../model/factory';
+import { renamedForKind, uuid } from '../model/factory';
 import {
   KIND_INFO, applyProfile, categoryLabel, filters, fixtureModifier, fixtureProfile, isAdjustable, modifiersFor, photometrics, profiles,
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
 } from '../model/photometrics';
-import { exposureTime, fStop, frameRates, isoPresets, keyLux, shutterAngles, speedLabel, stopLabel, stopsDelta, stopsForLux, tStops, trim } from '../model/exposure';
+import { exposureTime, fStop, keyLux, meterStop, speedLabel, stopLabel, stopsDelta, stopsForLux } from '../model/exposure';
 import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
 import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups';
 import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type LightingPreset } from '../model/presets';
 import { usePresets } from './presetStore';
 import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
 import { kelvinPresets } from '../model/kelvin';
-import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
+import { characterDefaults, characterLabel, characterTypes, hairOf, hairStyles, isChild, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
-import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
-import type { ReadingUnit } from './format';
+import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, watts } from './format';
 import { Icon } from './icons';
 import type { Selection } from './PlanCanvas';
 
@@ -238,14 +237,16 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         {header}
         <Panel title={info.label}>
           <div className="chips" style={{ marginBottom: 12 }}>
-            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k })}>{KIND_INFO[k].label}</button>)}
+            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k, name: renamedForKind(l.name, l.kind, k) })}>{KIND_INFO[k].label}</button>)}
           </div>
           <Slider label="Width" value={l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
           <StandField light={l} replace={replace} />
-          <p className="note">{l.kind === 'bounce' ? 'Re-emits light that lands on it (one bounce, 80 % white board).' : l.kind === 'diffusion' ? 'Passes half the light that goes through it.' : 'Blocks light that goes through it.'}</p>
+          <p className="note">{l.kind === 'bounce' ? 'Throws back light that lands on it, as a soft source the size of the board (one bounce, 80 % white board).'
+            : l.kind === 'diffusion' ? 'Stops the hard beam. About half the light comes out of the far side, spread as a soft source the size of the lit part of the frame; about a third is thrown back.'
+            : 'Stops all light going through it. Black cloth throws a few percent back off the side the light hits.'} Estimate.</p>
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
       </div>
@@ -318,9 +319,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
       <Panel title="At meters and faces">
         {atMeters.length ? atMeters.map(({ m, own, total }) => (
           <div key={m.key} className="meter-row">
-            <span className="stack2"><span>{m.name}</span><span className="mono muted" title="This unit's share of the total">{readingUnit() === 'tStop' ? `≈ ${fmtReading(total, p.exposure)} · this light alone ${fmtReading(own, p.exposure)}`
-              : readingUnit() === 'stops' ? readingText(total, p.exposure)
-              : `≈ ${fmtReading(own, p.exposure)} of ${fmtReading(total, p.exposure)} · ${stopsDelta(stopsForLux(p.exposure, total))}`}</span></span>
+            <span className="stack2"><span>{m.name}</span><span className="mono muted" title="This unit's share of the total">{`≈ ${fmtReading(total, p.exposure)} (${stopsDelta(stopsForLux(p.exposure, total))}) · this light alone ${fmtReading(own, p.exposure)}`}</span></span>
             <span />
             <button className="btn small" onClick={() => setToKey(m)} title={`Set output so ${m.name} reads ${m.targetLux ? fmtLux(m.targetLux) : 'key'}`}>Set to {m.targetLux ? 'target' : 'key'}</button>
           </div>
@@ -404,7 +403,7 @@ function ThrowTable({ light, exposure }: { light: LightFixture; exposure: Exposu
     <div>
       {[1, 2, 3, 5, 8].map(d => {
         const v = illuminanceOnAxis(pm, d);
-        return <div key={d} className="meter-row"><span className="mono">{d} m</span><span className="mono">≈ {fmtLux(v)}</span><span className="mono muted">{stopLabel(Math.sqrt(v * exposure.iso * exposureTime(exposure) / (250 * Math.pow(2, exposure.ndStops))))}</span></div>;
+        return <div key={d} className="meter-row"><span className="mono">{d} m</span><span className="mono">≈ {meterStop(exposure, v)}</span><span className="mono muted">{fmtLux(v)}</span></div>;
       })}
       <p className="note">On the beam's centre, nothing in the way. {reach ? `Gives key (${fmtLux(key)}) at about ${metres(reach)}.` : `Can't reach key (${fmtLux(key)}) even up close.`}</p>
     </div>
@@ -503,16 +502,19 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
       </Panel>
       <Panel title="Person">
         <div className="chips" style={{ marginBottom: 10 }}>
-          {(['man', 'woman', 'girl', 'boy'] as CharacterType[]).map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} onClick={() => set({ type: t, height: characterDefaults[t] })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+          {characterTypes.map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} title={t === 'universal' ? 'No male or female features: in-between shape, cropped hair' : undefined} onClick={() => set({ type: t, height: characterDefaults[t] })}>{characterLabel(t)}</button>)}
         </div>
         <div className="chips" style={{ marginBottom: 10 }}>
           {(['standing', 'sitting'] as const).map(t => <button key={t} className={'chip' + (c.posture === t ? ' on' : '')} onClick={() => set({ posture: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
         </div>
-        <Slider label="Height" value={c.height} min={c.type === 'girl' || c.type === 'boy' ? 0.8 : 1.4} max={c.type === 'girl' || c.type === 'boy' ? 1.75 : 2.1} step={0.01} format={metres} onChange={v => set({ height: v }, false)} />
+        <Slider label="Height" value={c.height} min={isChild(c.type) ? 0.8 : 1.4} max={isChild(c.type) ? 1.75 : 2.1} step={0.01} format={metres} onChange={v => set({ height: v }, false)} />
         <Slider label="Build" value={c.build} min={0} max={1} step={0.05} format={v => (v < 0.2 ? 'Slim' : v < 0.4 ? 'Lean' : v < 0.6 ? 'Average' : v < 0.8 ? 'Solid' : 'Heavy')} onChange={v => set({ build: v }, false)} />
         <Slider label="Facing" value={((c.facing % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ facing: v }, false)} />
         <div className="field"><span>Skin</span>
           <div className="chips">{skinRGB.map((col, i) => <button key={i} className={'swatch' + (c.skinTone === i + 1 ? ' on' : '')} style={{ background: col }} title={skinTones[i]} aria-label={skinTones[i]} onClick={() => set({ skinTone: i + 1 })} />)}</div><span />
+        </div>
+        <div className="field"><span>Hair</span>
+          <div className="chips">{hairStyles.map(hs => <button key={hs.id} className={'chip' + (hairOf(c) === hs.id ? ' on' : '')} onClick={() => set({ hair: hs.id })}>{hs.label}</button>)}</div><span />
         </div>
       </Panel>
     </div>
@@ -575,13 +577,25 @@ function CameraInspector(p: InspectorProps) {
     cameraPositions: loc.cameraPositions.map(x => (x.id === s.id ? { ...x, rig: { ...x.rig, ...patch } } : x)),
   }), undo);
   const title = shot ? `SHOT ${String(shot.number).padStart(2, '0')}${shot.title ? ' · ' + shot.title : ''}` : cam!.name;
+  const remove = () => {
+    p.edit(loc => ({ ...loc, shots: loc.shots.filter(x => x.id !== s.id), cameraPositions: loc.cameraPositions.filter(x => x.id !== s.id) }));
+    p.select(undefined);
+  };
   return (
     <div>
-      <section className="panel"><div style={{ fontSize: 18, fontWeight: 400 }}>{title}</div><p className="mono muted">{Math.round(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal</p></section>
+      <section className="panel">
+        {cam
+          ? <div className="panel-title"><input className="name" value={cam.name} aria-label="Name"
+              onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, name: e.target.value } : x)) }), false)} /></div>
+          : <div style={{ fontSize: 18, fontWeight: 400 }}>{title}</div>}
+        <p className="mono muted">{Math.round(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
+        {cam && <div className="actions" style={{ marginTop: 12 }}><button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button></div>}
+      </section>
       <Panel title="Camera">
         <Slider label="Focal length" value={rig.focalLength} min={10} max={200} step={1} format={v => `${Math.round(v)}mm`} onChange={v => setRig({ focalLength: v }, false)} />
         <Slider label="Lens height" value={rig.height} min={0.1} max={4} step={0.05} format={metres} onChange={v => setRig({ height: v }, false)} />
         <Slider label="Pan" value={((rig.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => setRig({ pan: v }, false)} />
+        <Slider label="Tilt" value={rig.tilt} min={-60} max={60} step={1} format={signedDeg} onChange={v => setRig({ tilt: v }, false)} />
         <label className="field"><span>Support</span>
           <select value={(rig.support as string | undefined) ?? ''} aria-label="Camera support" onChange={e => setRig({ support: e.target.value || undefined })}>
             <option value="">Automatic · {cameraSupportInfo(automaticCameraSupport(rig.height)).label}</option>
@@ -599,7 +613,8 @@ function CameraInspector(p: InspectorProps) {
           </select><span />
         </label>
         <Quirks items={quirksForSensor(rig.sensorID)} />
-        <p className="note">Cameras and shots are planned on the phone; moving one here moves it there too.</p>
+        <p className="note">Stop, ISO, shutter and ND are in Camera settings above; every camera at this location shares them, and every reading follows them. Cameras sync with the phone.</p>
+        {cam && <label className="field"><span>Notes</span><input type="text" value={cam.notes} placeholder="e.g. A camera, wide" onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, notes: e.target.value } : x)) }), false)} /><span /></label>}
       </Panel>
     </div>
   );
@@ -626,34 +641,21 @@ function Quirks({ items }: { items: UnitQuirk[] }) {
 
 function Overview(p: InspectorProps) {
   const e = p.exposure;
-  const setE = (patch: Partial<ExposureSettings>) => p.edit(loc => ({ ...loc, exposure: { ...e, ...patch } }));
   const emitters = p.lights.filter(l => KIND_INFO[l.kind].emits);
   const totalDraw = emitters.reduce((s, l) => s + photometrics(l).drawWatts, 0);
   return (
     <div>
-      <Panel title="Exposure">
-        <div className="readout">
-          <div><div className="label">Key</div><div className="v">≈ {fmtLux(keyLux(e))}</div></div>
-          <div><div className="label">Stop</div><div className="v">{stopLabel(e.tStop)}</div></div>
-        </div>
-        <div className="field" style={{ marginTop: 12 }}><span>ISO</span><select value={e.iso} onChange={x => setE({ iso: Number(x.target.value) })}>{isoPresets.map(v => <option key={v} value={v}>{v}</option>)}</select><span /></div>
-        <div className="field"><span>Frame rate</span><select value={e.frameRate} onChange={x => setE({ frameRate: Number(x.target.value) })}>{frameRates.map(v => <option key={v} value={v}>{trim(v)} fps</option>)}</select><span /></div>
-        <div className="field"><span>Shutter</span><select value={e.shutterAngle} onChange={x => setE({ shutterAngle: Number(x.target.value) })}>{shutterAngles.map(v => <option key={v} value={v}>{trim(v)}°</option>)}</select><span className="val">{speedLabel(exposureTime(e))}</span></div>
-        <div className="field"><span>T-stop</span><select value={e.tStop} onChange={x => setE({ tStop: Number(x.target.value) })}>{tStops.map(v => <option key={v} value={v}>{stopLabel(v)}</option>)}</select><span className="val" title="Aperture geometry for this lens">f/{fStop(e).toFixed(1)}</span></div>
-        <div className="field"><span>ND</span><select value={e.ndStops} onChange={x => setE({ ndStops: Number(x.target.value) })}>{[0, 1, 2, 3, 4, 5, 6].map(v => <option key={v} value={v}>{v === 0 ? 'None' : `ND ${(v * 0.3).toFixed(1)} (${v} stop${v > 1 ? 's' : ''})`}</option>)}</select><span /></div>
-        <p className="note">An incident reading of {fmtLux(keyLux(e))} exposes a subject correctly at these settings. T-stops include lens loss; a T-stop is a camera setting, not scene brightness.</p>
-      </Panel>
       <Panel title="Readings">
-        <div className="field"><span>Show as</span><select value={readingUnit()} onChange={x => setReadingUnit(x.target.value as ReadingUnit)}>{READING_UNITS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select><span /></div>
         {p.meters.length ? p.meters.map(m => {
           const r = p.readings.get(m.key) ?? 0;
           return (
             <button key={m.key} className="meter-row row" style={{ display: 'grid', padding: '8px 0' }} onClick={() => p.select('meter' in m.source ? { kind: 'meter', id: m.source.meter } : { kind: 'character', id: m.source.character })}>
-              <span>{m.name}</span><span className="mono">≈ {fmtReading(r, e)}</span><span className="mono muted">{readingUnit() === 'lux' || readingUnit() === 'footCandles' ? stopsDelta(stopsForLux(e, r)) : ''}</span>
+              <span>{m.name}</span><span className="mono">≈ {fmtReading(r, e)}</span><span className="mono muted" title={`Against ${stopLabel(e.tStop)} set on the camera`}>{stopsDelta(stopsForLux(e, r))}</span>
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}
-        {p.meters.length > 0 && <p className="note"><Badge /> Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}. No light reflected round the room.</p>}
+        {p.meters.length > 0 && <p className="note"><Badge /> The stop a light meter would show at the camera settings above{extraText(1) ? ', then the light level' : ''}. Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}; no room reflections.</p>}
+        <p className="note">At {stopLabel(e.tStop)} the lens is about f/{fStop(e).toFixed(1)} ({Math.round(e.lensTransmission * 100)} % transmission); exposure time {speedLabel(exposureTime(e))}. A T-stop is a camera setting, not a measure of how bright the scene is.</p>
       </Panel>
       <Panel title="Lights">
         {p.lights.length ? p.lights.map(l => (

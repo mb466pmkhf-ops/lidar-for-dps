@@ -1,5 +1,5 @@
 // Studio builds, daylight and window dressing. Port of FrameScout/Core/Models/Stage.swift: same ids,
-// same numbers, same rules (tests on both sides, parity in CI). See Docs/DECISIONS.md D-013.
+// same numbers, same rules (tests on both sides, parity in CI). See Docs/DECISIONS.md D-014.
 //
 // - A studio backdrop (cyc, chroma screen, paper roll or LED wall) stands against one wall, and the
 //   floor can be given a finish. Only the LED wall gives light in the readings; the others are

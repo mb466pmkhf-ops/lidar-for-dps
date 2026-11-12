@@ -10,13 +10,37 @@ import Foundation
 /// - barn doors (each leaf cuts its side of the beam with a soft edge);
 /// - walls block light; windows pass it at the glass's transmission; closed doors block,
 ///   open doors and openings don't; flags, negs and bounce boards block, diffusion frames pass half;
-/// - bounce boards re-emit what lands on them (one bounce, white board reflectance 0.8);
+/// - grip re-emits what lands on it like a matte surface (`BoardOptics`, D-013): bounce boards
+///   reflect 80 %, flags and negs a few percent off the lit face, and a diffusion frame scatters
+///   what it passes out of its far face as a soft source the size of the frame (one bounce);
 /// - curtains: sheer passes half, blackout none;
 /// - with a `Stage.Environment`: sun and sky through the windows, and an LED wall;
 /// - overlapping units add up.
 ///
 /// What isn't: light reflected by walls, floor and ceiling, and furniture shadows.
 /// Real readings in a room will usually be higher than these. Every result is an estimate.
+/// How a piece of grip treats light that lands on it (same numbers as `boardOptics` on the web).
+struct BoardOptics: Equatable {
+    /// Fraction that gets through.
+    var transmission: Double
+    /// Share of what gets through that is diffused: 1 = full diffusion, 0 = a net (the beam just dims).
+    var scatter: Double
+    /// Fraction thrown back off the lit face.
+    var reflectance: Double
+
+    /// Defaults by kind (D-013): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
+    /// about half, all of it scattered, and throws about a third back.
+    static func defaults(for kind: LightKind) -> BoardOptics {
+        switch kind {
+        case .bounce: return BoardOptics(transmission: 0, scatter: 0, reflectance: 0.8)
+        case .negative: return BoardOptics(transmission: 0, scatter: 0, reflectance: 0.03)
+        case .flag: return BoardOptics(transmission: 0, scatter: 0, reflectance: 0.04)
+        case .diffusion: return BoardOptics(transmission: 0.5, scatter: 1, reflectance: 0.35)
+        default: return BoardOptics(transmission: 1, scatter: 0, reflectance: 0)
+        }
+    }
+}
+
 enum LightingCalculator {
     /// A point in the room: plan x/z, height above the floor.
     struct Point: Hashable {
@@ -64,10 +88,19 @@ enum LightingCalculator {
             var bottom: Double
             var top: Double
             var area: Double
-            /// Fraction passed by the board when it's in the way.
-            var transmission: Double {
-                kind == .diffusion ? 0.5 : 0
-            }
+            var optics: BoardOptics
+            /// Fraction that goes straight through, unscattered, when the board is in the way.
+            var directTransmission: Double { optics.transmission * (1 - optics.scatter) }
+        }
+        /// One patch of a board lit by one unit, re-emitting like a matte surface into the side
+        /// `normal` faces: the reflected part on the lit side, the scattered part out of the far side.
+        struct Patch {
+            var board: UUID
+            var lightID: UUID
+            var centre: Point
+            var normal: Point
+            var intensity: Double
+            var radius: Double
         }
 
         var emitters: [Emitter] = []
@@ -80,8 +113,10 @@ enum LightingCalculator {
         /// Direction towards the sun and its level square-on, when it is up.
         var sun: (toward: Point, directNormal: Double)?
         var plan: FloorPlan?
-        /// Reflectance of a white bounce board.
-        static let bounceReflectance = 0.8
+        /// What the boards re-emit, worked out once per scene.
+        var patches: [Patch] = []
+        /// Each board is split into this many patches a side, so a frame half in the beam glows only where lit.
+        static let patchesPerSide = 3
 
         init(lights: [LightFixture], plan: FloorPlan? = nil, windowTransmission: Double = SceneDisplay.defaultWindowTransmission,
              environment: Stage.Environment? = nil) {
@@ -105,9 +140,11 @@ enum LightingCalculator {
                     let h = l.boardHeight ?? (l.kind == .flag ? min(l.width, 0.9) : l.width)
                     boards.append(Board(id: l.id, kind: l.kind, centre: Point(l.position, height: l.height), normal: axis,
                                         a: l.position - side, b: l.position + side,
-                                        bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h))
+                                        bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h,
+                                        optics: BoardOptics.defaults(for: l.kind)))
                 }
             }
+            patches = LightingCalculator.secondarySources(self)
         }
 
         private mutating func addEnvironment(_ env: Stage.Environment, plan: FloorPlan?) {
@@ -135,6 +172,40 @@ enum LightingCalculator {
                                               rows: min(6, max(2, Int((w.height / Stage.windowCell).rounded())))))
             }
         }
+    }
+
+    /// For each unit, the light landing on each board patch (with everything else in the way), sent
+    /// back off the lit face and, through a diffusion, out of the far face. One bounce only.
+    static func secondarySources(_ scene: Scene) -> [Scene.Patch] {
+        var patches: [Scene.Patch] = []
+        let n = Scene.patchesPerSide
+        for board in scene.boards {
+            let o = board.optics
+            guard o.reflectance > 0 || o.transmission * o.scatter > 0 else { continue }
+            let patchArea = board.area / Double(n * n), radius = (patchArea / .pi).squareRoot()
+            for i in 0..<n {
+                for j in 0..<n {
+                    let f = (Double(i) + 0.5) / Double(n)
+                    let p = board.a + (board.b - board.a) * f
+                    let centre = Point(x: p.x, y: board.bottom + (Double(j) + 0.5) / Double(n) * (board.top - board.bottom), z: p.z)
+                    for e in scene.emitters {
+                        let side = (e.position - centre).dot(board.normal)
+                        if side == 0 { continue }
+                        let lit = side > 0 ? board.normal : board.normal * -1
+                        let incident = illuminance(from: e, at: centre, normal: lit, scene: scene, ignoringBoard: board.id)
+                        guard incident > 0 else { continue }
+                        let each = incident * patchArea / .pi // a matte surface's intensity: exitance × area ÷ π
+                        if o.reflectance > 0 {
+                            patches.append(Scene.Patch(board: board.id, lightID: e.id, centre: centre, normal: lit, intensity: o.reflectance * each, radius: radius))
+                        }
+                        if o.transmission * o.scatter > 0 {
+                            patches.append(Scene.Patch(board: board.id, lightID: e.id, centre: centre, normal: lit * -1, intensity: o.transmission * o.scatter * each, radius: radius))
+                        }
+                    }
+                }
+            }
+        }
+        return patches
     }
 
     struct Contribution: Hashable {
@@ -219,7 +290,7 @@ enum LightingCalculator {
             let s = hit.0
             let y = a.y + s * (b.y - a.y)
             guard y >= board.bottom, y <= board.top else { continue }
-            t *= board.transmission
+            t *= board.directTransmission // what a diffusion scatters comes out as its own soft source
             if t <= 0 { return 0 }
         }
         return t
@@ -238,11 +309,16 @@ enum LightingCalculator {
                 total += lux
             }
         }
-        for board in scene.boards where board.kind == .bounce {
-            for (lightID, lux) in bounce(board, to: point, normal: normal, scene: scene) where lux > 0 {
-                contributions.append(Contribution(lightID: lightID, lux: lux, viaBounce: board.id))
-                total += lux
+        for patch in scene.patches {
+            let lux = fromPatch(patch, to: point, normal: normal, scene: scene)
+            guard lux > 0 else { continue }
+            // One contribution per unit and board, however many patches it came off.
+            if let i = contributions.firstIndex(where: { $0.lightID == patch.lightID && $0.viaBounce == patch.board }) {
+                contributions[i].lux += lux
+            } else {
+                contributions.append(Contribution(lightID: patch.lightID, lux: lux, viaBounce: patch.board))
             }
+            total += lux
         }
         if scene.sun != nil {
             let lux = sunlight(at: point, normal: normal, scene: scene)
@@ -363,28 +439,17 @@ enum LightingCalculator {
         return t > 0 ? sun.directNormal * inc * t : 0
     }
 
-    /// Light each emitter sends to `point` off a bounce board: the board's exitance (reflectance ×
-    /// incident lux) treated as a diffuse source the size of the board.
-    static func bounce(_ board: Scene.Board, to point: Point, normal: Point, scene: Scene) -> [(UUID, Double)] {
-        let toPoint = point - board.centre
+    /// Light one re-emitting patch sends to `point`: a small matte source (with the near-field term).
+    static func fromPatch(_ patch: Scene.Patch, to point: Point, normal: Point, scene: Scene) -> Double {
+        let toPoint = point - patch.centre
         let d = toPoint.length
-        guard d > 0.05 else { return [] }
+        guard d > 0.05 else { return 0 }
         let v = toPoint * (1 / d)
-        let out = v.dot(board.normal)
-        let incidence = -v.dot(normal)
-        guard out > 0, incidence > 0 else { return [] }
-        let radius = (board.area / .pi).squareRoot()
-        let geometry = out * incidence / (d * d + radius * radius)
-        let pass = transmission(from: board.centre, to: point, scene: scene, ignoring: [board.id])
-        guard pass > 0 else { return [] }
-        var result: [(UUID, Double)] = []
-        for e in scene.emitters {
-            let incident = illuminance(from: e, at: board.centre, normal: board.normal, scene: scene, ignoringBoard: board.id)
-            guard incident > 0 else { continue }
-            let intensity = Scene.bounceReflectance * incident * board.area / .pi
-            result.append((e.id, intensity * geometry * pass))
-        }
-        return result
+        let out = v.dot(patch.normal), incidence = -v.dot(normal)
+        guard out > 0, incidence > 0 else { return 0 }
+        let lux = patch.intensity * out * incidence / (d * d + patch.radius * patch.radius)
+        guard lux > 1e-6 else { return 0 }
+        return lux * transmission(from: patch.centre, to: point, scene: scene, ignoring: [patch.board])
     }
 
     /// Readings on a grid over `bounds`, row by row (z then x), at `height`. `normal` gives the
