@@ -1,6 +1,7 @@
 // Port of FrameScout/Core/Models/LightingCalculator.swift. Same model, same assumptions (D-006):
 // direct light from every unit with beam shape, inverse square (with near-field terms), cosine
-// incidence, barn doors, walls/windows/doors/grip occlusion, one bounce off bounce boards.
+// incidence, barn doors, walls/windows/doors/grip occlusion, and grip as a second source: bounce
+// boards, flags and negs send back what they reflect, diffusion frames re-emit what they pass.
 // Not modelled: room inter-reflections, daylight, furniture shadows. Every figure is an estimate.
 import type { FloorPlan, LightFixture, LightKind, LightMeter, Location, PlanPoint, PlanSegment, UUID, PlanRect, MeterFacing } from './types';
 import { barnDoorTransmission, barnDoorsOpen, distanceFactor, fixtureProfile, openBarnDoors, photometrics, relativeIntensity, type ResolvedPhotometrics } from './photometrics';
@@ -33,15 +34,34 @@ export function direction(bearing: number, tilt: number): Vec {
 }
 
 interface Emitter { id: UUID; position: Vec; axis: Vec; right: Vec; up: Vec; pm: ResolvedPhotometrics; barnDoors: BarnDoors }
-interface Board { id: UUID; kind: LightKind; centre: Vec; normal: Vec; a: PlanPoint; b: PlanPoint; bottom: number; top: number; area: number; transmission: number }
+/** How a piece of grip treats light that lands on it (same numbers as BoardOptics in Swift).
+ *  `transmission`: fraction that gets through; `scatter`: share of that which is diffused (1 = full
+ *  diffusion, 0 = a net: the beam just gets dimmer); `reflectance`: fraction thrown back off the lit face. */
+export interface BoardOptics { transmission: number; scatter: number; reflectance: number }
+/// Defaults by kind (D-013): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
+/// about half, all of it scattered, and throws about a third back.
+export function boardOptics(kind: LightKind): BoardOptics {
+  switch (kind) {
+    case 'bounce': return { transmission: 0, scatter: 0, reflectance: 0.8 };
+    case 'negative': return { transmission: 0, scatter: 0, reflectance: 0.03 };
+    case 'flag': return { transmission: 0, scatter: 0, reflectance: 0.04 };
+    case 'diffusion': return { transmission: 0.5, scatter: 1, reflectance: 0.35 };
+    default: return { transmission: 1, scatter: 0, reflectance: 0 };
+  }
+}
+interface Board extends BoardOptics { id: UUID; kind: LightKind; centre: Vec; normal: Vec; a: PlanPoint; b: PlanPoint; bottom: number; top: number; area: number }
+/** One patch of a board lit by one unit, re-emitting like a matte surface into the side `normal` faces:
+ *  the reflected part on the lit side, the scattered part out of the far side of a diffusion. */
+export interface Patch { board: UUID; lightID: UUID; centre: Vec; normal: Vec; intensity: number; radius: number }
 
 export const DEFAULT_WINDOW_TRANSMISSION = 0.78;
-const BOUNCE_REFLECTANCE = 0.8;
+/** Each board is split into this many patches a side, so a frame only half in the beam glows only where it is lit. */
+const PATCHES = 3;
 
-export interface Scene { emitters: Emitter[]; boards: Board[]; walls: PlanSegment[]; apertures: PlanSegment[]; windowTransmission: number }
+export interface Scene { emitters: Emitter[]; boards: Board[]; walls: PlanSegment[]; apertures: PlanSegment[]; windowTransmission: number; patches: Patch[] }
 
 export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION): Scene {
-  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission };
+  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission, patches: [] };
   for (const l of lights) {
     const axis = direction(l.pan, l.tilt);
     const emits = !['bounce', 'negative', 'flag', 'diffusion'].includes(l.kind);
@@ -51,10 +71,37 @@ export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTrans
     } else {
       const side = planScale(unitBearing(l.pan + 90), l.width / 2);
       const h = l.boardHeight ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
-      scene.boards.push({ id: l.id, kind: l.kind, centre: at(l.position, l.height), normal: axis, a: planSub(l.position, side), b: planAdd(l.position, side), bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h, transmission: l.kind === 'diffusion' ? 0.5 : 0 });
+      scene.boards.push({ id: l.id, kind: l.kind, centre: at(l.position, l.height), normal: axis, a: planSub(l.position, side), b: planAdd(l.position, side), bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h, ...boardOptics(l.kind) });
     }
   }
+  scene.patches = secondarySources(scene);
   return scene;
+}
+
+/** What every board re-emits, worked out once per scene: for each unit, the light landing on each
+ *  patch (with everything else in the way), sent back off the lit face and, through a diffusion, out
+ *  of the far face. One bounce: light off one board doesn't light another. */
+function secondarySources(scene: Scene): Patch[] {
+  const patches: Patch[] = [];
+  for (const board of scene.boards) {
+    if (!(board.reflectance > 0) && !(board.transmission * board.scatter > 0)) continue;
+    const patchArea = board.area / (PATCHES * PATCHES), radius = Math.sqrt(patchArea / Math.PI);
+    for (let i = 0; i < PATCHES; i++) for (let j = 0; j < PATCHES; j++) {
+      const f = (i + 0.5) / PATCHES, p = planAdd(board.a, planScale(planSub(board.b, board.a), f));
+      const centre = vec(p.x, board.bottom + (j + 0.5) / PATCHES * (board.top - board.bottom), p.z);
+      for (const e of scene.emitters) {
+        const side = dot(sub(e.position, centre), board.normal);
+        if (side === 0) continue;
+        const lit = side > 0 ? board.normal : scale(board.normal, -1);
+        const incident = illuminanceFrom(e, centre, lit, scene, board.id);
+        if (!(incident > 0)) continue;
+        const each = incident * patchArea / Math.PI; // a matte surface's intensity: exitance × area ÷ π
+        if (board.reflectance > 0) patches.push({ board: board.id, lightID: e.id, centre, normal: lit, intensity: board.reflectance * each, radius });
+        if (board.transmission * board.scatter > 0) patches.push({ board: board.id, lightID: e.id, centre, normal: scale(lit, -1), intensity: board.transmission * board.scatter * each, radius });
+      }
+    }
+  }
+  return patches;
 }
 
 export function intersect(a: PlanPoint, b: PlanPoint, c: PlanPoint, d: PlanPoint): [number, PlanPoint] | undefined {
@@ -98,7 +145,7 @@ export function transmission(a: Vec, b: Vec, scene: Scene, ignoring: UUID[] = []
     if (!hit) continue;
     const y = a.y + hit[0] * (b.y - a.y);
     if (!(y >= board.bottom && y <= board.top)) continue;
-    t *= board.transmission;
+    t *= board.transmission * (1 - board.scatter); // what a diffusion scatters comes out as its own soft source
     if (t <= 0) return 0;
   }
   return t;
@@ -136,25 +183,17 @@ function illuminanceFrom(e: Emitter, point: Vec, normal: Vec, scene: Scene, igno
 export interface Contribution { lightID: UUID; lux: number; viaBounce?: UUID }
 export interface Reading { lux: number; contributions: Contribution[] }
 
-function bounce(board: Board, point: Vec, normal: Vec, scene: Scene): [UUID, number][] {
-  const toPoint = sub(point, board.centre);
+/** Light one re-emitting patch sends to `point`: a small matte source (with the near-field term). */
+function fromPatch(patch: Patch, point: Vec, normal: Vec, scene: Scene): number {
+  const toPoint = sub(point, patch.centre);
   const d = len(toPoint);
-  if (!(d > 0.05)) return [];
+  if (!(d > 0.05)) return 0;
   const v = scale(toPoint, 1 / d);
-  const out = dot(v, board.normal);
-  const incidence = -dot(v, normal);
-  if (!(out > 0 && incidence > 0)) return [];
-  const radius = Math.sqrt(board.area / Math.PI);
-  const geometry = out * incidence / (d * d + radius * radius);
-  const pass = transmission(board.centre, point, scene, [board.id]);
-  if (!(pass > 0)) return [];
-  const result: [UUID, number][] = [];
-  for (const e of scene.emitters) {
-    const incident = illuminanceFrom(e, board.centre, board.normal, scene, board.id);
-    if (!(incident > 0)) continue;
-    result.push([e.id, BOUNCE_REFLECTANCE * incident * board.area / Math.PI * geometry * pass]);
-  }
-  return result;
+  const out = dot(v, patch.normal), incidence = -dot(v, normal);
+  if (!(out > 0 && incidence > 0)) return 0;
+  const lux = patch.intensity * out * incidence / (d * d + patch.radius * patch.radius);
+  if (!(lux > 1e-6)) return 0;
+  return lux * transmission(patch.centre, point, scene, [patch.board]);
 }
 
 export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
@@ -164,11 +203,13 @@ export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
     const lux = illuminanceFrom(e, point, normal, scene);
     if (lux > 0) { contributions.push({ lightID: e.id, lux }); total += lux; }
   }
-  for (const board of scene.boards) {
-    if (board.kind !== 'bounce') continue;
-    for (const [lightID, lux] of bounce(board, point, normal, scene)) {
-      if (lux > 0) { contributions.push({ lightID, lux, viaBounce: board.id }); total += lux; }
-    }
+  for (const patch of scene.patches) {
+    const lux = fromPatch(patch, point, normal, scene);
+    if (!(lux > 0)) continue;
+    // One contribution per unit and board, however many patches it came off.
+    const had = contributions.find(c => c.lightID === patch.lightID && c.viaBounce === patch.board);
+    if (had) had.lux += lux; else contributions.push({ lightID: patch.lightID, lux, viaBounce: patch.board });
+    total += lux;
   }
   return { lux: total, contributions };
 }

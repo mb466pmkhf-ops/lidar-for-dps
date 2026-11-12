@@ -40,7 +40,7 @@ struct LightingContext {
 }
 
 enum LuxFormat {
-    static func lux(_ v: Double) -> String { ReadingUnit.luxText(v) }
+    static func lux(_ v: Double) -> String { ReadingExtra.luxText(v) }
 
     static func watts(_ w: Double) -> String {
         w >= 1000 ? String(format: "%.2f kW", w / 1000) : "\(Int(w.rounded())) W"
@@ -51,7 +51,7 @@ enum LuxFormat {
 /// Everything else is in Details.
 struct LightPanel: View {
     let light: LightFixture
-    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
+    @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     var context = LightingContext()
     let update: (@escaping (inout LightFixture) -> Void) -> Void
     var onDetails: () -> Void
@@ -173,14 +173,7 @@ struct LightPanel: View {
 
     private func readoutText(own: Double, total: Double, stops: Double) -> String {
         let e = context.exposure
-        switch readingUnit {
-        case .tStop:
-            return "≈ \(readingUnit.text(lux: total, exposure: e)) · this light alone \(readingUnit.text(lux: own, exposure: e))"
-        case .stops:
-            return "≈ \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
-        case .lux, .footCandles:
-            return "≈ \(readingUnit.text(lux: own, exposure: e)) of \(readingUnit.text(lux: total, exposure: e)) · \(ExposureSettings.stopsDelta(stops)) at \(ExposureSettings.stopLabel(e.tStop))"
-        }
+        return "\(ReadingFormat.text(lux: total, exposure: e, extra: readingExtra)) (\(ExposureSettings.stopsDelta(stops))) · this light alone \(ReadingFormat.value(lux: own, exposure: e, extra: readingExtra))"
     }
 
     /// This unit's share of the reading where it matters most, in the chosen readings unit.
@@ -338,7 +331,10 @@ struct LightForm: View {
                 }
                 QuirkList(quirks: KnownQuirks.fixture(pm.profile.id))
             } else {
-                Picker("Type", selection: $light.kind) {
+                Picker("Type", selection: Binding(get: { light.kind }, set: { kind in
+                    light.name = LightKind.renamed(light.name, from: light.kind, to: kind)
+                    light.kind = kind
+                })) {
                     ForEach(LightKind.allCases.filter { !$0.emits }) { Label($0.label, systemImage: $0.symbol).tag($0) }
                 }
             }
@@ -473,9 +469,9 @@ struct LightForm: View {
     private func photometricsSection(_ pm: ResolvedPhotometrics) -> some View {
         Section {
             HStack {
-                StatView(label: "At \(UnitsFormatter.distance(distance))", value: LuxFormat.lux(pm.illuminanceOnAxis(at: distance)),
+                StatView(label: "Stop at \(UnitsFormatter.distance(distance))", value: ReadingFormat.stop(lux: pm.illuminanceOnAxis(at: distance), exposure: context.exposure),
                          provenance: pm.provenance)
-                StatView(label: "Stop there", value: ExposureSettings.stopLabel(context.exposure.tStop(forLux: pm.illuminanceOnAxis(at: distance))))
+                StatView(label: "Light there", value: LuxFormat.lux(pm.illuminanceOnAxis(at: distance)))
             }
             SliderRow(title: "Distance", value: $distance, range: 0.5...15, step: 0.1, format: { UnitsFormatter.distance($0) })
             ForEach([1.0, 2, 3, 5, 8], id: \.self) { d in
@@ -527,7 +523,7 @@ struct LightForm: View {
                 ForEach(context.meters) { m in Text(m.name).tag(m.source) }
             }
             let now = context.reading(meter).lux
-            LabeledContent("Now", value: "≈ \(LuxFormat.lux(now)) · \(ExposureSettings.stopLabel(context.exposure.tStop(forLux: now)))")
+            LabeledContent("Now", value: "≈ \(ReadingFormat.stop(lux: now, exposure: context.exposure)) · \(LuxFormat.lux(now))")
             HStack {
                 Text("Target lux")
                 TextField("lux", value: Binding(get: { target.rounded() }, set: { targetLux = max($0, 0.1) }), format: .number)

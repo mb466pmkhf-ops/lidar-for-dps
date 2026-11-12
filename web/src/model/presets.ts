@@ -54,8 +54,8 @@ export interface PresetResult { lights: LightFixture[]; notes: string[] }
 
 const wrap180 = (d: number) => { let a = d % 360; if (a > 180) a -= 360; if (a <= -180) a += 360; return a; };
 const wrap360 = (d: number) => { const a = d % 360; return a < 0 ? a + 360 : a; };
-const round1 = (v: number) => Math.round(v * 10) / 10;
-const round2 = (v: number) => Math.round(v * 100) / 100;
+const round1 = (v: number) => Math.round(v * 10) / 10 + 0; // + 0 turns −0 into 0, which JSON keeps the same
+const round2 = (v: number) => Math.round(v * 100) / 100 + 0;
 const unitVec = (a: Vec): Vec => { const l = Math.hypot(a.x, a.y, a.z) || 1; return { x: a.x / l, y: a.y / l, z: a.z / l }; };
 const emits = (l: LightFixture) => KIND_INFO[l.kind].emits;
 /** Back and edge lights are metered facing the unit, the rest towards camera. */
