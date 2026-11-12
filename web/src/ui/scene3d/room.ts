@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import type { FloorPlan, PlanObject, PlanPoint, PlanSegment } from '../../model/types';
 import { CHROME, DARK, STEEL, WOOD_LEG, cached, fabricBump, floorTextures, mat, mesh, plasterBump, rbox, v, bar } from './kit';
 import { concreteTexture, curtain } from './stage';
+import { backSide, bedBase, chairSeat, distToWalls, sofaShape } from '../../model/placement';
 
 const T = 0.1; // wall thickness, m
 
@@ -89,15 +90,6 @@ function doorParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: WallRe
   }
 }
 
-function distToWalls(p: PlanPoint, walls: PlanSegment[]): number {
-  let best = Infinity;
-  for (const w of walls) {
-    const dx = w.b.x - w.a.x, dz = w.b.z - w.a.z, l2 = dx * dx + dz * dz || 1e-6;
-    const t = Math.min(1, Math.max(0, ((p.x - w.a.x) * dx + (p.z - w.a.z) * dz) / l2));
-    best = Math.min(best, Math.hypot(p.x - (w.a.x + dx * t), p.z - (w.a.z + dz * t)));
-  }
-  return best;
-}
 
 /** Stand-in furniture from a scanned box: local X is its width, Z its depth, the floor is y = 0. */
 function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
@@ -107,11 +99,7 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
   const { width: w, depth: d, height: h } = o;
   const kind = o.category.toLowerCase();
   // Which long side backs onto a wall? Sofas, beds and cupboards turn their back to it.
-  const side = (sz: number) => {
-    const c = Math.cos(o.rotation), s = Math.sin(o.rotation), z = (sz * d) / 2;
-    return distToWalls({ x: o.center.x - z * s, z: o.center.z + z * c }, plan.walls);
-  };
-  const back = side(1) <= side(-1) ? 1 : -1;
+  const back = backSide(o, plan.walls);
   const cloth = mat(0x8c8a86, { roughness: 0.95, metalness: 0, bumpMap: cached('fabric', fabricBump), bumpScale: 0.6 });
   cloth.bumpMap!.repeat.set(6, 6);
   const wood = mat(0x8a7662, { roughness: 0.5, metalness: 0 });
@@ -120,7 +108,8 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) bar(v(sx * (w / 2 - inset), 0, sz * (d / 2 - inset)), v(sx * (w / 2 - inset), top, sz * (d / 2 - inset)), r * 0.7, m, g, r);
   };
   if (kind.includes('sofa') || kind.includes('couch')) {
-    const seat = Math.min(0.44, h * 0.55), arm = Math.min(0.2, w * 0.12), backT = Math.min(0.24, d * 0.3);
+    // Same shape the people sit on (placement.ts).
+    const { seat, arm, back: backT } = sofaShape(o);
     legs(0.07, 0.07, 0.02, WOOD_LEG);
     mesh(rbox(w, seat - 0.2, d, 0.04), cloth, g, v(0, 0.07 + (seat - 0.2) / 2, 0));
     mesh(rbox(w - 2 * arm, h - seat + 0.12, backT, 0.07, 4), cloth, g, v(0, seat - 0.12 + (h - seat + 0.12) / 2, back * (d / 2 - backT / 2)));
@@ -133,7 +122,7 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
       pillow.rotation.x = back * 0.16;
     }
   } else if (kind.includes('chair') || kind.includes('stool')) {
-    const seat = Math.min(0.46, h * 0.55);
+    const seat = chairSeat(o);
     legs(0.04, seat, 0.017, wood);
     mesh(rbox(w, 0.05, d, 0.02), cloth, g, v(0, seat, 0));
     if (h > seat + 0.15) mesh(rbox(w, h - seat - 0.08, 0.04, 0.02), wood, g, v(0, seat + 0.08 + (h - seat - 0.08) / 2, back * (d / 2 - 0.02)));
@@ -141,7 +130,7 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
     legs(0.06, h - 0.03, 0.024, wood);
     mesh(rbox(w, 0.04, d, 0.012), wood, g, v(0, h - 0.02, 0));
   } else if (kind.includes('bed')) {
-    const base = Math.min(0.3, h * 0.5);
+    const base = bedBase(o);
     mesh(rbox(w, base, d, 0.03), wood, g, v(0, base / 2, 0));
     mesh(rbox(w - 0.06, 0.22, d - 0.06, 0.08, 4), paint, g, v(0, base + 0.11, 0));
     // Headboard and pillows go at whichever short end is against a wall.

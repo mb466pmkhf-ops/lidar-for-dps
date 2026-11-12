@@ -399,6 +399,7 @@ final class VirtualSceneModel: ObservableObject {
     /// What the room or the hand-placed overlay was last built from, so unchanged plans aren't rebuilt.
     private var builtPlan: FloorPlan?
     private var builtHand: FloorPlan?
+    private var builtHandWalls: [PlanSegment] = []
     /// Scanned set pieces moved or deleted on the plan: hidden in the scan, redrawn from the plan.
     private var replacedScanPieces: Set<UUID> = []
     private var alignment = ScanAlignment.identity
@@ -538,15 +539,19 @@ final class VirtualSceneModel: ObservableObject {
         }
         var hand = FloorPlan()
         hand.floorY = plan.floorY
-        hand.objects = plan.objects.filter { $0.byHand == true }
+        // Scanned sofas, chairs and beds are drawn again with a seat (the scan has them as plain
+        // boxes), so people sit on them rather than inside them.
+        func redrawn(_ o: PlanObject) -> Bool { o.byHand == true || Placement.seatKind(o.category) != nil }
+        hand.objects = plan.objects.filter(redrawn)
         hand.windows = plan.windows.filter { $0.byHand == true }
         hand.doors = plan.doors.filter { $0.byHand == true }
-        let kept = Set(plan.objects.filter { $0.byHand != true }.map(\.id))
+        let kept = Set(plan.objects.filter { !redrawn($0) }.map(\.id))
         let replaced = Set(scanItems.compactMap { item -> UUID? in
             guard group(for: item.category) == .furniture, let id = item.id, !kept.contains(id) else { return nil }
             return id
         })
-        guard hand != builtHand || replaced != replacedScanPieces else { return }
+        guard hand != builtHand || replaced != replacedScanPieces || plan.walls != builtHandWalls else { return }
+        builtHandWalls = plan.walls
         builtHand = hand
         replacedScanPieces = replaced
         handNode?.removeFromParentNode()
@@ -554,7 +559,7 @@ final class VirtualSceneModel: ObservableObject {
         handItems = []
         if !(hand.objects.isEmpty && hand.windows.isEmpty && hand.doors.isEmpty) {
             var items: [(node: SCNNode, category: String, id: UUID?)] = []
-            let node = SceneKitBuilder.node(for: PlanSceneBuilder.sceneGeometry(hand)) { n, info in
+            let node = SceneKitBuilder.node(for: PlanSceneBuilder.sceneGeometry(hand, seatWalls: plan.walls)) { n, info in
                 items.append((n, info["category"]?.lowercased() ?? "", info["id"].flatMap(UUID.init(uuidString:))))
             }
             scanHolder.addChildNode(node)

@@ -63,6 +63,8 @@ export interface PrevisCharacter {
   position: PlanPoint; facing: number; posture: 'standing' | 'sitting'; scanID?: UUID;
   /** Missing means the type's usual hair (see defaultHair). */
   hair?: HairStyle;
+  /** Sitting on a sofa, chair or bed: its seat height (m, see placement.ts). Missing = the usual chair height. */
+  seatHeight?: number;
   [key: string]: unknown;
 }
 

@@ -7,7 +7,7 @@ import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometr
 import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
 import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
 import { boardOptics } from '../../model/calculator';
-import { hairOf, isChild, shapeBlend, skinRGB } from '../../model/characters';
+import { hairOf, isChild, seatHeightOf, shapeBlend, skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
   bar, cached, fabricBump, fresnelTexture, gridTexture, ledTexture, limb, mat, mesh, rbox, v,
@@ -489,7 +489,7 @@ export function person(c: PrevisCharacter): THREE.Group {
   const h = c.height, sitting = c.posture === 'sitting';
   const child = isChild(c.type), fem = shapeBlend[c.type] ?? 0.5, bust = !child && fem > 0.75;
   const headH = h / (child ? 6 : 7.5), r = headH / 2;
-  const hip0 = h * 0.52, seat = Math.min(0.45, hip0 * 0.5), drop = sitting ? hip0 - seat : 0;
+  const hip0 = h * 0.52, drop = sitting ? hip0 - seatHeightOf(c) : 0;
   const hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop;
   const build = Math.min(Math.max(c.build, 0), 1);
   const sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem);
@@ -570,10 +570,12 @@ export function person(c: PrevisCharacter): THREE.Group {
   for (const s of [-1, 1]) {
     const hip = v(s * hw * 0.5, hipY - h * 0.008, 0);
     const knee = sitting ? v(s * hw * 0.68, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.5, h * 0.285, -h * 0.008);
-    const ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006);
+    // On a high seat (a child on a sofa, anyone on a bed) the feet hang clear of the floor.
+    const ankleY = sitting ? Math.max(h * 0.055, hipY - h * 0.23) : h * 0.055;
+    const ankle = sitting ? v(s * hw * 0.68, ankleY, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006);
     taper(hip, knee, tr, sr * 1.08, legsM, g);
     taper(knee, ankle, sr * 1.05, sr * 0.82, legsM, g);
-    const foot = v(ankle.x, 0, ankle.z);
+    const foot = v(ankle.x, ankleY - h * 0.055, ankle.z);
     mesh(rbox(h * 0.05, h * 0.012, h * 0.152, h * 0.005), soleM, g, foot.clone().add(v(0, h * 0.006, -h * 0.038)));
     blob(h * 0.027, shoeM, g, foot.clone().add(v(0, h * 0.026, -h * 0.078)), 0.95, 0.62, 1.55);   // toe box
     blob(h * 0.029, shoeM, g, foot.clone().add(v(0, h * 0.03, h * 0.006)), 0.9, 0.95, 1.05);      // heel and collar

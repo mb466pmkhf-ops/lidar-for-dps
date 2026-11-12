@@ -3,6 +3,7 @@
 import type { FloorPlan, LightFixture, PlanPoint, ProjectBundle, CameraRig } from './types';
 import { applyProfile, profileByID } from './photometrics';
 import { bearingFrom } from './calculator';
+import { settlePeople } from './placement';
 import { newCharacter, newLight, newLocation, newMeter, newProject, uuid, isoNow } from './factory';
 
 const P = (x: number, z: number): PlanPoint => ({ x, z });
@@ -61,7 +62,8 @@ export function demoBundle(): ProjectBundle {
       { id: uuid(), number: 2, title: 'Single on Maya', rig: single, subject: P(0, 1.8), subjectHeight: 1.75, scanID, notes: '', createdAt: isoNow() },
     ],
     lights: [key, fill, back, bounce, neg, lamp],
-    characters: [maya, leo],
+    // Sat on the sofa at its cushion height (placement.ts).
+    characters: settlePeople([maya, leo], plan, scanID, [], true),
     meters: [meter],
     exposure: { iso: 800, frameRate: 24, shutterAngle: 180, tStop: 5.6, lensTransmission: 0.85, ndStops: 0 },
     display: {},

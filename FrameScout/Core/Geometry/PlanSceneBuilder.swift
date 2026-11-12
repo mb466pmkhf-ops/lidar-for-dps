@@ -5,7 +5,9 @@ import Foundation
 /// geometry files aren't available (and for the sample project), so the 3D lighting view still
 /// shows the room in the same coordinates as the plan.
 enum PlanSceneBuilder {
-    static func sceneGeometry(_ plan: FloorPlan, wallThickness: Float = 0.1) -> SceneGeometry {
+    /// `seatWalls` are the room's walls when `plan` holds only pieces drawn over a scan: they decide
+    /// which way a sofa or chair faces, as on the full plan.
+    static func sceneGeometry(_ plan: FloorPlan, wallThickness: Float = 0.1, seatWalls: [PlanSegment]? = nil) -> SceneGeometry {
         let root = SceneNode(name: "FrameScout_Location")
         let wallsNode = root.addChild(SceneNode(name: "Walls"))
         let doorsNode = root.addChild(SceneNode(name: "Doors"))
@@ -92,16 +94,60 @@ enum PlanSceneBuilder {
             let r = Float(object.rotation)
             let ux = Vec3(cos(r), 0, sin(r))
             let uz = V3.cross(ux, up)
-            let size = Vec3(Float(object.width), Float(object.height), Float(object.depth))
-            let mesh = SceneMesh.box(center: .zero, axes: (ux, up, uz), size: size, material: .object)
+            // Sofas, chairs and beds get a seat people can sit on (Placement); everything else is a box.
+            let mesh = seatMesh(object, walls: seatWalls ?? plan.walls, axes: (ux, up, uz))
+                ?? SceneMesh.box(center: Vec3(0, Float(object.height) / 2, 0), axes: (ux, up, uz),
+                                 size: Vec3(Float(object.width), Float(object.height), Float(object.depth)), material: .object)
             let node = SceneNode(name: "\(name)_\(String(format: "%02d", counters[name] ?? 1))", mesh: mesh,
-                                 translation: Vec3(Float(object.center.x), floorY + Float(object.height) / 2, Float(object.center.z)))
+                                 translation: Vec3(Float(object.center.x), floorY, Float(object.center.z)))
             node.info = ["category": object.category.lowercased(), "id": object.id.uuidString]
             objectsNode.addChild(node)
         }
 
         let pruned = root.pruned() ?? SceneNode(name: "FrameScout_Location")
         return SceneGeometry(root: pruned, metadata: ["source": "Built from the floor plan"])
+    }
+
+    /// A sofa (base, back and arms), a chair (legs, seat and back) or a bed (base and headboard)
+    /// in the piece's local frame, floor at y = 0. Same shapes as the web 3D view (room.ts), and
+    /// the seat heights people sit at (`Placement`). nil for anything that isn't a seat.
+    static func seatMesh(_ o: PlanObject, walls: [PlanSegment], axes: (Vec3, Vec3, Vec3)) -> SceneMesh? {
+        guard let kind = Placement.seatKind(o.category), Placement.isSolid(o) else { return nil }
+        let (ux, uy, uz) = axes
+        let w = Float(o.width), d = Float(o.depth), h = Float(o.height)
+        let back = Float(Placement.backSide(o, walls: walls))
+        var mesh = SceneMesh(material: .object)
+        func add(_ x: Float, _ y: Float, _ z: Float, _ sx: Float, _ sy: Float, _ sz: Float) {
+            guard sx > 0.001, sy > 0.001, sz > 0.001 else { return }
+            let c: Vec3 = ux * x + uy * y + uz * z
+            mesh.append(.box(center: c, axes: axes, size: Vec3(sx, sy, sz), material: .object))
+        }
+        switch kind {
+        case .sofa:
+            let shape = Placement.sofaShape(o)
+            let seat = Float(shape.seat), arm = Float(shape.arm), backT = Float(shape.back)
+            add(0, seat / 2, 0, w, seat, d)                                                           // base and cushions
+            add(0, seat + (h - seat) / 2, back * (d / 2 - backT / 2), w - 2 * arm, h - seat, backT)   // back
+            let armTop = min(h, seat + 0.2)
+            for sx: Float in [-1, 1] { add(sx * (w / 2 - arm / 2), armTop / 2, 0, arm, armTop, d) } // arms
+        case .chair:
+            let seat = Float(Placement.chairSeat(o))
+            for sx: Float in [-1, 1] { for sz: Float in [-1, 1] { add(sx * (w / 2 - 0.04), seat / 2, sz * (d / 2 - 0.04), 0.035, seat, 0.035) } }
+            add(0, seat + 0.025, 0, w, 0.05, d)
+            if h > seat + 0.15 { add(0, seat + 0.05 + (h - seat - 0.05) / 2, back * (d / 2 - 0.02), w, h - seat - 0.05, 0.04) }
+        case .bed:
+            let top = Float(Placement.bedBase(o)) + 0.22
+            add(0, top / 2, 0, w, top, d)
+            // Headboard at whichever short end is nearer a wall.
+            let ax = Placement.widthAxis(o)
+            func end(_ s: Double) -> Double {
+                Placement.distToWalls(PlanPoint(x: o.center.x + ax.x * s * o.width / 2, z: o.center.z + ax.z * s * o.width / 2), walls)
+            }
+            let head: Float = end(1) <= end(-1) ? 1 : -1
+            let hb = max(h, top + 0.38)
+            add(head * (w / 2 - 0.03), hb / 2, 0, 0.06, hb, d)
+        }
+        return mesh
     }
 }
 

@@ -150,7 +150,7 @@ private final class FigureBuilder {
         let h = c.height, sitting = c.posture == .sitting
         let child = c.type.isChild, fem = c.type.shapeBlend, bust = !child && fem > 0.75
         let headH = h / (child ? 6 : 7.5), r = headH / 2
-        let hip0 = h * 0.52, seat = min(0.45, hip0 * 0.5), drop = sitting ? hip0 - seat : 0
+        let hip0 = h * 0.52, drop = sitting ? hip0 - c.proportions.seatHeight : 0
         let hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop
         let build = min(max(c.build, 0), 1)
         let sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem)
@@ -239,16 +239,18 @@ private final class FigureBuilder {
             let hip = v(s * hw * 0.5, hipY - h * 0.008, 0)
             let knee = sitting ? v(s * hw * 0.68, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.5, h * 0.285, -h * 0.008)
             let tuck: Double = max(0, h * 0.24 - hipY) * 0.9
-            let ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - tuck) : v(s * hw * 0.48, h * 0.055, h * 0.006)
+            // On a high seat (a child on a sofa, anyone on a bed) the feet hang clear of the floor.
+            let ankleY: Double = sitting ? max(h * 0.055, hipY - h * 0.23) : h * 0.055
+            let ankle = sitting ? v(s * hw * 0.68, ankleY, -h * 0.245 - tuck) : v(s * hw * 0.48, h * 0.055, h * 0.006)
             taper(hip, knee, tr, sr * 1.08, legs)
             taper(knee, ankle, sr * 1.05, sr * 0.82, legs)
-            let foot = V(ankle.x, 0, ankle.z)
+            let foot = V(ankle.x, Float(ankleY - h * 0.055), ankle.z)
             box(h * 0.05, h * 0.012, h * 0.152, h * 0.005, sole, foot + v(0, h * 0.006, -h * 0.038))
             blob(h * 0.027, shoe, foot + v(0, h * 0.026, -h * 0.078), 0.95, 0.62, 1.55, seg: 18)      // toe box
             blob(h * 0.029, shoe, foot + v(0, h * 0.03, h * 0.006), 0.9, 0.95, 1.05, seg: 18)         // heel and collar
         }
-        if sitting {
-            // A stool so a seated figure doesn't float when there's no chair under it.
+        if sitting && c.seatHeight == nil {
+            // A stool so a seated figure doesn't float when there's no sofa, chair or bed under it.
             let p = c.proportions
             box(p.hipWidth * 1.3, p.seatHeight, p.hipWidth * 1.2, 0.01, stool, v(0, p.seatHeight / 2, 0.02))
         }
