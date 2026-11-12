@@ -65,7 +65,60 @@ const beamFragment = `
     gl_FragColor = vec4(color * strength * glow * 0.75, 1.0);
   }`;
 
-export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Vector3, q: THREE.Quaternion, color: THREE.Color, hitTargets: THREE.Object3D[]): THREE.Mesh | undefined {
+/** How bright the haze is for a unit's output. */
+export function beamStrength(pm: ResolvedPhotometrics) { return 0.16 + 0.12 * Math.min(1, Math.log10(1 + pm.flux / 500)); }
+
+/** How far the light gets across the beam: a GRID × GRID depth map, and the furthest depth. */
+export interface Reach { depths: Float32Array; deepest: number }
+
+/** Remembered reach maps, by everything that shapes them (see Scene3D). Switching a unit off and
+ *  on, dimming it or changing its colour doesn't move anything, so its beam comes back at once. */
+export type ReachCache = Map<string, Reach>;
+const CACHE_SIZE = 64;
+
+/** Casts the grid of rays. Each ray tests the solid things in order of where their bounding box
+ *  starts along it and stops once the nearest hit so far is closer than the next box: the same
+ *  nearest hit as testing everything, without walking every triangle of every person and sofa. */
+function traceReach(origin: THREE.Vector3, q: THREE.Quaternion, L: number, R: number, D: number, U: number, th: number, hitTargets: THREE.Object3D[]): Reach {
+  const ray = new THREE.Raycaster();
+  ray.far = BEAM_MAX * 1.8;
+  const solids: { o: THREE.Object3D; box: THREE.Box3 }[] = [];
+  for (const t of hitTargets) t.traverse(o => {
+    const g = (o as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+    if (!g || !o.layers.test(ray.layers)) return;
+    if (!g.boundingBox) g.computeBoundingBox();
+    solids.push({ o, box: g.boundingBox!.clone().applyMatrix4(o.matrixWorld) });
+  });
+  const at = new THREE.Vector3(), hits: THREE.Intersection[] = [], order: { o: THREE.Object3D; entry: number }[] = [];
+  const depths = new Float32Array(GRID * GRID);
+  let deepest = 0.3;
+  for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
+    const x = -L + ((i + 0.5) / GRID) * (L + R), y = -D + ((j + 0.5) / GRID) * (D + U);
+    if (Math.hypot(x, y) > th * 1.02) continue;
+    const d = v(x, y, -1);
+    ray.set(origin, d.clone().normalize().applyQuaternion(q));
+    order.length = 0;
+    for (const s of solids) {
+      if (s.box.containsPoint(origin)) { order.push({ o: s.o, entry: 0 }); continue; }
+      const p = ray.ray.intersectBox(s.box, at);
+      if (p) order.push({ o: s.o, entry: p.distanceTo(origin) });
+    }
+    order.sort((a, b) => a.entry - b.entry);
+    let nearest = ray.far + 1;
+    for (const { o, entry } of order) {
+      if (entry > nearest) break;
+      hits.length = 0;
+      o.raycast(ray, hits);
+      for (const h of hits) if (h.distance > 0.05 && h.distance <= ray.far && h.distance < nearest) nearest = h.distance;
+    }
+    const depth = Math.min(BEAM_MAX, (nearest <= ray.far ? nearest : BEAM_MAX * 1.8) / d.length());
+    deepest = Math.max(deepest, depth);
+    depths[j * GRID + i] = depth;
+  }
+  return { depths, deepest };
+}
+
+export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Vector3, q: THREE.Quaternion, color: THREE.Color, hitTargets: THREE.Object3D[], cache?: { store: ReachCache; key: string }): THREE.Mesh | undefined {
   if (pm.distribution !== 'beam' && pm.distribution !== 'lambertian') return undefined;
   const half = Math.min(pm.distribution === 'beam' ? pm.beamAngle * 0.6 : 50, 70);
   const th = Math.tan(rad(half));
@@ -74,23 +127,17 @@ export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Ve
   const L = lim(doors?.left ?? 90), R = lim(doors?.right ?? 90), D = lim(doors?.bottom ?? 90), U = lim(doors?.top ?? 90);
 
   // How far the light gets along each direction across the beam, as a depth along −Z.
-  const ray = new THREE.Raycaster();
-  ray.far = BEAM_MAX * 1.8;
-  const data = new Uint8Array(GRID * GRID * 4);
-  let deepest = 0.3;
-  const depths: number[] = [];
-  for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
-    const x = -L + ((i + 0.5) / GRID) * (L + R), y = -D + ((j + 0.5) / GRID) * (D + U);
-    let depth = 0;
-    if (Math.hypot(x, y) <= th * 1.02) {
-      const d = v(x, y, -1);
-      ray.set(origin, d.clone().normalize().applyQuaternion(q));
-      const hit = ray.intersectObjects(hitTargets, true).find(h => h.distance > 0.05);
-      depth = Math.min(BEAM_MAX, (hit?.distance ?? BEAM_MAX * 1.8) / d.length());
-      deepest = Math.max(deepest, depth);
+  const key = cache && `${cache.key}|${[origin.x, origin.y, origin.z, q.x, q.y, q.z, q.w, L, R, D, U, th].map(n => n.toFixed(5)).join(',')}`;
+  let found = key ? cache!.store.get(key) : undefined;
+  if (!found) {
+    found = traceReach(origin, q, L, R, D, U, th, hitTargets);
+    if (key) {
+      cache!.store.set(key, found);
+      if (cache!.store.size > CACHE_SIZE) cache!.store.delete(cache!.store.keys().next().value!);
     }
-    depths.push(depth);
   }
+  const { depths, deepest } = found;
+  const data = new Uint8Array(GRID * GRID * 4);
   depths.forEach((d, k) => { const c = Math.round(255 * d / BEAM_MAX); data.set([c, c, c, 255], k * 4); });
   const reach = new THREE.DataTexture(data, GRID, GRID, THREE.RGBAFormat);
   reach.magFilter = reach.minFilter = THREE.LinearFilter;
@@ -110,7 +157,7 @@ export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Ve
   geo.setIndex(index);
   geo.computeVertexNormals();
 
-  const strength = 0.16 + 0.12 * Math.min(1, Math.log10(1 + pm.flux / 500));
+  const strength = beamStrength(pm);
   const uniforms = {
     color: { value: color.clone() }, strength: { value: strength }, reach: { value: reach },
     limits: { value: new THREE.Vector4(L, R, D, U) }, spread: { value: th }, depthMax: { value: BEAM_MAX },
@@ -121,7 +168,11 @@ export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Ve
     transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   material.addEventListener('dispose', () => reach.dispose());
+  // Freed without disposing the material, so its shader stays built for the next beam: a unit
+  // switched off and on again shows its beam at once instead of waiting for a recompile.
+  material.userData.release = () => reach.dispose();
   const mesh = new THREE.Mesh(geo, material);
+  mesh.userData.uniforms = uniforms; // colour and strength follow the unit without a rebuild
   mesh.onBeforeRender = () => { uniforms.toLocal.value.copy(mesh.matrixWorld).invert(); };
   mesh.frustumCulled = false; // the camera can sit inside it
   mesh.userData.noShadow = true;

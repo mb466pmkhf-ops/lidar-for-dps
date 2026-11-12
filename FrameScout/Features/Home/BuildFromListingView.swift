@@ -16,6 +16,8 @@ struct BuildFromListingView: View {
     @State private var reading: ListingReader.Reading
     @State private var room: DrawnRoom
     @State private var projectID: UUID?
+    /// Opened from a project: the new room goes there unless the user picks another.
+    var intoProject: UUID? = nil
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var photos: [ListingPhoto] = []
     @State private var readingPhotos = 0
@@ -29,7 +31,8 @@ struct BuildFromListingView: View {
         let jpeg: Data
     }
 
-    init(sampleText: String = "") {
+    init(sampleText: String = "", intoProject: UUID? = nil) {
+        self.intoProject = intoProject
         let r = ListingReader.read(sampleText)
         _text = State(initialValue: sampleText)
         _reading = State(initialValue: r)
@@ -120,7 +123,7 @@ struct BuildFromListingView: View {
             }
         }
         .onAppear {
-            if projectID == nil { projectID = store.recentProjects.first { $0.name == Self.myRooms }?.id }
+            if projectID == nil { projectID = intoProject ?? store.recentProjects.first { $0.name == Self.myRooms }?.id }
         }
         .onChange(of: text) { _, newText in reread(newText) }
         .onChange(of: pickerItems) { _, items in addPhotos(items) }
@@ -346,9 +349,7 @@ struct BuildFromListingView: View {
             _ = store.addPhoto(photo.jpeg, to: ref, source: .library, caption: "From the listing")
         }
         dismiss()
-        router.open(.project(target))
-        router.open(.location(ref))
-        router.open(.lighting(ref))
+        router.show([.project(target), .location(ref), .lighting(ref)])
     }
 }
 

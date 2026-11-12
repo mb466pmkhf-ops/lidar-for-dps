@@ -1926,17 +1926,28 @@ struct PlanEditorView: View {
         .buttonStyle(.plain)
     }
 
+    /// "Room ± 4.80 × 6.20 m · 2 people · 3 cameras · 6 lights", leaving out what isn't there.
+    private var overviewLine: String {
+        func n(_ count: Int, _ one: String, _ many: String) -> String? { count == 0 ? nil : "\(count) \(count == 1 ? one : many)" }
+        var parts: [String?] = []
+        if let scan {
+            let s = scan.stats
+            parts.append("Room \(s.marked(UnitsFormatter.dimensions(s.width, s.length), .roomSize, kind: scan.kind))")
+        }
+        parts.append(n(location?.previsCharacters.count ?? 0, "person", "people"))
+        parts.append(n((location?.cameraPositions.count ?? 0) + (location?.shots.count ?? 0), "camera", "cameras"))
+        parts.append(n(location?.lightFixtures.count ?? 0, "light", "lights"))
+        let line = parts.compactMap { $0 }.joined(separator: " · ")
+        return line.isEmpty ? "Nothing placed yet" : line
+    }
+
     private func overviewPanel(_ analysis: LightingAnalysis) -> some View {
-        // Room size gets its own row: four across truncates it on a phone.
+        // Counts and room size are context, so they share one small line; the camera settings and
+        // the readings below are what this panel is for.
         VStack(alignment: .leading, spacing: 12) {
             if isBlank { firstSteps }
-            HStack(spacing: 16) {
-                StatView(label: "Cameras", value: "\((location?.cameraPositions.count ?? 0) + (location?.shots.count ?? 0))")
-                StatView(label: "Lights", value: "\(location?.lightFixtures.count ?? 0)")
-                StatView(label: "People", value: "\(location?.previsCharacters.count ?? 0)")
-            }
-            StatView(label: "Room", value: UnitsFormatter.dimensions(scan?.stats.width, scan?.stats.length),
-                     provenance: scan.map { $0.stats.provenance(of: .roomSize, kind: $0.kind) })
+            Text(overviewLine).font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                .lineLimit(2)
             Button { showExposure = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "camera.aperture").foregroundStyle(Theme.textSecondary)
