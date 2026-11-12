@@ -10,6 +10,8 @@ struct DrawRoomView: View {
     @State private var name = "New room"
     @State private var room = DrawnRoom()
     @State private var projectID: UUID?
+    /// Opened from a project: the new room goes there unless the user picks another.
+    var intoProject: UUID? = nil
 
     private static let myRooms = "My rooms"
 
@@ -107,7 +109,7 @@ struct DrawRoomView: View {
             }
         }
         .onAppear {
-            if projectID == nil { projectID = store.recentProjects.first { $0.name == Self.myRooms }?.id }
+            if projectID == nil { projectID = intoProject ?? store.recentProjects.first { $0.name == Self.myRooms }?.id }
         }
     }
 
@@ -120,9 +122,7 @@ struct DrawRoomView: View {
         let target = projectID.flatMap { store.project($0)?.id } ?? store.createProject(name: Self.myRooms).id
         guard let ref = store.addDrawnRoom(room, name: name.trimmingCharacters(in: .whitespacesAndNewlines), to: target) else { return }
         dismiss()
-        router.open(.project(target))
-        router.open(.location(ref))
-        router.open(.lighting(ref))
+        router.show([.project(target), .location(ref), .lighting(ref)])
     }
 }
 

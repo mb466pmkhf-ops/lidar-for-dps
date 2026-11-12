@@ -63,30 +63,5 @@ struct HomePrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// List row with an icon and a chevron.
-struct HomeMenuRow: View {
-    var title: String
-    var subtitle: String? = nil
-    var systemImage: String
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage).font(.title3).foregroundStyle(HomeStyle.accent).frame(width: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(HomeStyle.body).foregroundStyle(Theme.textPrimary)
-                    if let subtitle {
-                        Text(subtitle).font(HomeStyle.footnote).foregroundStyle(Theme.textTertiary)
-                    }
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.textTertiary)
-            }
-            .frame(minHeight: HomeStyle.minTap)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
+/// Home's rows are the app-wide `ListRow`.
+typealias HomeMenuRow = ListRow

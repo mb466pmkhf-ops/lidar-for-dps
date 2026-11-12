@@ -91,9 +91,11 @@ struct HomeView: View {
                     HomeMenuRow(title: "Export", subtitle: "Unreal, USD, OBJ, GLB or ZIP", systemImage: "square.and.arrow.up") {
                         router.open(.export(projectID: nil, location: nil))
                     }
-                    Divider().padding(.leading, 42)
-                    HomeMenuRow(title: "Compare locations", subtitle: nil, systemImage: "rectangle.split.2x1") {
-                        router.open(.compare)
+                    if store.recentProjects.reduce(0, { $0 + $1.locations.count }) > 1 {
+                        Divider().padding(.leading, 42)
+                        HomeMenuRow(title: "Compare locations", subtitle: "Side by side: size, ceiling, windows", systemImage: "rectangle.split.2x1") {
+                            router.open(.compare)
+                        }
                     }
                 }
                 .homeCard()
@@ -128,13 +130,12 @@ struct HomeView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { showImporter = true } label: { Label("Import Project Backup…", systemImage: "square.and.arrow.down") }
-                    Button { showSync = true } label: { Label("Account & sync…", systemImage: "person.crop.circle") }
+                    // Import and sign-in have their own rows and button; this menu is only for settings.
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
                 } label: {
-                    Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(HomeStyle.accent)
+                    Image(systemName: "gearshape").font(.title3).foregroundStyle(HomeStyle.accent)
                 }
-                .accessibilityLabel("More")
+                .accessibilityLabel("Settings")
             }
         }
         .alert("New Project", isPresented: $showNewProject) {
