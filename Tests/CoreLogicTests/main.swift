@@ -625,6 +625,85 @@ do {
     check(false, "web-written project decodes in Swift: \(error)")
 }
 
+// MARK: Studio builds, daylight and curtains (same cases as web/tests/stage.test.ts)
+do {
+    let zen = Stage.daylightLevels(.clear, elevation: 90)
+    check(zen.directNormal > 95000 && zen.directNormal < 110000, "clear-sky sun at the zenith ≈ 100 klx")
+    check(Stage.daylightLevels(.overcast, elevation: 50).directNormal == 0, "no direct sun under overcast")
+    check(abs(Stage.daylightLevels(.clear, elevation: -3).skyHorizontal - 400) < 1e-6, "twilight fades the sky")
+    var london = Location(name: "London")
+    london.coordinate = GeoCoordinate(latitude: 51.5074, longitude: -0.1278)
+    let noon = SolarCalculator.position(date: Date(timeIntervalSince1970: 1718971320), latitude: 51.5074, longitude: -0.1278)
+    check(noon.elevation > 61.4 && noon.elevation < 62.4 && abs(noon.azimuth - 180) < 3, "midsummer noon sun in London")
+    london.daylight = DaylightSetup(isOn: true, fromClock: true, time: 1718971320)
+    let northless = ScanRecord(name: "s", kind: .room, stats: ScanStats())
+    check(!Stage.sunPlacement(london, scan: northless).fromClock, "no north: the sun stays where it was put")
+
+    // The drawn room's window is on the top wall, so a sun at plan bearing 0 shines in through it.
+    let room = DrawnRoom(shape: .box, length: 6, width: 4.5, ceiling: 2.7, windows: 1, door: false).plan
+    var lit = Location(name: "Sun")
+    lit.daylight = DaylightSetup(isOn: true, sky: .clear, sunBearing: 0, sunElevation: 30)
+    func lux(_ l: Location, _ plan: FloorPlan, _ p: LightingCalculator.Point, _ n: LightingCalculator.Point, _ id: UUID? = nil) -> Double {
+        let r = LightingCalculator.reading(at: p, normal: n, scene: .init(lights: l.lightFixtures, plan: plan, windowTransmission: 0.78,
+                                                                           environment: l.environment(plan: plan, scan: nil)))
+        return id.map { id in r.contributions.filter { $0.lightID == id }.reduce(0) { $0 + $1.lux } } ?? r.lux
+    }
+    let near = LightingCalculator.Point(x: 0, y: 1.2, z: -1.2), toWindow = LightingCalculator.Point(x: 0, y: 0, z: -1)
+    let sun = lux(lit, room, near, toWindow, Stage.sunID)
+    check(abs(sun - Stage.daylightLevels(.clear, elevation: 30).directNormal * cos(.pi / 6) * 0.78) < 1e-6 * sun, "sun beam through bare glass")
+    let sky = lux(lit, room, near, toWindow, Stage.skyID)
+    check(sky > 200 && sky < 5000, "sky light through the window")
+    check(lux(lit, room, LightingCalculator.Point(x: 0, y: 1.2, z: 1.8), toWindow, Stage.sunID) == 0, "the sun stops where the window can't reach")
+    var high = lit
+    high.daylight?.sunElevation = 85
+    check(lux(high, room, LightingCalculator.Point(x: 0, y: 1, z: 0), LightingCalculator.Point(x: 0, y: 1, z: 0), Stage.sunID) == 0, "no sun through the ceiling")
+    var sheer = room
+    sheer.windows = sheer.windows.map { var w = $0; w.curtain = .sheer; return w }
+    check(lux(lit, sheer, near, toWindow, Stage.sunID) == 0 && lux(lit, sheer, near, toWindow, Stage.skyID) > sky, "a sheer turns the sun into a glow")
+    var black = room
+    black.windows = black.windows.map { var w = $0; w.curtain = .blackout; return w }
+    check(lux(lit, black, near, toWindow) == 0, "blackout stops daylight")
+
+    // LED wall
+    var led = Location(name: "Volume")
+    led.studio = StudioSetup(backdrop: "led-wall", wallID: room.walls[0].id, width: 6, height: 2.7, nits: 300)
+    let e = lux(led, room, LightingCalculator.Point(x: 0, y: 1.5, z: -0.25), toWindow, Stage.ledWallID)
+    check(e > 250 && e < 800, "an LED wall lights the subject (\(e))")
+    var paper = Location(name: "Paper")
+    paper.studio = StudioSetup(backdrop: "paper-white", wallID: room.walls[0].id)
+    check(lux(paper, room, LightingCalculator.Point(x: 0, y: 1.5, z: -0.25), toWindow) == 0, "paper gives no light")
+    check(Set(Stage.backdrops.map(\.id)).count == Stage.backdrops.count, "backdrop ids are unique")
+}
+
+// MARK: Web parity, studio and daylight (web/tests/stage.test.ts, STAGE_READINGS)
+do {
+    let data = try Data(contentsOf: URL(fileURLWithPath: "web/tests/fixtures/stage-bundle.json"))
+    let bundle = try JSONCoding.decoder.decode(WebBundle.self, from: data)
+    let loc = bundle.project.locations[0]
+    let scanID = loc.primaryScanID
+    let plan = scanID.flatMap { bundle.plans[$0.uuidString] }
+    let scan = loc.scans.first { $0.id == scanID }
+    check(plan?.windows.first?.curtain == .sheer && loc.studio?.backdrop == "led-wall", "web-written curtains and studio decode in Swift")
+    let lights = loc.lightFixtures.filter { $0.scanID == nil || $0.scanID == scanID }
+    let scene = LightingCalculator.Scene(lights: lights, plan: plan, windowTransmission: loc.displaySettings.windowTransmissionValue,
+                                         environment: loc.environment(plan: plan, scan: scan))
+    var readings: [String: Double] = [:]
+    for m in loc.meterPoints(scanID: scanID) {
+        let key: String
+        switch m.source {
+        case .meter(let id): key = "m:" + id.uuidString
+        case .character(let id): key = "c:" + id.uuidString
+        }
+        readings[key] = LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene).lux
+    }
+    let sun = Stage.sunPlacement(loc, scan: scan)
+    check(sun.fromClock, "stage fixture places the sun from the clock")
+    let json = try JSONSerialization.data(withJSONObject: ["readings": readings, "sunBearing": sun.bearing, "sunElevation": sun.elevation])
+    try json.write(to: outDir.appendingPathComponent("stage-readings.json"))
+} catch {
+    check(false, "stage fixture: \(error)")
+}
+
 // MARK: Photometrics matrix (same cases as web/tests/support/matrix.ts)
 // Every fixture × modifier × beam × filters × dimmer and a spread of exposures, written for
 // web/tests/photometry-audit.test.ts (CI passes this file to it as PHOTOMETRICS_MATRIX).

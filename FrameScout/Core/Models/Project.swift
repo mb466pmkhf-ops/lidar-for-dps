@@ -131,6 +131,10 @@ struct Location: Identifiable, Codable, Hashable {
     var exposure: ExposureSettings? = nil
     /// Visibility, transparency and label settings for the plan and 3D view (see `displaySettings`).
     var display: SceneDisplay? = nil
+    /// Backdrop and floor finish for a studio build (see `Stage`).
+    var studio: StudioSetup? = nil
+    /// Sun and sky outside the windows (see `Stage`).
+    var daylight: DaylightSetup? = nil
 
     var dateScanned: Date? { scans.map(\.createdAt).max() }
 
