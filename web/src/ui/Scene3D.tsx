@@ -17,7 +17,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
 import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
-import { lightSupport } from '../model/rigging';
+import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
 import type { MeterPoint } from '../model/calculator';
@@ -345,8 +345,14 @@ export function Scene3D(p: Props) {
         pan.add(tilt);
         const support = lightSupport(l);
         if (!pm) {
-          const h = board(l, tilt);
-          if (support !== 'none') { bar(v(0, -h / 2, 0), v(0, -h / 2 - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -h / 2 - 0.05, pan); }
+          const { lowest } = board(l, tilt, l.tilt);
+          if (support !== 'none' && gripStandCount(l) === 2) {
+            // Big frames sit on their ears between two stands and pivot there.
+            for (const s of [-1, 1]) {
+              const side = new THREE.Group(); side.position.x = s * (l.width / 2 + 0.07); pan.add(side);
+              stand(support, l.height, -0.02, side);
+            }
+          } else if (support !== 'none') { bar(v(0, -lowest, 0), v(0, -lowest - 0.05, 0), 0.008, DARK, pan); stand(support, l.height, -lowest - 0.05, pan); }
           return pan;
         }
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);

@@ -3,8 +3,12 @@
 import type { CameraRig, FloorPlan, LightFixture, PlanPoint } from './types';
 import { fixtureModifier, fixtureProfile } from './photometrics';
 import { intersect, unitBearing } from './calculator';
+import { isGrip } from './grip';
 
-export type LightSupport = 'cStand' | 'comboStand' | 'turtleBase' | 'megaBoom' | 'rollerStand' | 'overhead' | 'floor' | 'none';
+/** Frames 8×8 and up go on two stands, one at each side, with the frame on its ears between them. */
+export const gripStandCount = (l: LightFixture): 1 | 2 => (isGrip(l.kind) && l.width >= 2.4 ? 2 : 1);
+
+export type LightSupport = 'cStand' | 'comboStand' | 'turtleBase' | 'megaBoom' | 'rollerStand' | 'windUp' | 'overhead' | 'floor' | 'none';
 export type CameraSupport = 'tripod' | 'babyLegs' | 'highHat' | 'dolly' | 'slider' | 'handheld' | 'gimbal';
 
 type Range = [number, number];
@@ -15,6 +19,7 @@ export const LIGHT_SUPPORTS: { id: LightSupport; label: string; range?: Range }[
   { id: 'turtleBase', label: 'Turtle base', range: [0.2, 0.75] },
   { id: 'megaBoom', label: 'MegaBoom', range: [1.5, 4.5] },
   { id: 'rollerStand', label: 'Roller stand', range: [1.4, 4.9] },
+  { id: 'windUp', label: 'Wind-up stand', range: [1.7, 4.6] },
   { id: 'overhead', label: 'Rigged overhead' },
   { id: 'floor', label: 'On the floor' },
   { id: 'none', label: 'No stand' },
@@ -33,13 +38,14 @@ export const CAMERA_SUPPORTS: { id: CameraSupport; label: string; short: string;
 export const lightSupportInfo = (s: LightSupport) => LIGHT_SUPPORTS.find(x => x.id === s)!;
 export const cameraSupportInfo = (s: CameraSupport) => CAMERA_SUPPORTS.find(x => x.id === s)!;
 
-/** Practicals sit on their own, space lights hang, very low units go on a turtle base, heavy heads and
- *  big frames on a combo, the rest on a C-stand. */
+/** Practicals sit on their own, space lights hang, very low units go on a turtle base, 6×6 and bigger
+ *  frames on wind-ups, heavy heads and 4×4 frames on a combo, the rest on a C-stand. */
 export function automaticLightSupport(l: LightFixture): LightSupport {
   if (l.kind === 'practical') return 'none';
   if (l.kind === 'spaceLight') return 'overhead';
   if (l.height < 0.15) return 'floor';
   if (l.height < 0.75) return 'turtleBase';
+  if (isGrip(l.kind) && l.width >= 1.7) return 'windUp';
   if (l.kind === 'bounce' || l.kind === 'negative' || l.kind === 'diffusion') return l.width >= 1 ? 'comboStand' : 'cStand';
   if (l.kind === 'flag') return 'cStand';
   const p = fixtureProfile(l);

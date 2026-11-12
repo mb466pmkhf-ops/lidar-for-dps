@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import type { BarnDoors, CameraRig, LightFixture, LightMeter, PrevisCharacter } from '../../model/types';
 import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometrics';
-import { cameraSupport, type LightSupport } from '../../model/rigging';
+import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
+import { drape, frameGels, gripSize } from '../../model/grip';
 import { skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
@@ -62,6 +63,15 @@ export function stand(support: LightSupport, height: number, top: number, parent
       legs(v(0, 0, 0), floor + 0.6, 0.62, 0.018, { braced: true, wheels: true });
       riser(0, 0, floor + 0.25, top, 0.027, parent);
       break;
+    case 'windUp': {
+      // Crank-up stand: wide braced legs, a fat inner column and the crank box on the first section.
+      legs(v(0, 0, 0), floor + 0.7, 0.75, 0.02, { braced: true });
+      riser(0, 0, floor + 0.3, top, 0.032, parent);
+      mesh(rbox(0.09, 0.14, 0.08, 0.015), SATIN, parent, v(0.06, floor + 0.95, 0));
+      bar(v(0.105, floor + 0.95, 0), v(0.17, floor + 0.95, 0), 0.008, CHROME, parent);
+      bar(v(0.17, floor + 0.95, 0), v(0.17, floor + 0.87, 0), 0.006, CHROME, parent); // crank handle
+      break;
+    }
     case 'turtleBase':
       legs(v(0, 0, 0), floor + 0.07, 0.36, 0.012, {});
       bar(v(0, floor + 0.04, 0), v(0, top, 0), 0.016, STEEL, parent);
@@ -252,22 +262,56 @@ function softboxOn(pm: ResolvedPhotometrics, color: THREE.Color, on: boolean, le
   return z0 + depth + 0.01;
 }
 
-/** A flag, bounce, neg or diffusion frame. */
-export function board(l: LightFixture, parent: THREE.Object3D): number {
+/** Tint a frame gel puts on the cloth, so a gelled frame reads at a glance. Drawing only. */
+function gelTint(id: string): number | undefined {
+  if (id.startsWith('cto')) return id.endsWith('full') ? 0xf2a65a : id.endsWith('half') ? 0xf6c48e : 0xf9dcb8;
+  if (id.startsWith('ctb')) return id.endsWith('full') ? 0x7fa6e6 : id.endsWith('half') ? 0xa9c3ee : 0xcdddf5;
+  if (id.startsWith('plus-green')) return 0xc8e8b8;
+  if (id.startsWith('minus-green')) return 0xeac0e0;
+  if (id.startsWith('nd')) return 0x9a9a96;
+  return undefined;
+}
+
+function checkerTexture(): THREE.Texture {
+  return cached('tex:checker', () => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d')!;
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { g.fillStyle = (x + y) % 2 ? '#c9ccd0' : '#f6f6f4'; g.fillRect(x * 32, y * 32, 32, 32); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  });
+}
+
+/** A flag, bounce, neg or diffusion frame with its rag; a floppy shows its second panel when open.
+ *  Returns the frame's height and how far its lowest point sits below the pivot (pan space). */
+export function board(l: LightFixture, parent: THREE.Object3D, tiltDeg = 0): { h: number; lowest: number } {
   const h = (l.boardHeight as number | undefined) ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
   const w = l.width;
-  const face = l.kind === 'bounce' ? mat(0xf4f4f2, { roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
-    : l.kind === 'negative' ? mat(0x060606, { roughness: 1, metalness: 0, side: THREE.DoubleSide })
-    : l.kind === 'diffusion' ? mat(0xf2f2f0, { roughness: 0.9, metalness: 0, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
-    : mat(0x0a0a0a, { roughness: 1, metalness: 0, side: THREE.DoubleSide });
-  const cloth = mesh(new THREE.PlaneGeometry(w - 0.02, h - 0.02), face, parent);
-  if (l.kind === 'diffusion') { cloth.userData.noShadow = true; cloth.userData.noAO = true; }
-  // A slim metal frame round the cloth.
-  for (const s of [-1, 1]) {
-    bar(v(-w / 2, (s * h) / 2, 0), v(w / 2, (s * h) / 2, 0), 0.008, l.kind === 'flag' ? SATIN : STEEL, parent);
-    bar(v((s * w) / 2, -h / 2, 0), v((s * w) / 2, h / 2, 0), 0.008, l.kind === 'flag' ? SATIN : STEEL, parent);
-  }
-  return h;
+  const rag = drape(l);
+  const tints = frameGels(l).map(g => gelTint(g.id)).filter((x): x is number => x !== undefined);
+  const see = rag ? rag.transmission : l.kind === 'diffusion' ? 0.5 : 0;
+  let color = rag?.color ?? (l.kind === 'bounce' ? 0xf4f4f2 : l.kind === 'diffusion' ? 0xf2f2f0 : l.kind === 'negative' ? 0x060606 : 0x0a0a0a);
+  if (tints.length) color = tints[tints.length - 1];
+  const opts: THREE.MeshStandardMaterialParameters = { roughness: rag?.id === 'silver-lame' ? 0.35 : rag?.id === 'gold-lame' ? 0.4 : 0.95, metalness: rag?.id.endsWith('lame') ? 0.6 : 0, side: THREE.DoubleSide };
+  if (rag?.pattern === 'net') Object.assign(opts, { transparent: true, opacity: 1 - rag.transmission * 0.9, depthWrite: false });
+  else if (see > 0) Object.assign(opts, { transparent: true, opacity: 0.85 - see * 0.4, depthWrite: false });
+  if (rag?.pattern === 'checker') { opts.map = checkerTexture(); color = 0xffffff; }
+  const face = mat(color, opts);
+  const big = w >= 1.7, tube = big ? 0.016 : w >= 1 ? 0.011 : 0.007;
+  const frameMat = l.kind === 'flag' || l.kind === 'negative' ? SATIN : STEEL;
+  const panel = (y0: number, y1: number) => {
+    const cloth = mesh(new THREE.PlaneGeometry(w - tube * 2, y1 - y0 - tube * 2), face, parent, v(0, (y0 + y1) / 2, 0));
+    if (see > 0 || rag?.pattern === 'net') { cloth.userData.noShadow = see > 0.3; cloth.userData.noAO = true; }
+    for (const y of [y0, y1]) bar(v(-w / 2, y, 0), v(w / 2, y, 0), tube, frameMat, parent);
+    for (const s of [-1, 1]) bar(v((s * w) / 2, y0, 0), v((s * w) / 2, y1, 0), tube, frameMat, parent);
+  };
+  panel(-h / 2, h / 2);
+  const open = l.floppyOpen === true && gripSize(l)?.floppy === true;
+  if (open) panel(-h * 1.5, -h / 2);
+  // Ears at the sides of a big frame, where it pivots on its stands.
+  if (gripStandCount(l) === 2) for (const s of [-1, 1]) mesh(rbox(0.06, 0.1, 0.05, 0.01), SATIN, parent, v(s * (w / 2 + 0.03), 0, 0));
+  const c = Math.abs(Math.cos(rad(tiltDeg)));
+  return { h, lowest: (open ? h * 1.5 : h / 2) * c };
 }
 
 // MARK: Camera

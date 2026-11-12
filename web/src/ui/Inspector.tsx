@@ -25,6 +25,7 @@ import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quir
 import { deg, lux as fmtLux, metres, pct, reading as fmtReading, READING_UNITS, readingText, readingUnit, setReadingUnit, signedDeg, watts } from './format';
 import type { ReadingUnit } from './format';
 import { Icon } from './icons';
+import { GripFields } from './GripPanel';
 import type { Selection } from './PlanCanvas';
 
 function Slider({ label, value, min, max, step, format, onChange }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onChange(v: number): void }) {
@@ -234,12 +235,12 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
           <div className="chips" style={{ marginBottom: 12 }}>
             {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k })}>{KIND_INFO[k].label}</button>)}
           </div>
+          <GripFields light={l} replace={replace} />
           <Slider label="Width" value={l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
           <StandField light={l} replace={replace} />
-          <p className="note">{l.kind === 'bounce' ? 'Re-emits light that lands on it (one bounce, 80 % white board).' : l.kind === 'diffusion' ? 'Passes half the light that goes through it.' : 'Blocks light that goes through it.'}</p>
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
       </div>

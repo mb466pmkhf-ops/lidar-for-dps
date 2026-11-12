@@ -11,6 +11,7 @@ import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
 import { readingShort, stopColor, stopLegend } from './format';
 import { setPieceName } from '../model/setPieces';
+import { drape } from '../model/grip';
 
 export type Selection =
   | { kind: 'light'; id: string }
@@ -327,10 +328,12 @@ export function PlanCanvas(props: Props) {
       );
     } else {
       const half = (l.width / 2) * v.scale;
-      const fill = l.kind === 'bounce' ? 'var(--paper)' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? 'var(--ink2)' : 'var(--occ)';
+      const rag = drape(l);
+      const fill = rag && rag.kinds[0] !== 'flag' && rag.kinds[0] !== 'negative' && rag.pattern !== 'net' ? '#' + rag.color.toString(16).padStart(6, '0')
+        : l.kind === 'bounce' ? 'var(--paper)' : l.kind === 'negative' ? '#000' : l.kind === 'flag' ? 'var(--ink2)' : 'var(--occ)';
       g.push(
         <g key="body" transform={`translate(${cx},${cy}) rotate(${l.pan})`} style={{ cursor: 'move' }} onPointerDown={e => down(e, { ...s, part: 'body' })}>
-          <rect x={-Math.max(half, 8)} y={-3} width={Math.max(half, 8) * 2} height={6} fill={fill} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={l.kind === 'diffusion' ? '4 3' : undefined} />
+          <rect x={-Math.max(half, 8)} y={-3} width={Math.max(half, 8) * 2} height={6} fill={fill} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={sel ? 2 : 1} strokeDasharray={rag?.pattern === 'net' ? '1 2' : l.kind === 'diffusion' ? '4 3' : undefined} />
           <line x1={0} y1={-3} x2={0} y2={-12} stroke={sel ? 'var(--accent)' : 'var(--ink3)'} strokeWidth={1.5} />
           <rect x={-Math.max(half, 14)} y={-12} width={Math.max(half, 14) * 2} height={24} fill="transparent" />
         </g>,
