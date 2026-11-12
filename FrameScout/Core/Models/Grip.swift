@@ -69,7 +69,7 @@ enum GripCatalog {
         Drape(id: "checkerboard", name: "Checkerboard (white/silver)", kinds: [.bounce], transmission: 0, scatter: 0, reflectance: 0.85, color: 0xdcdcdc, pattern: .checker, note: "General crew practice. Punchier than white; the silver squares add a harder edge the readings treat as soft."),
         Drape(id: "silver-lame", name: "Silver lamé", kinds: [.bounce], transmission: 0, scatter: 0, reflectance: 0.9, color: 0xc9ccd0, note: "General crew practice. Specular and directional; readings treat it as a soft bounce, so the spot it throws is brighter than shown."),
         Drape(id: "gold-lame", name: "Gold lamé", kinds: [.bounce], transmission: 0, scatter: 0, reflectance: 0.75, color: 0xd4b46a, note: "General crew practice. Warms the bounce (colour not in the readings)."),
-        Drape(id: "solid", name: "Solid (black duvetyne)", kinds: [.flag, .negative], transmission: 0, scatter: 0, reflectance: 0.03, color: 0x0a0a0a, note: "General crew practice. Blocks the light; a little sheen on the lit face."),
+        Drape(id: "solid", name: "Solid (black duvetyne)", kinds: [.flag, .negative], transmission: 0, scatter: 0, reflectance: 0.03, color: 0x0a0a0a, note: "General crew practice. A little sheen on the lit face."),
         Drape(id: "ultrabounce-black", name: "Ultrabounce (black side)", kinds: [.negative, .flag], transmission: 0, scatter: 0, reflectance: 0.05, color: 0x101010, note: "General crew practice. Opaque; the white side faces away."),
         Drape(id: "griffolyn-black", name: "Griffolyn (black side)", kinds: [.negative, .flag], transmission: 0, scatter: 0, reflectance: 0.05, color: 0x121212, note: "General crew practice. Opaque laminate; the white side faces away."),
         Drape(id: "silk", name: "Silk", kinds: [.diffusion], transmission: 0.35, scatter: 1, reflectance: 0.35, color: 0xf5f3ee, note: "General crew practice: about 1½ stops."),
@@ -176,8 +176,8 @@ extension LightFixture {
             if size.floppy { parts.append(size.name + (floppyOpen == true ? " (open)" : "")) }
             else { parts.append(size.name.replacingOccurrences(of: #" (frame|flag)$"#, with: "", options: .regularExpression)) }
         }
-        if let d = drape { parts.append(d.name) }
-        else if size?.floppy != true { parts.append(kind.label) }
+        if let d = drape, !(size?.floppy == true && d.id == "solid") { parts.append(d.name) }
+        else if drape == nil && size?.floppy != true { parts.append(kind.label) }
         let gels = frameGels
         if !gels.isEmpty { parts.append("+ " + gels.map(\.name).joined(separator: ", ")) }
         return parts.filter { !$0.isEmpty }.joined(separator: " ")
@@ -209,6 +209,9 @@ extension LightFixture {
     mutating func setFloppyOpen(_ open: Bool) {
         let before = self
         floppyOpen = open ? true : nil
+        // The flap drops down: lift the floppy so the opened panel clears the floor.
+        let bottom = gripSpan.bottom
+        if bottom < 0.05 { height = ((height + 0.05 - bottom) * 100).rounded() / 100 }
         renameIfAutomatic(from: before)
     }
 

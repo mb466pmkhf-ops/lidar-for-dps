@@ -240,6 +240,11 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
+          <Slider label="Tilt" value={l.tilt} min={-90} max={90} step={1} format={signedDeg} onChange={v => set({ tilt: v }, false)} />
+          <div className="chips" style={{ margin: '-4px 0 10px 122px' }}>
+            <button className={'chip' + (Math.abs(l.tilt) < 0.5 ? ' on' : '')} onClick={() => set({ tilt: 0 })}>Upright</button>
+            <button className={'chip' + (Math.abs(l.tilt) > 89.5 ? ' on' : '')} onClick={() => set({ tilt: 90 })}>Flat overhead</button>
+          </div>
           <StandField light={l} replace={replace} />
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />

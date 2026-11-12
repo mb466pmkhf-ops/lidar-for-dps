@@ -67,7 +67,7 @@ export const DRAPES: Drape[] = [
   { id: 'silver-lame', name: 'Silver lamé', kinds: ['bounce'], transmission: 0, scatter: 0, reflectance: 0.9, color: 0xc9ccd0, note: `${crew}. Specular and directional; readings treat it as a soft bounce, so the spot it throws is brighter than shown.` },
   { id: 'gold-lame', name: 'Gold lamé', kinds: ['bounce'], transmission: 0, scatter: 0, reflectance: 0.75, color: 0xd4b46a, note: `${crew}. Warms the bounce (colour not in the readings).` },
   // Negative and flags
-  { id: 'solid', name: 'Solid (black duvetyne)', kinds: ['flag', 'negative'], transmission: 0, scatter: 0, reflectance: 0.03, color: 0x0a0a0a, note: `${crew}. Blocks the light; a little sheen on the lit face.` },
+  { id: 'solid', name: 'Solid (black duvetyne)', kinds: ['flag', 'negative'], transmission: 0, scatter: 0, reflectance: 0.03, color: 0x0a0a0a, note: `${crew}. A little sheen on the lit face.` },
   { id: 'ultrabounce-black', name: 'Ultrabounce (black side)', kinds: ['negative', 'flag'], transmission: 0, scatter: 0, reflectance: 0.05, color: 0x101010, note: `${crew}. Opaque; the white side faces away.` },
   { id: 'griffolyn-black', name: 'Griffolyn (black side)', kinds: ['negative', 'flag'], transmission: 0, scatter: 0, reflectance: 0.05, color: 0x121212, note: `${crew}. Opaque laminate; the white side faces away.` },
   // Diffusion
@@ -150,8 +150,8 @@ export function gripLabel(l: LightFixture): string {
   const d = drape(l);
   const parts: string[] = [];
   if (size) parts.push(size.floppy ? size.name + (l.floppyOpen ? ' (open)' : '') : size.name.replace(/ (frame|flag)$/, ''));
-  if (d) parts.push(d.name);
-  else if (!size || !size.floppy) parts.push(KIND_NAME[l.kind as GripKind] ?? '');
+  if (d && !(size?.floppy && d.id === 'solid')) parts.push(d.name);
+  else if (!d && !size?.floppy) parts.push(KIND_NAME[l.kind as GripKind] ?? '');
   const gels = frameGels(l);
   if (gels.length) parts.push('+ ' + gels.map(g => g.name).join(', '));
   return parts.filter(Boolean).join(' ');
@@ -181,6 +181,9 @@ export function applyDrape(l: LightFixture, d: Drape): LightFixture {
 export function setFloppyOpen(l: LightFixture, open: boolean): LightFixture {
   const n: LightFixture = { ...l };
   if (open) n.floppyOpen = true; else delete n.floppyOpen;
+  // The flap drops down: lift the floppy so the opened panel clears the floor.
+  const span = gripSpan(n);
+  if (span.bottom < 0.05) n.height = r2(n.height + 0.05 - span.bottom);
   return renamed(l, n);
 }
 
