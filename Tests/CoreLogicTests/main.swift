@@ -488,6 +488,16 @@ check(broad.proportions.shoulderWidth > maya.proportions.shoulderWidth, "build w
 let mayaBack = try JSONDecoder().decode(PrevisCharacter.self, from: JSONEncoder().encode(maya))
 check(mayaBack == maya, "person round trip")
 check((try JSONDecoder().decode(PrevisCharacter.self, from: Data(#"{"name":"X","type":"girl","position":{"x":1,"z":2}}"#.utf8))).height == CharacterType.girl.defaultHeight, "person decodes with defaults")
+// Same cases as web/tests/characters.test.ts.
+let sam = PrevisCharacter(name: "Sam", type: .universal, position: P(0, 0))
+check(!CharacterType.universal.isChild && sam.height > CharacterType.woman.defaultHeight && sam.height < CharacterType.man.defaultHeight, "universal adult sits between man and woman")
+check(abs(sam.eyeHeight / sam.height - 0.936) < 0.01, "universal eye height")
+check(sam.proportions.shoulderWidth / sam.height < PrevisCharacter(name: "M", type: .man, position: P(0, 0)).proportions.shoulderWidth / CharacterType.man.defaultHeight, "universal shoulders narrower than the man's")
+check(sam.hairStyle == .cropped && sam.hair == nil, "hair follows the type until set")
+var samLong = sam; samLong.hair = .long
+check((try JSONDecoder().decode(PrevisCharacter.self, from: JSONEncoder().encode(samLong))) == samLong, "hair round trip")
+let future = try JSONDecoder().decode(PrevisCharacter.self, from: Data(#"{"name":"X","type":"robot","hair":"mohawk","position":{"x":0,"z":0}}"#.utf8))
+check(future.type == .universal && future.hairStyle == .cropped, "unknown type and hair fall back instead of failing the location")
 var previs = Location(name: "Previs")
 previs.previsCharacters = [maya]
 previs.lightMeters = [LightMeter(name: "M1", position: P(0, -3))]
@@ -829,15 +839,19 @@ do {
     check(ListingReader.fmt(15) == "15" && ListingReader.fmt(18.288) == "18.29", "listing numbers print like the web")
 }
 
-// MARK: Reading units (T-stop by default)
+// MARK: Readings (T-stop first, lux optional)
 do {
     let e = ExposureSettings()
-    check(ReadingUnit.tStop.text(lux: e.keyLux, exposure: e) == ExposureSettings.stopLabel(e.tStop), "key level reads as the set T-stop")
-    check(ReadingUnit.tStop.text(lux: e.keyLux * 2, exposure: e) == ExposureSettings.stopLabel(e.tStop * 2.0.squareRoot()), "double the light reads one stop higher")
-    check(ReadingUnit.stops.text(lux: e.keyLux * 2, exposure: e) == "+1" && ReadingUnit.stops.text(lux: e.keyLux, exposure: e) == "±0", "stops over or under the set stop")
-    check(ReadingUnit.lux.text(lux: 536, exposure: e) == "536 lx", "lux readings unchanged")
-    check(ReadingUnit.footCandles.text(lux: 1076.4, exposure: e) == "100 fc", "foot-candles are lux / 10.764")
-    check(ReadingUnit(rawValue: "tStop") == .tStop && ReadingUnit.allCases.first == .tStop, "T-stop is the first, default unit")
+    check(ReadingFormat.value(lux: e.keyLux, exposure: e, extra: .off) == ExposureSettings.stopLabel(e.tStop), "key level reads as the set T-stop")
+    check(ReadingFormat.value(lux: e.keyLux * 2, exposure: e, extra: .off) == ExposureSettings.stopLabel(e.tStop * 2.0.squareRoot()), "double the light reads one stop higher")
+    check(ReadingFormat.value(lux: 536, exposure: e, extra: .lux).hasSuffix(" · 536 lx"), "lux follows the stop")
+    check(ReadingFormat.value(lux: 1076.4, exposure: e, extra: .footCandles).hasSuffix(" · 100 fc"), "foot-candles are lux / 10.764")
+    check(ReadingFormat.text(lux: 300, exposure: e, extra: .lux).hasPrefix("≈ T"), "the stop comes first and the reading is marked approximate")
+    check(ReadingFormat.stop(lux: 0, exposure: e) == "under T0.5" && ReadingFormat.stop(lux: 1e-4, exposure: e) == "under T0.5", "no light reads under T0.5, never T0")
+    check(ReadingExtra.allCases.first == ReadingExtra.off, "lux is off until switched on")
+    check(ReadingExtra.migrated(from: "lux") == .lux && ReadingExtra.migrated(from: "footCandles") == .footCandles && ReadingExtra.migrated(from: "stops") == nil, "an old lux choice is kept")
+    check(abs(ExposureSettings.steppedStop(2.8, thirds: 1) - 3.1748) < 1e-3 && abs(ExposureSettings.steppedStop(2.8, thirds: 3) - 4) < 1e-9, "T-stop steps by thirds")
+    check(ExposureSettings.steppedStop(1, thirds: -1) == 1 && ExposureSettings.steppedISO(800, by: 1) == 1000 && ExposureSettings.steppedISO(12800, by: 1) == 12800, "steps stop at the ends")
 }
 
 // MARK: Set pieces by hand (same cases as web/tests/setPieces.test.ts)

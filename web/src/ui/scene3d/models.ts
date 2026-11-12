@@ -1,15 +1,16 @@
 // Equipment and people for the 3D view: generic lighting units, stands, a cinema camera, figures.
 // Everything faces −Z in its own frame. Shapes are generic on purpose (no maker's designs).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BarnDoors, CameraRig, LightFixture, LightMeter, PrevisCharacter } from '../../model/types';
 import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometrics';
 import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
 import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
 import { boardOptics } from '../../model/calculator';
-import { skinRGB } from '../../model/characters';
+import { hairOf, isChild, shapeBlend, skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
-  bar, cached, fresnelTexture, gridTexture, ledTexture, limb, mat, mesh, rbox, v,
+  bar, cached, fabricBump, fresnelTexture, gridTexture, ledTexture, limb, mat, mesh, rbox, v,
 } from './kit';
 
 // MARK: Stands
@@ -411,62 +412,198 @@ const rad = (d: number) => (d * Math.PI) / 180;
 
 // MARK: People
 
-const CLOTH_TOP = 0x74787d, CLOTH_LEGS = 0x3c4046, HAIR = 0x191614;
+const CLOTH_TOP = 0x74787d, CLOTH_LEGS = 0x3c4046, HAIR = 0x221a15, SHOE = 0x1c1917, SOLE = 0x34312e, BELT = 0x201b17;
 
-/** A mannequin with the height, build, skin tone and posture set in the planner. Faces −Z. */
+/** A limb that narrows from `r1` at `a` to `r2` at `b`, rounded at both ends. */
+function taper(a: THREE.Vector3, b: THREE.Vector3, r1: number, r2: number, m: THREE.Material, parent: THREE.Object3D) {
+  bar(a, b, r1, m, parent, r2);
+  mesh(new THREE.SphereGeometry(r1, 16, 12), m, parent, a);
+  mesh(new THREE.SphereGeometry(r2, 16, 12), m, parent, b);
+}
+/** A rounded shell turned round the Y axis from (radius, height) pairs, flattened front to back by `depth`. */
+function shell(profile: [number, number][], depth: number, m: THREE.Material, parent: THREE.Object3D, shape?: (p: THREE.Vector3) => void) {
+  const geo = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(Math.max(r, 1e-4), y)), 48);
+  if (shape) {
+    const a = geo.attributes.position as THREE.BufferAttribute, p = new THREE.Vector3();
+    for (let i = 0; i < a.count; i++) { p.fromBufferAttribute(a, i); shape(p); a.setXYZ(i, p.x, p.y, p.z); }
+    geo.computeVertexNormals();
+  }
+  const o = mesh(geo, m, parent);
+  o.scale.z = depth;
+  return o;
+}
+function blob(r: number, m: THREE.Material, parent: THREE.Object3D, at: THREE.Vector3, sx = 1, sy = 1, sz = 1, seg = 18) {
+  const o = mesh(new THREE.SphereGeometry(r, seg, Math.round(seg * 0.7)), m, parent, at);
+  o.scale.set(sx, sy, sz);
+  return o;
+}
+
+/** A hand hanging from the wrist along `dir`: palm, four fingers and a thumb. `s` is the side (±1); `roll` turns the palm. */
+function hand(wrist: THREE.Vector3, dir: THREE.Vector3, h: number, s: number, roll: number, skin: THREE.Material, parent: THREE.Object3D) {
+  const g = new THREE.Group();
+  g.position.copy(wrist);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
+  g.rotateY(roll);
+  const palmL = h * 0.058, width = h * 0.044, thick = h * 0.019, fingerL = h * 0.046, fr = width / 8.6;
+  mesh(rbox(thick, palmL, width, thick * 0.45, 3), skin, g, v(0, -palmL / 2, 0));
+  [0.92, 1, 0.95, 0.78].forEach((len, i) => {
+    const z = (-1.5 + i) * (width / 4) * 0.98;
+    const base = v(-s * thick * 0.05, -palmL + fr * 0.6, z), l = fingerL * len;
+    const mid = base.clone().add(v(-s * l * 0.12, -l * 0.55, 0));
+    const tip = mid.clone().add(v(-s * l * 0.22, -l * 0.4, 0)); // a relaxed curl towards the palm
+    limb(base, mid, fr, skin, g); limb(mid, tip, fr * 0.92, skin, g);
+  });
+  const t0 = v(-s * thick * 0.25, -palmL * 0.3, -width * 0.44);
+  const t1 = t0.clone().add(v(-s * h * 0.012, -h * 0.022, -h * 0.01));
+  const t2 = t1.clone().add(v(-s * h * 0.008, -h * 0.016, -h * 0.002));
+  limb(t0, t1, fr * 1.25, skin, g); limb(t1, t2, fr * 1.1, skin, g);
+  parent.add(g);
+}
+
+/** Hair over the skull (centre `c`, radius `r`, flattened like the skull). */
+function hair(style: string, c: THREE.Vector3, r: number, headY: number, m: THREE.Material, parent: THREE.Object3D) {
+  if (style === 'bald') return;
+  const cap = (grow: number, cover: number, tilt: number) => {
+    const o = mesh(new THREE.SphereGeometry(r * grow, 36, 22, 0, Math.PI * 2, 0, Math.PI * cover), m, parent, c);
+    o.scale.set(0.79, 0.9, 0.91); o.rotation.x = tilt;
+    return o;
+  };
+  if (style === 'cropped') { cap(1.025, 0.56, 0.52); return; }
+  if (style === 'short') { cap(1.07, 0.6, 0.5).scale.y = 0.95; return; }
+  if (style === 'tied') { cap(1.04, 0.6, 0.42); blob(r * 0.36, m, parent, v(0, headY + r * 0.3, r * 1.02)); return; }
+  // Long: a full cap, a fall of hair down the back to the shoulders and curtains over the ears.
+  cap(1.07, 0.6, 0.4);
+  blob(r * 0.92, m, parent, v(0, headY - r * 0.62, r * 0.5), 0.9, 1.45, 0.52, 28);
+  for (const s of [-1, 1]) blob(r * 0.85, m, parent, v(s * r * 0.7, headY - r * 0.72, r * 0.25), 0.26, 1.5, 0.85, 24).rotation.z = -s * 0.1;
+}
+
+/**
+ * A stand-in person with the height, build, skin tone, hair and posture set in the planner. Faces −Z.
+ * Neutral grey clothes so the light on the figure reads; a face (eyes, brow, nose, lips, ears) so you can see
+ * where the light falls, and glossy eyes so catchlights show.
+ */
 export function person(c: PrevisCharacter): THREE.Group {
   const g = new THREE.Group();
   g.position.set(c.position.x, 0, c.position.z);
   g.rotation.y = -rad(c.facing);
   const h = c.height, sitting = c.posture === 'sitting';
-  const child = c.type === 'girl' || c.type === 'boy', female = c.type === 'woman' || c.type === 'girl';
-  const headH = h / (child ? 6 : 7.5);
+  const child = isChild(c.type), fem = shapeBlend[c.type] ?? 0.5, bust = !child && fem > 0.75;
+  const headH = h / (child ? 6 : 7.5), r = headH / 2;
   const hip0 = h * 0.52, seat = Math.min(0.45, hip0 * 0.5), drop = sitting ? hip0 - seat : 0;
-  const hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - headH / 2 - drop;
+  const hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop;
   const build = Math.min(Math.max(c.build, 0), 1);
-  const sw = h * (0.1 + 0.035 * build + (female ? 0 : 0.008)), hw = h * (0.078 + 0.03 * build + (female ? 0.006 : 0));
+  const sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem);
   const depth = h * (0.105 + 0.05 * build);
-  const top = mat(CLOTH_TOP, { roughness: 0.9, metalness: 0 }), legsM = mat(CLOTH_LEGS, { roughness: 0.9, metalness: 0 });
-  const skin = mat(skinRGB[Math.min(Math.max(c.skinTone, 1), 6) - 1], { roughness: 0.5, metalness: 0 });
-  const shoe = mat(0x191919, { roughness: 0.7, metalness: 0 });
+  const tone = skinRGB[Math.min(Math.max(c.skinTone, 1), 6) - 1];
+  const top = mat(CLOTH_TOP, { roughness: 0.92, metalness: 0, bumpMap: cached('fabric', fabricBump), bumpScale: 0.25 });
+  const legsM = mat(CLOTH_LEGS, { roughness: 0.9, metalness: 0, bumpMap: cached('fabric', fabricBump), bumpScale: 0.25 });
+  const skin = mat(tone, { roughness: 0.52, metalness: 0 });
+  const lip = mat('#' + new THREE.Color(tone).lerp(new THREE.Color(0x8c3f3c), 0.28).multiplyScalar(0.88).getHexString(), { roughness: 0.4, metalness: 0 });
+  const hairM = mat(HAIR, { roughness: 0.72, metalness: 0 });
+  const eyeWhite = new THREE.MeshPhysicalMaterial({ color: 0xc4bdb2, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.03 });
+  const iris = new THREE.MeshPhysicalMaterial({ color: 0x2e2119, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.02 });
+  const shoeM = mat(SHOE, { roughness: 0.45, metalness: 0 }), soleM = mat(SOLE, { roughness: 0.9, metalness: 0 });
 
-  // Torso: chest and pelvis.
+  // Torso: trousers to a belt, then a loose top with a crew neck.
   const torsoH = shoulderY - hipY;
-  mesh(rbox(sw * 2, torsoH * 0.68, depth, depth * 0.42, 5), top, g, v(0, shoulderY - torsoH * 0.3, 0));
-  mesh(rbox(hw * 2.05, torsoH * 0.5, depth * 0.95, depth * 0.4, 5), top, g, v(0, hipY + torsoH * 0.22, 0));
-  mesh(rbox(hw * 2.1, h * 0.09, depth * 0.98, depth * 0.4, 5), legsM, g, v(0, hipY + h * 0.012, 0));
-  // Neck and head.
-  bar(v(0, shoulderY, 0), v(0, headY - headH * 0.3, -0.005), headH * 0.2, skin, g);
-  const r = headH / 2;
-  const skull = mesh(new THREE.SphereGeometry(r, 28, 20), skin, g, v(0, headY, 0));
-  skull.scale.set(0.8, 1, 0.9);
-  mesh(new THREE.SphereGeometry(r * 0.12, 10, 8), skin, g, v(0, headY - r * 0.12, -r * 0.9)); // nose
-  const hair = mat(HAIR, { roughness: 0.85, metalness: 0 });
-  const cap = mesh(new THREE.SphereGeometry(r * 1.05, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.46), hair, g, v(0, headY + r * 0.02, r * 0.04));
-  cap.scale.set(0.83, 1, 0.93); cap.rotation.x = 0.62;
-  if (female) mesh(new THREE.SphereGeometry(r * 0.8, 20, 14), hair, g, v(0, headY - r * 0.35, r * 0.42)).scale.set(0.95, 1.25, 0.6);
+  const waistY = hipY + torsoH * 0.36, chestY = shoulderY - torsoH * 0.3;
+  const chestR = sw * 0.88, waistR = hw * (0.98 - 0.12 * fem) + h * 0.012 * build, neckR = r * (0.44 - 0.06 * fem);
+  const k = depth / (2 * chestR);
+  const beltY = hipY + h * 0.06, crotchY = hipY - h * 0.035;
+  shell([[0, crotchY], [hw * 0.7, crotchY + h * 0.004], [hw * 0.97, hipY], [hw * 1.01, hipY + h * 0.035], [hw * 0.99, beltY + h * 0.012], [0, beltY + h * 0.012]], k * 1.08, legsM, g);
+  const belt = mesh(new THREE.TorusGeometry(hw * 1.0, h * 0.007, 8, 40), mat(BELT, { roughness: 0.5, metalness: 0 }), g, v(0, beltY, 0), new THREE.Euler(Math.PI / 2, 0, 0));
+  belt.scale.y = k * 1.1;
+  mesh(rbox(h * 0.03, h * 0.022, h * 0.006, h * 0.002), CHROME, g, v(0, beltY, -hw * k * 1.1 - h * 0.004)); // buckle
+  shell([
+    [hw * 1.03, beltY + h * 0.016], [(hw + waistR) * 0.53, waistY - torsoH * 0.12], [waistR * 1.02, waistY], [chestR, chestY],
+    [sw * 0.92, shoulderY - h * 0.045], [sw * 0.84, shoulderY - h * 0.01], [sw * 0.58, shoulderY + h * 0.012],
+    [neckR * 1.55, shoulderY + h * 0.024], [neckR * 1.12, shoulderY + h * 0.03],
+  ], k, top, g, bust ? p => {
+    // A soft bust pushed out of the front of the top (in the shell's unflattened space).
+    if (p.z >= 0) return;
+    const dx = Math.abs(p.x) - chestR * 0.42, dy = p.y - (chestY - h * 0.02);
+    const lift = h * 0.032 * Math.exp(-(dx * dx) / (chestR * chestR * 0.09) - (dy * dy) / (h * h * 0.0018));
+    p.z -= (lift / k) * Math.min(1, -p.z / chestR);
+  } : undefined);
+  const collar = mesh(new THREE.TorusGeometry(neckR * 1.14, h * 0.0035, 8, 32), top, g, v(0, shoulderY + h * 0.028, 0), new THREE.Euler(Math.PI / 2 - 0.22, 0, 0));
+  collar.scale.y = 0.9;
 
-  // Arms.
+  // Neck and head. The skull sits a little back; the jaw, cheeks, nose, brow and lips build the face.
+  bar(v(0, shoulderY + h * 0.012, h * 0.006), v(0, headY - r * 0.38, r * 0.16), neckR, skin, g, neckR * 0.94);
+  const skullC = v(0, headY + r * 0.06, r * 0.1);
+  blob(r, skin, g, skullC, 0.78, 0.9, 0.9, 32);
+  blob(r * 0.55, skin, g, v(0, headY - r * 0.4, -r * 0.3), 1.12 - 0.12 * fem, 1, 1, 24);           // jaw and mouth
+  blob(r * 0.24, skin, g, v(0, headY - r * 0.83, -r * 0.55), 1.15 - 0.15 * fem, 0.8, 0.9);         // chin
+  for (const s of [-1, 1]) {
+    blob(r * 0.25, skin, g, v(s * r * 0.77, headY - r * 0.1, r * 0.12), 0.34, 1, 0.62).rotation.y = s * 0.3; // ear
+    const eye = v(s * r * 0.29, headY - r * 0.04, -r * 0.7);
+    blob(r * 0.1, eyeWhite, g, eye);
+    blob(r * 0.062, iris, g, eye.clone().add(v(0, 0, -r * 0.07)), 1, 1, 0.55, 14);
+    const lid = mesh(new THREE.SphereGeometry(r * 0.106, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.3), skin, g, eye);
+    lid.rotation.x = -0.3;
+    limb(v(s * r * 0.13, headY + r * 0.155, -r * 0.83), v(s * r * 0.44, headY + r * 0.165, -r * 0.74), r * 0.022, hairM, g); // eyebrow
+  }
+  limb(v(-r * 0.4, headY + r * 0.09, -r * 0.76), v(r * 0.4, headY + r * 0.09, -r * 0.76), r * 0.06, skin, g); // brow ridge
+  bar(v(0, headY + r * 0.02, -r * 0.82), v(0, headY - r * 0.3, -r * 0.96), r * 0.055, skin, g, r * 0.085);   // nose bridge
+  blob(r * 0.1, skin, g, v(0, headY - r * 0.33, -r * 0.97), 1, 0.85, 0.9);                           // nose tip
+  for (const s of [-1, 1]) blob(r * 0.068, skin, g, v(s * r * 0.09, headY - r * 0.37, -r * 0.89));
+  blob(r * 0.16, lip, g, v(0, headY - r * 0.56, -r * 0.84), 1, 0.22, 0.34);
+  blob(r * 0.14, lip, g, v(0, headY - r * 0.63, -r * 0.82), 1, 0.27, 0.34);
+  hair(hairOf(c), skullC, r, headY, hairM, g);
+
+  // Arms: sleeves to the wrist, a cuff, then the hand.
   const ar = h * (0.021 + 0.008 * build);
   for (const s of [-1, 1]) {
-    const shoulder = v(s * (sw - ar * 0.2), shoulderY - ar, 0);
+    const shoulder = v(s * (sw * 0.86 - ar * 0.2), shoulderY - ar * 0.95, 0);
     const elbow = sitting ? v(s * (sw + h * 0.02), shoulderY - h * 0.175, -h * 0.025) : v(s * (sw + h * 0.022), shoulderY - h * 0.185, h * 0.008);
-    const wrist = sitting ? v(s * sw * 0.72, hipY + h * 0.075, -h * 0.17) : v(s * (sw + h * 0.03), shoulderY - h * 0.345, -h * 0.03);
-    limb(shoulder, elbow, ar, top, g);
-    limb(elbow, wrist, ar * 0.82, top, g);
-    mesh(new THREE.SphereGeometry(h * 0.025, 14, 10), skin, g, wrist.clone().add(v(0, sitting ? 0 : -h * 0.025, sitting ? -h * 0.02 : 0))).scale.set(0.8, 1.15, 1);
+    const wrist = sitting ? v(s * sw * 0.72, hipY + h * 0.085, -h * 0.17) : v(s * (sw + h * 0.03), shoulderY - h * 0.345, -h * 0.03);
+    taper(shoulder, elbow, ar * 1.18, ar * 0.86, top, g);
+    const fore = new THREE.Vector3().subVectors(wrist, elbow);
+    const cuff = wrist.clone().addScaledVector(fore.clone().normalize(), -h * 0.012);
+    taper(elbow, cuff, ar * 0.9, ar * 0.7, top, g);
+    bar(cuff, wrist, ar * 0.5, skin, g, ar * 0.46);
+    hand(wrist, fore, h, s, sitting ? s * Math.PI / 2 : 0, skin, g);
   }
-  // Legs.
-  const tr = h * (0.042 + 0.016 * build), sr = h * (0.03 + 0.008 * build);
+
+  // Legs: trousers with a soft knee, then shoes with a sole.
+  const tr = h * (0.044 + 0.016 * build), sr = h * (0.029 + 0.008 * build);
   for (const s of [-1, 1]) {
-    const hip = v(s * hw * 0.55, hipY, 0);
-    const knee = sitting ? v(s * hw * 0.7, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.55, h * 0.285, -h * 0.008);
-    const ankle = sitting ? v(s * hw * 0.7, h * 0.05, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.55, h * 0.05, h * 0.008);
-    limb(hip, knee, tr, legsM, g);
-    limb(knee, ankle, sr, legsM, g);
-    mesh(rbox(h * 0.055, h * 0.04, h * 0.145, h * 0.016), shoe, g, v(ankle.x, h * 0.02, ankle.z - h * 0.04));
+    const hip = v(s * hw * 0.5, hipY - h * 0.008, 0);
+    const knee = sitting ? v(s * hw * 0.68, hipY + h * 0.005, -h * 0.245) : v(s * hw * 0.5, h * 0.285, -h * 0.008);
+    const ankle = sitting ? v(s * hw * 0.68, h * 0.055, -h * 0.245 - Math.max(0, h * 0.24 - hipY) * 0.9) : v(s * hw * 0.48, h * 0.055, h * 0.006);
+    taper(hip, knee, tr, sr * 1.08, legsM, g);
+    taper(knee, ankle, sr * 1.05, sr * 0.82, legsM, g);
+    const foot = v(ankle.x, 0, ankle.z);
+    mesh(rbox(h * 0.05, h * 0.012, h * 0.152, h * 0.005), soleM, g, foot.clone().add(v(0, h * 0.006, -h * 0.038)));
+    blob(h * 0.027, shoeM, g, foot.clone().add(v(0, h * 0.026, -h * 0.078)), 0.95, 0.62, 1.55);   // toe box
+    blob(h * 0.029, shoeM, g, foot.clone().add(v(0, h * 0.03, h * 0.006)), 0.9, 0.95, 1.05);      // heel and collar
   }
-  return g;
+  return mergeByMaterial(g);
+}
+
+/** Bakes a figure's many small parts into one mesh per material, so a person costs a handful of draw calls. */
+function mergeByMaterial(g: THREE.Group): THREE.Group {
+  const pos = g.position.clone(), rot = g.rotation.clone();
+  g.position.set(0, 0, 0); g.rotation.set(0, 0, 0);
+  g.updateMatrixWorld(true);
+  const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  g.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const geo = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld);
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') geo.deleteAttribute(k);
+    const mat = m.material as THREE.Material;
+    parts.set(mat, [...(parts.get(mat) ?? []), geo]);
+    m.geometry.dispose();
+  });
+  const out = new THREE.Group();
+  out.position.copy(pos); out.rotation.copy(rot);
+  for (const [mat, geos] of parts) {
+    const merged = mergeGeometries(geos);
+    geos.forEach(x => x.dispose());
+    if (merged) out.add(new THREE.Mesh(merged, mat));
+  }
+  return out;
 }
 
 // MARK: Light meter

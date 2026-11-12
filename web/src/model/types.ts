@@ -52,10 +52,13 @@ export interface LightFixture {
   [key: string]: unknown;
 }
 
-export type CharacterType = 'man' | 'woman' | 'girl' | 'boy';
+export type CharacterType = 'man' | 'woman' | 'universal' | 'girl' | 'boy';
+export type HairStyle = 'short' | 'long' | 'tied' | 'cropped' | 'bald';
 export interface PrevisCharacter {
   id: UUID; name: string; type: CharacterType; height: number; build: number; skinTone: number;
   position: PlanPoint; facing: number; posture: 'standing' | 'sitting'; scanID?: UUID;
+  /** Missing means the type's usual hair (see defaultHair). */
+  hair?: HairStyle;
   [key: string]: unknown;
 }
 

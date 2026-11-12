@@ -1,13 +1,14 @@
 // The lighting planner for one location: toolbar, plan and inspector. Edits go straight into the
 // project (and so to the phone); undo/redo covers this session.
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useReadingUnit } from './format';
+import { useReadingExtra } from './format';
+import { CameraSettingsBar } from './CameraSettings';
 import type { FloorPlan, LightKind, Location, PlanPoint, Project } from '../model/types';
 import { KIND_INFO, applyProfile, profileByID } from '../model/photometrics';
 import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISSION, planDist } from '../model/calculator';
 import { withDefaults } from '../model/exposure';
 import { eyeHeight } from '../model/characters';
-import { newCharacter, newLight, newMeter } from '../model/factory';
+import { newCamera, newCharacter, newLight, newMeter } from '../model/factory';
 import { GRIP_PRESETS, applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
 import {
   FURNITURE_PRESETS, OPENING_PRESETS, addObject, addSegment, findSegment, furniturePreset, openingPreset, placeFurniture, placeOpening,
@@ -25,6 +26,7 @@ type Tool =
   | { kind: 'light'; light: LightKind; profile?: string; size?: string; drape?: string }
   | { kind: 'person' }
   | { kind: 'meter' }
+  | { kind: 'camera' }
   | { kind: 'opening'; preset: string }
   | { kind: 'furniture'; preset: string }
   | { kind: 'aim' };
@@ -67,7 +69,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   /** Saves an edited 2D plan for a scan (doors, windows, set pieces). */
   commitPlan(scanID: string, plan: FloorPlan): void;
 }) {
-  useReadingUnit(); // redraw the plan and the panels when the readings unit changes
+  useReadingExtra(); // redraw the plan and the panels when lux is switched on or off
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
   const calcPlan = plan && (plan.walls.length || plan.floorPolygons.length) ? plan : undefined;
@@ -170,6 +172,13 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
       if (cam) c.facing = bearingFrom(p, cam.position);
       edit(loc => ({ ...loc, characters: [...(loc.characters ?? []), c] }));
       setSelection({ kind: 'character', id: c.id });
+    } else if (tool.kind === 'camera') {
+      // Starts at eye level with a 32mm, looking at the nearest person (or the middle of the room).
+      const target = nearestFace(p)?.position ?? roomCentre();
+      const n = location.cameraPositions.length;
+      const c = newCamera(p, `Camera ${String.fromCharCode(65 + (n % 26))}`, Math.round(bearingFrom(p, target)), scanID);
+      edit(loc => ({ ...loc, cameraPositions: [...loc.cameraPositions, c] }));
+      setSelection({ kind: 'camera', id: c.id });
     } else if (tool.kind === 'meter') {
       const m = newMeter(p, `Meter ${(location.meters ?? []).length + 1}`, scanID);
       edit(loc => ({ ...loc, meters: [...(loc.meters ?? []), m] }));
@@ -258,6 +267,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         if (selection.kind === 'light') edit(loc => ({ ...loc, lights: (loc.lights ?? []).filter(x => x.id !== id) }));
         if (selection.kind === 'character') edit(loc => ({ ...loc, characters: (loc.characters ?? []).filter(x => x.id !== id) }));
         if (selection.kind === 'meter') edit(loc => ({ ...loc, meters: (loc.meters ?? []).filter(x => x.id !== id) }));
+        if (selection.kind === 'camera') edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.filter(x => x.id !== id) }));
         if (selection.kind === 'object') editPlan(pl => removeObject(pl, id));
         if (selection.kind === 'opening') editPlan(pl => removeSegment(pl, id));
         setSelection(undefined);
@@ -266,6 +276,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
       if (e.key === 's' && calcPlan) setSetMenu(true);
       if (e.key === 'p') setTool({ kind: 'person' });
       if (e.key === 'm') setTool({ kind: 'meter' });
+      if (e.key === 'c') setTool({ kind: 'camera' });
       if (selection?.kind === 'object' && (e.key === '[' || e.key === ']')) {
         const id = selection.id, step = (e.key === ']' ? 15 : -15) * Math.PI / 180;
         editPlan(pl => { const o = pl.objects.find(x => x.id === id); return o ? replaceObject(pl, turnObject(o, step)) : pl; });
@@ -319,6 +330,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     : tool.kind === 'light' ? 'Click the plan to place the unit. It starts aimed at the nearest person. Esc cancels.'
     : tool.kind === 'person' ? 'Click where the person stands. They face the first camera.'
     : tool.kind === 'meter' ? 'Click where you want a reading.'
+    : tool.kind === 'camera' ? 'Click where the camera goes. It starts looking at the nearest person; drag its handle to turn it.'
     : tool.kind === 'aim' ? 'Click a person or a spot to aim the selected light at it.'
     : !calcPlan && lights.length === 0 ? 'No scan plan for this location yet: scan on the phone, or place lights on the grid.'
     : '';
@@ -364,6 +376,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
             )}
           </div>
           <button className={'tool' + (isOn('person') ? ' on' : '')} onClick={() => setTool({ kind: 'person' })} title="Add a person (P)"><Icon name="person" /><span className="txt">+ Person</span></button>
+          <button className={'tool' + (isOn('camera') ? ' on' : '')} onClick={() => setTool({ kind: 'camera' })} title="Add a camera (C)"><Icon name="camera" /><span className="txt">+ Camera</span></button>
           <button className={'tool' + (isOn('meter') ? ' on' : '')} onClick={() => setTool({ kind: 'meter' })} title="Add a light meter (M)"><Icon name="meter" /><span className="txt">+ Meter</span></button>
           <span className="sep" />
           <div style={{ position: 'relative' }}>
@@ -399,6 +412,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         )}
       </div>
       <aside className="inspector" aria-label="Details">
+        <CameraSettingsBar exposure={exposure} onChange={patch => edit(loc => ({ ...loc, exposure: { ...withDefaults(loc.exposure), ...patch } }))} />
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}
           selection={selection} windowTransmission={windowTransmission} edit={edit} editPlan={editPlan} select={setSelection}
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })} />
