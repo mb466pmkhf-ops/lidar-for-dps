@@ -1702,7 +1702,6 @@ struct PlanEditorView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    @ToolbarContentBuilder
     /// The options menu, from the navigation bar or (sideways) the 3D tool rail.
     @ViewBuilder
     private var optionsMenuItems: some View {
@@ -1724,6 +1723,7 @@ struct PlanEditorView: View {
         }
     }
 
+    @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
             Button(action: undo) { Image(systemName: "arrow.uturn.backward") }
