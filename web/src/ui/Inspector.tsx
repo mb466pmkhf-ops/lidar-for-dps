@@ -2,7 +2,9 @@
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, CharacterType } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, CharacterType, ScanRecord } from '../model/types';
+import { StudioPanel, DaylightPanel, CurtainField } from './StagePanels';
+import { ambientName, type Environment } from '../model/stage';
 import {
   FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
@@ -27,7 +29,7 @@ import type { ReadingUnit } from './format';
 import { Icon } from './icons';
 import type { Selection } from './PlanCanvas';
 
-function Slider({ label, value, min, max, step, format, onChange }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onChange(v: number): void }) {
+export function Slider({ label, value, min, max, step, format, onChange }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onChange(v: number): void }) {
   return (
     <label className="field">
       <span>{label}</span>
@@ -37,7 +39,7 @@ function Slider({ label, value, min, max, step, format, onChange }: { label: str
   );
 }
 
-function Panel({ title, children, collapsible, open: initial = true }: { title: string; children: ReactNode; collapsible?: boolean; open?: boolean }) {
+export function Panel({ title, children, collapsible, open: initial = true }: { title: string; children: ReactNode; collapsible?: boolean; open?: boolean }) {
   const [open, setOpen] = useState(initial);
   return (
     <section className="panel">
@@ -49,7 +51,7 @@ function Panel({ title, children, collapsible, open: initial = true }: { title: 
   );
 }
 
-const Badge = ({ text = 'Estimated' }: { text?: string }) => <span className="badge" title="Derived by the app. Check on set before relying on it.">≈ {text}</span>;
+export const Badge = ({ text = 'Estimated' }: { text?: string }) => <span className="badge" title="Derived by the app. Check on set before relying on it.">≈ {text}</span>;
 
 export interface InspectorProps {
   location: Location;
@@ -61,6 +63,9 @@ export interface InspectorProps {
   exposure: ExposureSettings;
   selection?: Selection;
   windowTransmission: number;
+  /** Sun, sky and LED wall for the readings (stage.ts). */
+  environment?: Environment;
+  scan?: ScanRecord;
   edit(fn: (loc: Location) => Location, undo?: boolean): void;
   /** Changes the scan's 2D plan (doors, windows, set pieces). */
   editPlan(fn: (plan: FloorPlan) => FloorPlan, undo?: boolean): void;
@@ -178,6 +183,7 @@ function OpeningInspector(p: InspectorProps & { segment: PlanSegment }) {
         <SizeRow label="Width" value={width} min={0.3} onChange={(v, u) => put(resizeOpening(plan, seg, v), u)} />
         <SizeRow label="Height" value={seg.height} min={0.3} max={SIZE_LIMITS.heightMax} onChange={(v, u) => put(setOpeningHeight(plan, seg, v, seg.bottom), u)} />
         {seg.kind === 'window' && <SizeRow label="Sill" value={seg.bottom} min={0} max={SIZE_LIMITS.heightMax} onChange={(v, u) => put(setOpeningHeight(plan, seg, seg.height, v), u)} />}
+        {seg.kind === 'window' && <CurtainField value={seg.curtain} onChange={c => { const n = { ...seg }; if (c) n.curtain = c; else delete n.curtain; put(n); }} />}
         {seg.kind === 'door' && (
           <label className="toggle" style={{ margin: '8px 0' }}><input type="checkbox" checked={seg.isOpen} onChange={e => put({ ...seg, isOpen: e.target.checked })} /> Open (light passes through it)</label>
         )}
@@ -185,7 +191,7 @@ function OpeningInspector(p: InspectorProps & { segment: PlanSegment }) {
           <button className="btn small" onClick={duplicate}><Icon name="copy" /> Another beside it</button>
           <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>
         </div>
-        <p className="note">Drag it to slide it along the wall or onto another wall.{seg.kind === 'window' ? ' Units outside the room light it through the glass, at the Light through windows setting.' : ''}</p>
+        <p className="note">Drag it to slide it along the wall or onto another wall.{seg.kind === 'window' ? ' Units outside the room, and daylight when it is on, come in through the glass at the Light through windows setting.' : ''}</p>
         <ByHandNote byHand={seg.byHand} what={openingLabel(seg.kind).toLowerCase()} />
       </Panel>
     </div>
@@ -262,11 +268,11 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
 
   const setToKey = (m: MeterPoint) => {
     const target = m.targetLux ?? keyLux(p.exposure);
-    const sol = solveOutput(l, target, m.point, m.normal, p.lights, p.plan, p.windowTransmission);
+    const sol = solveOutput(l, target, m.point, m.normal, p.lights, p.plan, p.windowTransmission, p.environment);
     if (sol.kind === 'output') set({ dimmer: Math.round(sol.output * 100) / 100, isOn: true });
     else alert(sol.kind === 'tooDim' ? `Even at full this unit gives about ${fmtLux(sol.maxLux)} there.${sol.suggestedDistance ? ` Move it to about ${metres(sol.suggestedDistance)} away.` : ''}`
       : sol.kind === 'atMinimum' ? `At its lowest (${Math.round(sol.output * 100)} %) this unit still gives about ${fmtLux(sol.lux)} there. Move it back, or add ND or diffusion.`
-      : sol.kind === 'othersTooBright' ? `The other units already give about ${fmtLux(sol.othersLux)} there.` : "This unit doesn't reach that point.");
+      : sol.kind === 'othersTooBright' ? `The other units${p.environment ? ', daylight and the set' : ''} already give about ${fmtLux(sol.othersLux)} there.` : "This unit doesn't reach that point.");
   };
 
   return (
@@ -547,7 +553,7 @@ function MeterInspector(p: InspectorProps & { meter: LightMeter }) {
           {breakdown.sort((a, b) => b.lux - a.lux).map((c, i) => {
             const l = p.lights.find(x => x.id === c.lightID);
             const via = c.viaBounce ? p.lights.find(x => x.id === c.viaBounce) : undefined;
-            return <div key={i} className="meter-row"><span>{l?.name ?? 'Unit'}{via ? ` via ${via.name}` : ''}</span><span className="mono">≈ {fmtLux(c.lux)}</span><span /></div>;
+            return <div key={i} className="meter-row"><span>{l?.name ?? ambientName(c.lightID) ?? 'Unit'}{via ? ` via ${via.name}` : ''}</span><span className="mono">≈ {fmtLux(c.lux)}</span><span /></div>;
           })}
         </Panel>
       )}
@@ -647,7 +653,7 @@ function Overview(p: InspectorProps) {
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}
-        {p.meters.length > 0 && <p className="note"><Badge /> Direct light plus one bounce. No room reflections or daylight.</p>}
+        {p.meters.length > 0 && <p className="note"><Badge /> Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}. No light reflected round the room.</p>}
       </Panel>
       <Panel title="Lights">
         {p.lights.length ? p.lights.map(l => (
@@ -659,6 +665,8 @@ function Overview(p: InspectorProps) {
         {emitters.length > 0 && <p className="note">Total draw ≈ {watts(totalDraw)} (estimated from rated power and output).</p>}
       </Panel>
       <WindowPresetsPanel {...p} />
+      <DaylightPanel {...p} />
+      <StudioPanel {...p} />
       <Panel title="Light through windows" collapsible open={false}>
         <Slider label="Glass passes" value={p.windowTransmission} min={0} max={1} step={0.01} format={pct}
           onChange={v => p.edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), windowTransmission: v } }), false)} />

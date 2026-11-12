@@ -6,6 +6,7 @@ import type { FloorPlan, LightKind, Location, PlanPoint, Project } from '../mode
 import { KIND_INFO, applyProfile, profileByID } from '../model/photometrics';
 import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISSION, planDist } from '../model/calculator';
 import { withDefaults } from '../model/exposure';
+import { environment } from '../model/stage';
 import { eyeHeight } from '../model/characters';
 import { newCharacter, newLight, newMeter } from '../model/factory';
 import {
@@ -133,7 +134,10 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const lights = useMemo(() => (location.lights ?? []).filter(l => inScan(l.scanID)), [location.lights, scanID]); // eslint-disable-line react-hooks/exhaustive-deps
   const exposure = withDefaults(location.exposure);
   const windowTransmission = location.display?.windowTransmission ?? DEFAULT_WINDOW_TRANSMISSION;
-  const scene = useMemo(() => buildScene(lights, calcPlan, windowTransmission), [lights, calcPlan, windowTransmission]);
+  const scan = location.scans.find(s => s.id === scanID);
+  // Sun, sky and an LED wall, when the location has them (stage.ts).
+  const env = useMemo(() => environment(location, calcPlan, scan), [location.daylight, location.studio, location.coordinate, location.shots, location.cameraPositions, calcPlan, scan]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scene = useMemo(() => buildScene(lights, calcPlan, windowTransmission, env), [lights, calcPlan, windowTransmission, env]);
   const meters = useMemo(() => meterPoints(location, scanID), [location, scanID]);
   const readings = useMemo(() => new Map(meters.map(m => [m.key, reading(m.point, m.normal, scene).lux])), [meters, scene]);
 
@@ -391,7 +395,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
       </div>
       <aside className="inspector" aria-label="Details">
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}
-          selection={selection} windowTransmission={windowTransmission} edit={edit} editPlan={editPlan} select={setSelection}
+          selection={selection} windowTransmission={windowTransmission} environment={env} scan={scan} edit={edit} editPlan={editPlan} select={setSelection}
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })} />
       </aside>
     </>
