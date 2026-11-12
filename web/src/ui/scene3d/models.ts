@@ -115,9 +115,38 @@ export function yoke(half: number, below: number, hanging: boolean, parent: THRE
 
 /** The glowing face of a unit. Off, it is a plain diffuser. Brightness here is for looks only. */
 function glow(color: THREE.Color, on: boolean, level: number, map?: THREE.Texture) {
-  return on
-    ? new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: level, emissiveMap: map ?? null, roughness: 0.6, metalness: 0 })
-    : new THREE.MeshStandardMaterial({ color: 0xcfcfcb, map: map ?? null, roughness: 0.75, metalness: 0 });
+  // On and off use the same texture slots, so they share one shader, and `relight` can switch a
+  // built unit without rebuilding it.
+  const m = new THREE.MeshStandardMaterial({ emissiveMap: map ?? null, map: map ?? null, metalness: 0 });
+  m.userData.glow = level;
+  setGlow(m, color, on, level);
+  return m;
+}
+function setGlow(m: THREE.MeshStandardMaterial, color: THREE.Color, on: boolean, level: number) {
+  m.color.set(on ? 0x000000 : 0xcfcfcb);
+  m.emissive.copy(on ? color : BLACK_COLOUR);
+  m.emissiveIntensity = on ? level : 0;
+  m.roughness = on ? 0.6 : 0.75;
+}
+function setShade(m: THREE.MeshStandardMaterial, color: THREE.Color, on: boolean, level: number) {
+  m.color.set(on ? 0x000000 : 0xd8d2c6);
+  m.emissive.copy(on ? color : BLACK_COLOUR);
+  m.emissiveIntensity = on ? level * 0.22 : 0;
+}
+const BLACK_COLOUR = new THREE.Color(0x000000);
+
+/** How bright a unit's face glows, from its output. */
+export function glowLevel(pm: ResolvedPhotometrics) { return 2.2 + 1.6 * Math.min(1, Math.log10(1 + pm.flux / 800) / 2); }
+
+/** Switches, dims or recolours a unit built by `head` in place: only material values change, so
+ *  nothing is rebuilt and no shader is compiled. `built` is the glow level it was built with. */
+export function relight(root: THREE.Object3D, color: THREE.Color, on: boolean, level: number, built: number) {
+  root.traverse(o => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (!m || !(o as THREE.Mesh).isMesh) return;
+    if (m.userData.glow !== undefined) setGlow(m, color, on, m.userData.glow * level / built);
+    else if (m.userData.shade) setShade(m, color, on, level);
+  });
 }
 
 /** Four leaves hinged round a face of half-size `hs` at depth `front`; each sits at its cut angle. */
@@ -145,7 +174,7 @@ export interface HeadSize { half: number; below: number; front: number }
 export function head(l: LightFixture, pm: ResolvedPhotometrics, color: THREE.Color, parent: THREE.Object3D): HeadSize {
   const p = fixtureProfile(l);
   const on = l.isOn;
-  const level = 2.2 + 1.6 * Math.min(1, Math.log10(1 + pm.flux / 800) / 2);
+  const level = glowLevel(pm);
   const mod = pm.modifier?.id ?? '';
   const doors = l.barnDoors && pm.barnDoorsAvailable ? l.barnDoors : undefined;
   let size: HeadSize;
@@ -188,7 +217,9 @@ export function head(l: LightFixture, pm: ResolvedPhotometrics, color: THREE.Col
     case 'practical': {
       // A table or floor lamp: bulb, fabric shade, and its own slim pole (added by the caller).
       mesh(new THREE.SphereGeometry(0.035, 16, 12), glow(color, on, level * 1.6), parent, v(0, 0, 0));
-      const shade = new THREE.MeshStandardMaterial({ color: on ? 0x000000 : 0xd8d2c6, emissive: on ? color : 0x000000, emissiveIntensity: on ? level * 0.22 : 0, roughness: 0.9, side: THREE.DoubleSide });
+      const shade = new THREE.MeshStandardMaterial({ roughness: 0.9, side: THREE.DoubleSide });
+      shade.userData.shade = true;
+      setShade(shade, color, on, level);
       mesh(new THREE.CylinderGeometry(0.11, 0.17, 0.2, 32, 1, true), shade, parent, v(0, 0.03, 0));
       size = { half: 0.1, below: 0.1, front: 0 };
       break;
