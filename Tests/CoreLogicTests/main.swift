@@ -441,6 +441,9 @@ if case .tooDim(_, let d?) = C.solveOutput(for: cob, target: 20000, at: at3, nor
     check(d < 3, "too dim suggests moving closer (\(d) m)")
 } else { check(false, "out-of-reach target reports too dim") }
 var hmiKey = LightFixture(name: "H", kind: .hmi, position: P(0, 0)); hmiKey.apply(profile: FixtureLibrary.profile(id: "hmi-1800-par")!)
+var dimmedToHMI = LightFixture(name: "D", kind: .fresnel, position: P(0, 0)); dimmedToHMI.dimmer = 0.2
+dimmedToHMI.apply(profile: FixtureLibrary.profile(id: "hmi-1800-par")!)
+check(dimmedToHMI.dimmer == 0.5, "picking a unit that dims less far lifts the dimmer to its lowest")
 hmiKey.height = 1.5; hmiKey.tilt = 0
 if case .atMinimum(let o, let lux) = C.solveOutput(for: hmiKey, target: 1000, at: at3, normal: facingKey, allLights: [hmiKey], plan: nil) {
     var half = hmiKey; half.dimmer = 0.5
@@ -817,6 +820,43 @@ do {
     try json.write(to: outDir.appendingPathComponent("stage-readings.json"))
 } catch {
     check(false, "stage fixture: \(error)")
+}
+
+// MARK: Lighting sweep (web/tests/sweep.test.ts, SWEEP_READINGS)
+// 150 generated setups written by the web generator (tests/support/sweep.ts). Each one decodes
+// here and its readings are compared with the TypeScript port, scene by scene.
+struct SweepCase: Decodable { var id: String; var bundle: WebBundle }
+do {
+    let data = try Data(contentsOf: URL(fileURLWithPath: "web/tests/fixtures/sweep-bundles.json"))
+    let cases = try JSONCoding.decoder.decode([SweepCase].self, from: data)
+    check(cases.count == 150, "the 150 sweep setups decode in Swift")
+    var out: [String: Any] = [:]
+    for c in cases {
+        let loc = c.bundle.project.locations[0]
+        let scanID = loc.primaryScanID
+        let plan = scanID.flatMap { c.bundle.plans[$0.uuidString] }
+        let scan = loc.scans.first { $0.id == scanID }
+        let lights = loc.lightFixtures.filter { $0.scanID == nil || $0.scanID == scanID }
+        let scene = LightingCalculator.Scene(lights: lights, plan: plan, windowTransmission: loc.displaySettings.windowTransmissionValue,
+                                             environment: loc.environment(plan: plan, scan: scan))
+        var readings: [String: Double] = [:]
+        for m in loc.meterPoints(scanID: scanID) {
+            let key: String
+            switch m.source {
+            case .meter(let id): key = "m:" + id.uuidString
+            case .character(let id): key = "c:" + id.uuidString
+            }
+            readings[key] = LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene).lux
+        }
+        let gridValues = LightingCalculator.grid(bounds: plan?.bounds ?? .unit, columns: 8, rows: 6, height: 1.2, scene: scene) { _ in
+            LightingCalculator.Point(x: 0, y: 1, z: 0)
+        }
+        check(readings.values.allSatisfy { $0.isFinite && $0 >= 0 } && gridValues.allSatisfy { $0.isFinite && $0 >= 0 }, "sweep \(c.id): readings finite and not negative")
+        out[c.id] = ["readings": readings, "grid": gridValues]
+    }
+    try JSONSerialization.data(withJSONObject: out).write(to: outDir.appendingPathComponent("sweep-readings.json"))
+} catch {
+    check(false, "lighting sweep fixture: \(error)")
 }
 
 // MARK: Photometrics matrix (same cases as web/tests/support/matrix.ts)

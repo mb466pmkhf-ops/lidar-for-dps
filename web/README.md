@@ -40,5 +40,12 @@ npm test           # lighting maths, merge rules, Swift parity (parity needs CI 
 npm run tauri dev  # desktop window (needs Rust)
 ```
 
+`tests/sweep.test.ts` runs 150 generated lighting setups (`tests/support/sweep.ts`: empty rooms, the
+built-in setups, locations with furniture and people, studio backdrops, daylight and curtains, grip,
+awkward edge cases) through sanity checks, and in CI against the Swift calculator. After changing the
+generator, rewrite the shared scenes with `UPDATE_FIXTURE=1 npx vitest run tests/sweep.test.ts`. To look at
+all 150 in the 3D view (console errors, open time, parts below the floor or outside the room, a picture of
+each), run `npm run dev` and then `node ../scripts/sweep-3d.mjs <out-dir>` from this folder.
+
 `src/model` is the port of the Swift core (keep it in step with `FrameScout/Core/Models`), `src/sync` is
 storage, the Supabase client and the merge, `src/ui` is the planner.

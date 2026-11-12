@@ -895,9 +895,9 @@ final class VirtualSceneModel: ObservableObject {
             viewportLights[id] = nil
         }
         // Fit the picture to the brightest unit at full output; every unit keeps its true ratio to it.
-        // It depends on the units alone, so moving a person or a flag, or dimming a unit, never
-        // changes how bright the other units look.
-        let brightest = viewportLights.values.filter(\.on).map(\.full).max() ?? 0
+        // It depends on the units alone, so moving a person or a flag, dimming a unit or switching one
+        // off never changes how bright the other units look (same rule as the desktop 3D view).
+        let brightest = viewportLights.values.map(\.full).max() ?? 0
         for entry in viewportLights.values {
             // A unit that is off keeps its light at zero rather than losing it (see `wantsShadow`).
             entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1) : 0

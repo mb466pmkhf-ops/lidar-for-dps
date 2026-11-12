@@ -642,5 +642,8 @@ extension LightFixture {
         power = p.powerLabel
         photometricOverride = nil
         if !p.hasBarnDoors { barnDoors = nil }
+        // An HMI can't dim below half: keep the dimmer where the unit really is, so the output shown
+        // matches the readings (they always used the unit's lowest).
+        dimmer = min(max(dimmer, p.minOutput), 1)
     }
 }
