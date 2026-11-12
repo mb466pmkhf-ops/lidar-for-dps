@@ -10,6 +10,11 @@ struct FrameScoutApp: App {
 
     init() {
         Self.registerBundledFonts()
+        let defaults = UserDefaults.standard
+        if defaults.string(forKey: ReadingExtra.key) == nil,
+           let kept = ReadingExtra.migrated(from: defaults.string(forKey: ReadingExtra.legacyKey)) {
+            defaults.set(kept.rawValue, forKey: ReadingExtra.key)
+        }
         #if DEBUG
         if DemoContent.isEnabled { DemoContent.install() }
         #endif

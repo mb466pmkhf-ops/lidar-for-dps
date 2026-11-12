@@ -135,45 +135,47 @@ extension Location {
     }
 }
 
-/// How a light reading is written out. Crews think in stops, so the default is the T-stop an incident
-/// meter would show; lux and foot-candles are there for people who work from photometric data.
-/// Whatever the unit, the figure comes from the same estimate (D-006) and keeps its "estimated" badge.
-enum ReadingUnit: String, CaseIterable, Identifiable {
-    /// The stop an incident meter would give at the camera's ISO, shutter and ND: "T4 +⅓".
-    case tStop
-    /// Over or under the stop set on the camera: "+⅓".
-    case stops
+/// Readings always lead with the T-stop an incident meter would show at the camera's ISO, shutter and
+/// ND, because that is how crews talk. Lux (or foot-candles) can be switched on to follow the stop,
+/// for people who work from photometric data. Whatever is shown comes from the same estimate (D-006)
+/// and keeps its "estimated" badge.
+enum ReadingExtra: String, CaseIterable, Identifiable {
+    /// The stop only: "T4 +⅓".
+    case off
+    /// The stop, then lux: "T4 +⅓ · 420 lx".
     case lux
+    /// The stop, then foot-candles: "T4 +⅓ · 39 fc".
     case footCandles
 
     /// UserDefaults key for the app-wide choice.
-    static let key = "readings.unit"
+    static let key = "readings.extra"
+    /// The older single-unit setting ("tStop", "stops", "lux", "footCandles").
+    static let legacyKey = "readings.unit"
     static let luxPerFootCandle = 10.764
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .tStop: return "T-stop"
-        case .stops: return "Stops over / under"
+        case .off: return "Off"
         case .lux: return "Lux"
         case .footCandles: return "Foot-candles"
         }
     }
 
-    var explanation: String {
-        switch self {
-        case .tStop: return "The stop a light meter would show at your ISO and shutter."
-        case .stops: return "How far over or under the stop set on the camera."
-        case .lux: return "Light falling on the subject, in lux."
-        case .footCandles: return "Light falling on the subject, in foot-candles."
+    /// Someone who chose lux or foot-candles before readings always led with the stop keeps it.
+    static func migrated(from legacy: String?) -> ReadingExtra? {
+        switch legacy {
+        case "lux": return .lux
+        case "footCandles": return .footCandles
+        default: return nil
         }
     }
 
-    func text(lux: Double, exposure: ExposureSettings) -> String {
+    /// The light level in this unit, or nil when it is switched off.
+    func text(lux: Double) -> String? {
         switch self {
-        case .tStop: return ExposureSettings.stopLabel(exposure.tStop(forLux: lux))
-        case .stops: return ExposureSettings.stopsDelta(exposure.stops(forLux: lux))
+        case .off: return nil
         case .lux: return Self.luxText(lux)
         case .footCandles: return Self.footCandleText(lux)
         }
@@ -192,4 +194,49 @@ enum ReadingUnit: String, CaseIterable, Identifiable {
         if fc >= 10 { return "\(Int(fc.rounded())) fc" }
         return String(format: "%.1f fc", fc)
     }
+}
+
+/// One reading written out the same way everywhere (the web's `ui/format.ts` matches it).
+enum ReadingFormat {
+    /// Below this a meter has nothing useful to say and no lens opens that far.
+    static let darkestStop = 0.5
+
+    /// The stop an incident meter would show: "T4 +⅓", or "under T0.5" when it is that dark.
+    static func stop(lux: Double, exposure: ExposureSettings) -> String {
+        let n = exposure.tStop(forLux: lux)
+        if n < darkestStop { return "under " + ExposureSettings.stopLabel(darkestStop) }
+        return ExposureSettings.stopLabel(n)
+    }
+
+    /// "T4 +⅓", then lux or foot-candles if they are switched on: "T4 +⅓ · 420 lx".
+    static func value(lux: Double, exposure: ExposureSettings, extra: ReadingExtra) -> String {
+        let s = stop(lux: lux, exposure: exposure)
+        guard let more = extra.text(lux: lux) else { return s }
+        return "\(s) · \(more)"
+    }
+
+    /// The same with "≈" in front: every reading is an estimate.
+    static func text(lux: Double, exposure: ExposureSettings, extra: ReadingExtra) -> String {
+        "≈ " + value(lux: lux, exposure: exposure, extra: extra)
+    }
+}
+
+extension ExposureSettings {
+    /// Thirds of a stop from T1: 2^(k/6). The pickers on both platforms list these.
+    static func thirdStop(_ k: Int) -> Double { pow(2, Double(k) / 6) }
+
+    /// The T-stop `thirds` thirds of a stop away from `n`, kept between T1 and T32.
+    static func steppedStop(_ n: Double, thirds: Int) -> Double {
+        let k = Int((6 * log2(max(n, 0.01))).rounded()) + thirds
+        return thirdStop(min(max(k, 0), 30))
+    }
+
+    /// The next or previous ISO in `isoSteps` (a third of a stop apart).
+    static func steppedISO(_ iso: Double, by step: Int) -> Double {
+        let i = isoSteps.indices.min { abs(log2(isoSteps[$0] / iso)) < abs(log2(isoSteps[$1] / iso)) } ?? 0
+        return isoSteps[min(max(i + step, 0), isoSteps.count - 1)]
+    }
+
+    /// ISO in thirds of a stop, as cameras offer it.
+    static let isoSteps: [Double] = [100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1280, 1600, 2000, 2560, 3200, 4000, 5000, 6400, 8000, 10000, 12800]
 }

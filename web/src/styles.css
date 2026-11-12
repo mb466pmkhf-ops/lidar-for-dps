@@ -267,3 +267,23 @@ button.meter-row, .meter-row.row { width: 100%; margin: 0; border-radius: 0; }
 .stepper.compact .ctl button { width: 36px; height: 36px; border-radius: 10px; font-size: 20px; }
 .stepper.compact .ctl input { width: 60px; font-size: 15px; }
 .chip.mine { border-style: dashed; }
+
+/* Camera settings, kept at the top of the inspector: every reading is worked out from them. */
+.cam-bar { position: sticky; top: 0; z-index: 2; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--hair); display: grid; gap: 10px; }
+.cam-bar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cam-bar-head h3 { margin: 0; font-size: 14px; font-weight: 500; color: var(--text3); }
+.cam-bar-head .mono { font-size: 12px; }
+.cam-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 8px; }
+.cam-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.cam-step { display: grid; gap: 4px; min-width: 0; }
+.cam-step .label { font-size: 12px; }
+.cam-step select { min-height: 36px; padding: 6px 8px; font-size: 14px; }
+.cam-step-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; gap: 4px; }
+.cam-step-row select { font-family: var(--mono); text-align: center; padding: 6px 4px; }
+.cam-btn { height: 36px; border: 1px solid var(--hair); background: var(--raised); border-radius: 10px; cursor: pointer; font-size: 18px; line-height: 1; }
+.cam-btn:hover { border-color: var(--hair2); }
+.cam-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cam-readings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cam-readings .label { font-size: 12px; }
+.cam-readings .seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+@media (max-width: 900px) { .cam-bar { position: static; } }
