@@ -389,6 +389,26 @@ struct OpeningPanel: View {
                 SizeStepper(label: "Sill", value: segment.bottom, range: 0...SetPieces.heightMax) { v in
                     update(SetPieces.setHeight(segment, height: segment.height, sill: v, in: plan))
                 }
+                HStack {
+                    Text("Curtain").font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Picker("Curtain", selection: Binding<CurtainKind?>(get: { segment.curtain }, set: { c in
+                        var s = segment
+                        s.curtain = c
+                        s.byHand = true
+                        update(s)
+                    })) {
+                        Text("None").tag(CurtainKind?.none)
+                        ForEach(CurtainKind.allCases) { c in Text(c.label).tag(CurtainKind?.some(c)) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 230)
+                }
+                if let c = segment.curtain {
+                    Text(c == .sheer ? "Sheer: lets about half the light through, softens it and stops the sun's hard beam."
+                                     : "Blackout: no daylight through this window.")
+                        .font(.fsCaption).foregroundStyle(Theme.textTertiary)
+                }
             }
             HStack {
                 if segment.kind == .door {

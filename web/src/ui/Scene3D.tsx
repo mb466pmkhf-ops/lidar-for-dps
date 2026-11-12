@@ -6,8 +6,9 @@
 // beam shape and barn-door cut come from the same photometric model as the readings, and shadows
 // are real. Grip does what the calculator says it does: flags and negs cut the beam and show a faint
 // sheen where they are hit, bounce boards throw light back, and a diffusion frame stops the hard beam
-// and glows as a soft source on its far side (D-013). No light off walls, floor or ceiling, no
-// daylight. So it is a preview of the look, and the readings stay the figures to work from.
+// and glows as a soft source on its far side (D-013). Daylight (sun through the windows, the sky as soft
+// light from each window) and an LED wall use the readings' levels on the same scale (D-014). No light
+// off walls, floor or ceiling. So it is a preview of the look, and the readings stay the figures to work from.
 import { useEffect, useRef, useState } from 'react';
 import { useTip } from './tips';
 import * as THREE from 'three';
@@ -18,6 +19,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
 import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
 import { gripStandCount, lightSupport } from '../model/rigging';
@@ -32,6 +34,12 @@ import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
 import { buildRoom, ground, type WallRecord } from './scene3d/room';
 import { board, cameraModel, head, meterModel, person, stand, yoke } from './scene3d/models';
 import { beam } from './scene3d/beam';
+import { backdrop, skyTexture, type BackdropBuild } from './scene3d/stage';
+import { SHEER_TRANSMISSION, backdropPlacement, curtainPass, daylightLevels, environment, floorInfo, inwardNormal, sunPlacement } from '../model/stage';
+import { kelvinRGB } from '../model/kelvin';
+import { DEFAULT_WINDOW_TRANSMISSION } from '../model/calculator';
+
+RectAreaLightUniformsLib.init();
 
 interface Props {
   location: Location;
@@ -92,6 +100,10 @@ interface Api {
   scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
   room: THREE.Group; items: THREE.Group; marks: THREE.Group; walls: WallRecord[]; wallGroups: THREE.Object3D[];
   ambient: THREE.HemisphereLight; grid: THREE.Mesh;
+  /** The sun, when daylight is on. */
+  sun: THREE.DirectionalLight;
+  sheers: { m: THREE.MeshStandardMaterial; window: import('../model/types').PlanSegment }[];
+  night: THREE.Texture; sky?: { key: string; tex: THREE.Texture };
   centre: THREE.Vector3; span: number;
   tags: { el: HTMLElement; at: THREE.Vector3 }[];
   invalidate(frames?: number): void;
@@ -114,6 +126,7 @@ export function Scene3D(p: Props) {
   // What is already built, by item: a change to one light leaves the others (and their shadow maps) alone.
   const built = useRef(new Map<string, { key: string; obj: THREE.Object3D }>());
   const roomGen = useRef(0);
+  const viewPlan = useRef<FloorPlan | undefined | null>(null);
 
   // Renderer, camera, controls: once.
   useEffect(() => {
@@ -137,6 +150,12 @@ export function Scene3D(p: Props) {
     pmrem.dispose();
     const ambient = new THREE.HemisphereLight(0xffffff, 0x8a8580, 0.08);
     scene.add(ambient);
+    const sun = new THREE.DirectionalLight(0xfff4e6, 0);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 1.5;
+    sun.visible = false;
+    scene.add(sun, sun.target);
 
     const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.05, 200);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -151,6 +170,7 @@ export function Scene3D(p: Props) {
     const room = new THREE.Group(), items = new THREE.Group(), marks = new THREE.Group();
     scene.add(room, items, marks);
     built.current = new Map();
+    viewPlan.current = null; // a new camera needs placing
 
     // Picture pipeline: multisampled HDR target → contact shading → glow round bright faces → tone map.
     const target = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
@@ -191,7 +211,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -274,15 +294,20 @@ export function Scene3D(p: Props) {
     a.room.clear();
     roomGen.current++;
     a.renderer.shadowMap.needsUpdate = true;
-    const built = buildRoom(p.plan);
+    const fl = floorInfo(p.location.studio?.floor);
+    const built = buildRoom(p.plan, {
+      floor: fl ? { colour: fl.pickColour && p.location.studio?.floorColour ? p.location.studio.floorColour : fl.colour, roughness: fl.roughness, concrete: fl.id.startsWith('concrete') } : undefined,
+      lid: !!p.location.daylight?.isOn,
+    });
     a.room.add(built.group);
-    a.walls = built.walls; a.centre = built.centre; a.span = built.span;
+    a.walls = built.walls; a.centre = built.centre; a.span = built.span; a.sheers = built.sheers;
     // Wall records are in the order their groups were added, after the floor pieces.
     a.wallGroups = built.group.children.filter(c => (c as THREE.Group).isGroup).slice(0, built.walls.length);
     (a.grid.material as THREE.ShaderMaterial).uniforms.centre.value.set(built.centre.x, built.centre.z);
     (a.grid.material as THREE.ShaderMaterial).uniforms.reach.value = built.span * 2.2 + 4;
-    resetView();
-  }, [p.plan]); // eslint-disable-line react-hooks/exhaustive-deps
+    // A new room resets the view; a new floor finish or daylight switched on keeps it.
+    if (viewPlan.current !== p.plan) { viewPlan.current = p.plan; resetView(); }
+  }, [p.plan, p.location.studio?.floor, p.location.studio?.floorColour, !!p.location.daylight?.isOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Everything placed on the plan. Only what changed is rebuilt; the rest keeps its meshes, beam and shadow map.
   useEffect(() => {
@@ -321,16 +346,86 @@ export function Scene3D(p: Props) {
     // reading of `reference` lux puts a mid-grey card at mid-grey.
     const pms = new Map(p.lights.filter(l => KIND_INFO[l.kind].emits).map(l => [l.id, photometrics(l)]));
     const lit = p.lights.filter(l => l.isOn && !hidden.has('lights') && (pms.get(l.id)?.peakIntensity ?? 0) > 0).map(l => ({ l, pm: pms.get(l.id)! }));
-    // Fitted to the screen, the brightest unit at full output, 3 m off, sits a little over mid-grey.
-    // It depends on the units alone: moving a person, a flag or a frame, or dimming a unit, never
-    // changes how bright the other units look (it used to follow the readings, so it jumped).
-    const brightest = Math.max(0, ...lit.map(x => illuminanceOnAxis(photometrics({ ...x.l, dimmer: 1 }), 3)));
+    const scan = loc.scans.find(s => s.id === scanID);
+    const env = environment(loc, p.plan, scan);
+    const daylight = loc.daylight?.isOn ? { sun: sunPlacement(loc, scan), levels: daylightLevels(loc.daylight.sky ?? 'clear', sunPlacement(loc, scan).elevation) } : undefined;
+    // Fitted to the screen, the brightest unit at full output, 3 m off, sits a little over mid-grey
+    // (or the daylight or LED wall when they are brighter). It depends on the sources alone: moving a
+    // person, a flag or a frame, or dimming a unit, never changes how bright the other units look.
+    const brightest = Math.max(0, ...lit.map(x => illuminanceOnAxis(photometrics({ ...x.l, dimmer: 1 }), 3)),
+      (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWall?.luminance ?? 0) * 1.5);
     const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
     const scale = reference > 0 ? Math.PI / reference : 0;
-    setNoLight(lit.length === 0);
+    const dark = lit.length === 0 && !(daylight && daylight.levels.skyHorizontal > 0) && !env?.ledWall;
+    setNoLight(dark);
     // With nothing switched on the room gets a plain work light; otherwise only a trace, so shadows keep some shape.
-    a.ambient.intensity = lit.length === 0 ? 2.2 : 0.11;
-    a.scene.environmentIntensity = lit.length === 0 ? 0.5 : 0.07;
+    a.ambient.intensity = dark ? 2.2 : 0.11;
+    a.scene.environmentIntensity = dark ? 0.5 : 0.07;
+
+    // Daylight: the sun as a beam (walls, the lid and curtains shadow it), the sky as soft light from
+    // each window, at the readings' levels on the same scale.
+    const glass = loc.display?.windowTransmission ?? DEFAULT_WINDOW_TRANSMISSION;
+    if (env?.sun) {
+      const toward = v(Math.sin(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)), Math.sin(rad(env.sun.elevation)), -Math.cos(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)));
+      a.sun.visible = true;
+      a.sun.position.copy(a.centre).addScaledVector(toward, 30);
+      a.sun.target.position.copy(a.centre).setY(0);
+      // Sun patches are usually stops over the key: past about 1.5 stops they are white either way, and
+      // brighter only spreads glow over the whole frame.
+      a.sun.intensity = Math.min(env.sun.directNormal * glass * scale, 3 * Math.PI);
+      const r = a.span * 0.9 + 2, cam = a.sun.shadow.camera;
+      cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r; cam.near = 5; cam.far = 60; cam.updateProjectionMatrix();
+    } else { a.sun.visible = false; a.sun.intensity = 0; }
+    if (daylight) {
+      const toward = v(Math.sin(rad(daylight.sun.bearing)) * Math.cos(rad(daylight.sun.elevation)), Math.sin(rad(daylight.sun.elevation)), -Math.cos(rad(daylight.sun.bearing)) * Math.cos(rad(daylight.sun.elevation)));
+      const key = `${loc.daylight?.sky ?? 'clear'}|${Math.round(daylight.sun.bearing)}|${Math.round(daylight.sun.elevation)}`;
+      if (a.sky?.key !== key) { a.sky?.tex.dispose(); a.sky = { key, tex: skyTexture(loc.daylight?.sky ?? 'clear', toward) }; }
+      a.scene.background = a.sky.tex;
+      // The sky is far brighter than any interior; past white it would only bloom over the whole picture.
+      a.scene.backgroundIntensity = Math.min(0.9, Math.max(0.02, daylight.levels.skyHorizontal / Math.PI * scale));
+      if (p.plan && env) for (const w of p.plan.windows) {
+        const width = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
+        if (width < 0.05) continue;
+        const n = inwardNormal(w, p.plan);
+        const onGlass = env.sun ? Math.max(0, -(toward.x * n.x + toward.z * n.z)) : 0;
+        const glow = w.curtain === 'sheer' ? (env.sun?.directNormal ?? 0) * onGlass / Math.PI : 0;
+        const lum = (env.windowLuminance + glow) * glass * curtainPass(w.curtain);
+        if (!(lum > 0)) continue;
+        const area = new THREE.RectAreaLight(0xf2f6ff, Math.min(lum * scale, 3 * Math.PI), width, w.height);
+        area.position.set((w.a.x + w.b.x) / 2 + n.x * 0.16, w.bottom + w.height / 2, (w.a.z + w.b.z) / 2 + n.z * 0.16);
+        area.lookAt(area.position.x + n.x, area.position.y, area.position.z + n.z);
+        a.marks.add(area);
+      }
+    } else {
+      a.scene.background = a.night; a.scene.backgroundIntensity = 1;
+    }
+    for (const sh of a.sheers) {
+      const w = sh.window;
+      let lum = 0;
+      if (env && p.plan && daylight) {
+        const n = inwardNormal(w, p.plan);
+        const t = env.sun ? v(Math.sin(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)), 0, -Math.cos(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation))) : v(0, 0, 0);
+        lum = (env.windowLuminance + (env.sun?.directNormal ?? 0) * Math.max(0, -(t.x * n.x + t.z * n.z)) / Math.PI) * glass * SHEER_TRANSMISSION;
+      }
+      sh.m.emissiveIntensity = Math.min(lum * scale, 3);
+    }
+
+    // The studio backdrop.
+    const bd = backdropPlacement(loc, p.plan);
+    if (bd) {
+      const ledColour = new THREE.Color(...Object.values(kelvinRGB(loc.studio?.kelvin ?? 6500)) as [number, number, number]);
+      const holder = keep('stage:backdrop', JSON.stringify([bd, loc.studio?.kelvin]), () => {
+        const g = new THREE.Group();
+        const b = backdrop(bd, ledColour);
+        g.add(b.group);
+        g.userData.build = b;
+        return g;
+      });
+      const b = holder.userData.build as BackdropBuild;
+      const nits = env?.ledWall?.luminance ?? 0;
+      if (b.ledFace) b.ledFace.emissiveIntensity = nits * scale * 1.6; // the content map averages about 0.6
+      if (b.ledLight) b.ledLight.intensity = nits * scale;
+    }
     // Every unit that can cast a shadow does, up to the budget, so grip blocks it (point-like units too).
     const shadowed = new Set([...lit]
       .sort((x, y) => illuminanceOnAxis(y.pm, 3) - illuminanceOnAxis(x.pm, 3)).slice(0, SHADOW_LIGHTS).map(x => x.l.id));
@@ -529,7 +624,7 @@ export function Scene3D(p: Props) {
     const tagEl = tagHost.current!;
     tagEl.replaceChildren();
     a.tags = [];
-    if (lit.length) for (const m of p.meters ?? []) {
+    if (!dark) for (const m of p.meters ?? []) {
       const lux = p.readings?.get(m.key);
       const sel = 'meter' in m.source ? isSel('meter', m.source.meter) : isSel('character', m.source.character);
       if (lux === undefined || !(p.showReadings || sel)) continue;
@@ -584,9 +679,10 @@ export function Scene3D(p: Props) {
   };
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
 
+  const what = p.location.daylight?.isOn ? 'Units and grip, sun and sky through the windows; no light off the walls.' : 'Units and grip only, no light off the walls, no daylight.';
   const note = noLight ? 'No lights on: the room is shown under a plain work light.'
-    : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. Units and grip only, no light off the walls, no daylight. Estimate.`
-    : 'Preview: brightness fitted to the strongest unit. Units and grip only, no light off the walls, no daylight. Use the readings for exposure.';
+    : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. ${what} Estimate.`
+    : `Preview: brightness fitted to the strongest source. ${what} Use the readings for exposure.`;
 
   return (
     <div className="scene3d" ref={host}>

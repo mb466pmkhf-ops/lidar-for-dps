@@ -57,17 +57,17 @@ export const rbox = (w: number, h: number, d: number, r = 0.02, seg = 3) =>
 export const ALONG = new THREE.Euler(Math.PI / 2, 0, 0); // a Y-up cylinder laid along Z
 
 /** Small repeatable random numbers, so a texture looks the same every time. */
-function rng(seed: number) {
+export function rng(seed: number) {
   let s = seed >>> 0;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
-function canvas(size: number) {
+export function canvas(size: number) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   return { c, g: c.getContext('2d')! };
 }
-function finish(c: HTMLCanvasElement, srgb: boolean, repeat = true) {
+export function finish(c: HTMLCanvasElement, srgb: boolean, repeat = true) {
   const t = new THREE.CanvasTexture(c);
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;

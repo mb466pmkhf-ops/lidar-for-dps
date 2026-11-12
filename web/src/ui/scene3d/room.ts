@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import type { FloorPlan, PlanObject, PlanPoint, PlanSegment } from '../../model/types';
 import { CHROME, DARK, STEEL, WOOD_LEG, cached, fabricBump, floorTextures, mat, mesh, plasterBump, rbox, v, bar } from './kit';
+import { concreteTexture, curtain } from './stage';
 
 const T = 0.1; // wall thickness, m
 
@@ -13,7 +14,17 @@ export interface WallRecord {
   mats: { m: THREE.Material; base: number }[];
   level: number;
 }
-export interface RoomBuild { group: THREE.Group; walls: WallRecord[]; centre: THREE.Vector3; span: number }
+export interface RoomBuild {
+  group: THREE.Group; walls: WallRecord[]; centre: THREE.Vector3; span: number;
+  /** Sheer curtains, which glow when daylight is on, with the window each hangs at. */
+  sheers: { m: THREE.MeshStandardMaterial; window: PlanSegment }[];
+}
+export interface RoomOptions {
+  /** A studio floor finish instead of the boards. */
+  floor?: { colour: string; roughness: number; concrete: boolean };
+  /** An invisible lid at the top of the walls that only casts shadows, so the sun comes in through the windows. */
+  lid?: boolean;
+}
 
 interface Frame { g: THREE.Group; len: number; inner: number }
 
@@ -28,7 +39,7 @@ function frame(a: PlanPoint, b: PlanPoint, centre: THREE.Vector3): Frame {
   return { g, len, inner };
 }
 
-function windowParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: WallRecord) {
+function windowParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: WallRecord, wallTop = s.bottom + s.height + 0.3, sheers?: RoomBuild['sheers']) {
   const w = u1 - u0, h = s.height, cx = (u0 + u1) / 2, cy = s.bottom + h / 2;
   const frameMat = mat(0xe9e9e6, { roughness: 0.45, metalness: 0, transparent: true });
   const glass = new THREE.MeshPhysicalMaterial({ color: 0xbfd4e2, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.16, envMapIntensity: 2.2, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false });
@@ -44,6 +55,13 @@ function windowParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: Wall
   pane.userData.noShadow = true; pane.userData.noAO = true; pane.renderOrder = 2;
   pane.raycast = () => {}; // beams and clicks pass through glass
   if (s.bottom > 0.2) mesh(rbox(w + 0.12, 0.03, 0.18, 0.008), frameMat, f.g, v(cx, s.bottom - 0.005, f.inner * (T / 2 + 0.05)));
+  if (s.curtain) {
+    const c = curtain(s.curtain, u0, u1, s.bottom, h, f.inner, wallTop);
+    f.g.add(c);
+    const m = c.material as THREE.MeshStandardMaterial;
+    rec.mats.push({ m, base: m.opacity });
+    if (s.curtain === 'sheer') sheers?.push({ m, window: s });
+  }
 }
 
 function doorParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: WallRecord) {
@@ -209,8 +227,9 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
   return g;
 }
 
-export function buildRoom(plan: FloorPlan | undefined): RoomBuild {
+export function buildRoom(plan: FloorPlan | undefined, opts: RoomOptions = {}): RoomBuild {
   const group = new THREE.Group();
+  const sheers: RoomBuild['sheers'] = [];
   const walls: WallRecord[] = [];
   const b = plan?.bounds ?? { minX: -3, minZ: -3, maxX: 3, maxZ: 3 };
   const centre = v((b.minX + b.maxX) / 2, 1, (b.minZ + b.maxZ) / 2);
@@ -218,9 +237,16 @@ export function buildRoom(plan: FloorPlan | undefined): RoomBuild {
 
   // Floor.
   const ft = cached('floor', floorTextures);
-  const floorMat = new THREE.MeshStandardMaterial({ map: ft.map, bumpMap: ft.bump, bumpScale: 1.2, roughness: 0.5, metalness: 0 });
-  // Shape coordinates are metres, so one texture tile covers `tile` metres.
-  ft.map.repeat.set(1 / ft.tile, 1 / ft.tile); ft.bump.repeat.set(1 / ft.tile, 1 / ft.tile);
+  let floorMat: THREE.MeshStandardMaterial;
+  if (opts.floor) {
+    const map = opts.floor.concrete ? cached('concrete', concreteTexture) : undefined;
+    map?.repeat.set(1 / 4, 1 / 4);
+    floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(opts.floor.colour), map, roughness: opts.floor.roughness, metalness: 0 });
+  } else {
+    floorMat = new THREE.MeshStandardMaterial({ map: ft.map, bumpMap: ft.bump, bumpScale: 1.2, roughness: 0.5, metalness: 0 });
+    // Shape coordinates are metres, so one texture tile covers `tile` metres.
+    ft.map.repeat.set(1 / ft.tile, 1 / ft.tile); ft.bump.repeat.set(1 / ft.tile, 1 / ft.tile);
+  }
   const polys = plan?.floorPolygons.length ? plan.floorPolygons : [[{ x: b.minX, z: b.minZ }, { x: b.maxX, z: b.minZ }, { x: b.maxX, z: b.maxZ }, { x: b.minX, z: b.maxZ }]];
   for (const poly of polys) {
     if (poly.length < 3) continue;
@@ -265,7 +291,7 @@ export function buildRoom(plan: FloorPlan | undefined): RoomBuild {
       solid(cursor, o.u0, w.bottom, top, true);
       solid(o.u0, o.u1, w.bottom, Math.min(top, o.s.bottom), o.s.bottom > 0.3);
       solid(o.u0, o.u1, Math.min(top, o.s.bottom + o.s.height), top, false);
-      if (o.kind === 'window') windowParts(f, o.u0, o.u1, o.s, rec);
+      if (o.kind === 'window') windowParts(f, o.u0, o.u1, o.s, rec, top, sheers);
       if (o.kind === 'door') doorParts(f, o.u0, o.u1, o.s, rec);
       cursor = o.u1;
     }
@@ -278,20 +304,33 @@ export function buildRoom(plan: FloorPlan | undefined): RoomBuild {
     if (used.has(o.s.id) || o.kind === 'opening') continue;
     const f = frame(o.s.a, o.s.b, centre);
     const rec: WallRecord = { mid: v((o.s.a.x + o.s.b.x) / 2, 0, (o.s.a.z + o.s.b.z) / 2), mats: [], level: 1 };
-    if (o.kind === 'window') windowParts(f, 0, f.len, o.s, rec); else doorParts(f, 0, f.len, o.s, rec);
+    if (o.kind === 'window') windowParts(f, 0, f.len, o.s, rec, undefined, sheers); else doorParts(f, 0, f.len, o.s, rec);
     group.add(f.g);
     walls.push(rec);
   }
 
   for (const o of plan?.objects ?? []) if (plan) group.add(furniture(o, plan));
 
+  if (opts.lid && plan?.walls.length) {
+    // Casts shadows only: never drawn, so the room stays open to look into.
+    const top = Math.max(...plan.walls.map(w => w.bottom + w.height)) + 0.02;
+    const lidMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
+    for (const poly of polys) {
+      if (poly.length < 3) continue;
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(poly.map(q => new THREE.Vector2(q.x, -q.z)))), lidMat);
+      m.rotation.x = -Math.PI / 2; m.position.y = top;
+      m.userData.noAO = true; m.userData.lid = true; m.raycast = () => {};
+      group.add(m);
+    }
+  }
+
   group.traverse(o => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
-    m.receiveShadow = true;
+    m.receiveShadow = !m.userData.lid;
     m.castShadow = !m.userData.noShadow;
   });
-  return { group, walls, centre, span };
+  return { group, walls, centre, span, sheers };
 }
 
 /** The ground beyond the room: a plain floor tone that fades into the backdrop, so the set has

@@ -1193,6 +1193,42 @@ final class VirtualSceneModel: ObservableObject {
         sunNode.light?.intensity = elevation > 0 ? CGFloat(400 + 1400 * sin(e)) : 0
     }
 
+    // MARK: Studio set and daylight
+
+    private let stageHolder = SCNNode()
+    private var builtStage: StageVisuals?
+    private var stageOwnsSun = false
+
+    /// Backdrop, floor finish, curtains, and the sun and sky when daylight is on. The look only:
+    /// readings come from `LightingCalculator`, never from how bright this view is.
+    func setStage(_ v: StageVisuals?) {
+        if stageHolder.parent == nil { world.addChildNode(stageHolder) }
+        guard v != builtStage else { return }
+        builtStage = v
+        stageHolder.childNodes.forEach { $0.removeFromParentNode() }
+        if let v { stageHolder.addChildNode(StageSceneKit.build(v)) }
+        if let d = v?.daylight {
+            stageOwnsSun = true
+            let b = d.bearing * .pi / 180, e = max(d.elevation, 0) * .pi / 180
+            let local = SIMD3<Float>(Float(sin(b) * cos(e)), Float(sin(e)), Float(-cos(b) * cos(e)))
+            let towardsSun = simd_normalize(world.simdConvertVector(local, to: nil))
+            let centre = worldPoint(roomCentre)
+            sunNode.simdPosition = centre + towardsSun * 20
+            sunNode.simdLook(at: centre)
+            // Stronger sun → stronger key, capped so the frame doesn't burn out. Not a level.
+            sunNode.light?.intensity = d.elevation > 0 ? CGFloat(min(2600, 200 + d.directNormal / 40)) : 0
+            sunNode.light?.temperature = d.elevation < 12 ? 4200 : 5600
+            ambientNode.light?.intensity = CGFloat(380 + min(320, d.windowLuminance / 12))
+            scene.background.contents = StageSceneKit.skyImage(d)
+        } else if stageOwnsSun {
+            stageOwnsSun = false
+            sunNode.light?.temperature = 6500
+            ambientNode.light?.intensity = 450
+            scene.background.contents = SceneKitBuilder.gradient(top: 0.10, bottom: 0.02)
+            setSun(worldBearing: nil, elevation: nil)
+        }
+    }
+
     /// Item under a screen point: the first node up the hierarchy named "sel:<kind>:<uuid>",
     /// or a set piece from the scan.
     func hit(at point: CGPoint, in view: SCNView) -> PlanSelection? {

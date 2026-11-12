@@ -1,5 +1,6 @@
 // Top-down plan: the scan's walls, openings and set pieces, with cameras, lights, grip, people and
 // meters on top. Same coordinates as the phone (x right, z down, bearing 0° = up, clockwise).
+import { backdropPlacement, inwardNormal, sunPlacement } from '../model/stage';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactElement } from "react";
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, Location, PlanPoint, PlanRect, PrevisCharacter } from '../model/types';
 import { KIND_INFO, distanceForLux, photometrics } from '../model/photometrics';
@@ -424,6 +425,21 @@ export function PlanCanvas(props: Props) {
             opacity={0.55} preserveAspectRatio="none" style={{ imageRendering: 'auto' }} pointerEvents="none" />
         )}
         {plan && !hidden.has('floors') && plan.floorPolygons.map((poly, i) => <polygon key={'f' + i} points={poly.map(pt).join(' ')} fill="var(--floor)" pointerEvents="none" />)}
+        {plan && (() => {
+          // The studio backdrop: its footprint on the wall plus the sweep onto the floor.
+          const bd = backdropPlacement(location, plan);
+          if (!bd) return null;
+          const sweep = Math.max(bd.sweep, 0.12);
+          const q = [bd.a, bd.b, { x: bd.b.x + bd.inward.x * sweep, z: bd.b.z + bd.inward.z * sweep }, { x: bd.a.x + bd.inward.x * sweep, z: bd.a.z + bd.inward.z * sweep }];
+          const mid = { x: (bd.a.x + bd.b.x) / 2 + bd.inward.x * sweep / 2, z: (bd.a.z + bd.b.z) / 2 + bd.inward.z * sweep / 2 };
+          return (
+            <g pointerEvents="none">
+              <polygon points={q.map(pt).join(' ')} fill={bd.colour} fillOpacity={bd.info.kind === 'led' ? 0.85 : 0.5} stroke="var(--ink3)" strokeDasharray={bd.info.kind === 'paper' ? '4 3' : undefined} />
+              {bd.info.kind === 'led' && <line x1={sx(bd.a.x)} y1={sy(bd.a.z)} x2={sx(bd.b.x)} y2={sy(bd.b.z)} stroke="var(--accent)" strokeWidth={3} />}
+              {v.scale > 30 && labelFor(bd.info.label, mid, 0)}
+            </g>
+          );
+        })()}
         {plan && plan.occupancy.length > 0 && plan.occupancy.map((p, i) => <rect key={'o' + i} x={sx(p.x)} y={sy(p.z)} width={plan.occupancyCellSize * v.scale} height={plan.occupancyCellSize * v.scale} fill="var(--occ)" pointerEvents="none" />)}
         {plan && !hidden.has('furniture') && plan.objects.map(o => {
           const s: Selection = { kind: 'object', id: o.id };
@@ -441,6 +457,12 @@ export function PlanCanvas(props: Props) {
         {plan && !hidden.has('furniture') && plan.objects.map(o => (layers.has('names') || sameSel(selection, { kind: 'object', id: o.id })) && <g key={'ol' + o.id}>{labelFor(setPieceName(o), o.center, 4, sameSel(selection, { kind: 'object', id: o.id }))}</g>)}
         {plan && !hidden.has('walls') && plan.walls.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--wall)" strokeWidth={Math.max(3, 0.1 * v.scale)} strokeLinecap="square" pointerEvents="none" />)}
         {plan && !hidden.has('windows') && plan.windows.map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke="var(--window)" strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
+        {plan && !hidden.has('windows') && plan.windows.filter(w => w.curtain).map(w => {
+          // Curtains hang on the room side of the glass.
+          const n = inwardNormal(w, plan), o = 0.09;
+          return <line key={'c' + w.id} x1={sx(w.a.x + n.x * o)} y1={sy(w.a.z + n.z * o)} x2={sx(w.b.x + n.x * o)} y2={sy(w.b.z + n.z * o)}
+            stroke={w.curtain === 'blackout' ? 'var(--ink)' : 'var(--ink3)'} strokeWidth={w.curtain === 'blackout' ? 4 : 2.5} strokeDasharray={w.curtain === 'sheer' ? '3 3' : undefined} pointerEvents="none" />;
+        })}
         {plan && !hidden.has('doors') && [...plan.doors, ...plan.openings].map(w => <line key={w.id} x1={sx(w.a.x)} y1={sy(w.a.z)} x2={sx(w.b.x)} y2={sy(w.b.z)} stroke={w.kind === 'door' ? 'var(--door)' : 'var(--paper)'} strokeWidth={Math.max(4, 0.1 * v.scale)} pointerEvents="none" />)}
         {plan && [...(hidden.has('windows') ? [] : plan.windows), ...(hidden.has('doors') ? [] : [...plan.doors, ...plan.openings])].map(w => {
           // A wide invisible stroke to click; selected, it gets an accent outline and moves along the walls.
@@ -484,6 +506,22 @@ export function PlanCanvas(props: Props) {
             <text y={-24} textAnchor="middle" fill="var(--ink)" fontSize={11} transform={`rotate(${scan.northOffset} 0 -28)`}>N</text>
           </g>
         )}
+        {location.daylight?.isOn && (() => {
+          // Where the sun is: an arrow pointing the way its light travels, by the north arrow.
+          const sun = sunPlacement(location, scan);
+          const up = sun.elevation > 0;
+          return (
+            <g transform={`translate(${size.w - 70},${size.h - 160})`} pointerEvents="none" opacity={up ? 0.9 : 0.4}>
+              <title>Sun {Math.round(sun.elevation)}° up</title>
+              <g transform={`rotate(${sun.bearing})`}>
+                <circle cx={0} cy={-20} r={6} fill="var(--paper)" stroke="var(--ink)" strokeWidth={1.5} />
+                <line x1={0} y1={-12} x2={0} y2={12} stroke="var(--ink)" strokeWidth={1.5} />
+                <polygon points="0,16 -4,8 4,8" fill="var(--ink)" />
+              </g>
+              <text y={34} textAnchor="middle" fill="var(--ink)" fontSize={11}>{up ? `Sun ${Math.round(sun.elevation)}°` : 'Sun down'}</text>
+            </g>
+          );
+        })()}
         <g transform={`translate(16,${size.h - 24})`} pointerEvents="none">
           <line x1={0} y1={0} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={0} stroke="var(--ink)" />
           <line x1={0} y1={-5} x2={0} y2={5} stroke="var(--ink)" /><line x1={v.scale * (v.scale > 60 ? 1 : 2)} y1={-5} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={5} stroke="var(--ink)" />

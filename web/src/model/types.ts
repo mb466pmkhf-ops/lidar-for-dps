@@ -3,6 +3,8 @@
 // survive a round trip. Non-optional Swift fields must always be written (synthesized Codable
 // requires them); optional ones are omitted when unset, as Swift does.
 
+import type { CurtainKind, DaylightSetup, StudioSetup } from './stage';
+
 export type UUID = string;
 export type Provenance = 'measured' | 'estimated' | 'manual';
 
@@ -15,6 +17,8 @@ export interface PlanSegment {
   height: number; bottom: number; isOpen: boolean;
   /** Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items. */
   byHand?: boolean;
+  /** Windows only: curtains drawn across it (stage.ts). Absent = bare glass. */
+  curtain?: CurtainKind;
 }
 export interface PlanObject {
   id: UUID; category: string; center: PlanPoint;
@@ -112,6 +116,13 @@ export interface Location {
   cameraPositions: CameraPosition[]; shots: Shot[];
   lights?: LightFixture[]; characters?: PrevisCharacter[]; meters?: LightMeter[];
   exposure?: ExposureSettings; display?: SceneDisplay;
+  /** Written by the phone when the location has a place on the map. */
+  coordinate?: { latitude: number; longitude: number; altitude?: number };
+  timeZoneIdentifier?: string;
+  /** Backdrop and floor finish for a studio build (stage.ts). */
+  studio?: StudioSetup;
+  /** Sun and sky outside the windows (stage.ts). */
+  daylight?: DaylightSetup;
   [key: string]: unknown;
 }
 

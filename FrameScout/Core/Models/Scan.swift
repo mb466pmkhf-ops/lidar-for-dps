@@ -148,6 +148,8 @@ struct PlanSegment: Codable, Hashable, Identifiable {
     var isOpen: Bool = false
     /// Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items.
     var byHand: Bool? = nil
+    /// Windows only: curtains drawn across it (see `Stage`). nil = bare glass.
+    var curtain: CurtainKind? = nil
 
     var length: Double { a.distance(to: b) }
     var midpoint: PlanPoint { PlanPoint(x: (a.x + b.x) / 2, z: (a.z + b.z) / 2) }

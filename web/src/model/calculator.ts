@@ -2,14 +2,16 @@
 // direct light from every unit with beam shape, inverse square (with near-field terms), cosine
 // incidence, barn doors, walls/windows/doors/grip occlusion (boards honour pan and tilt, so an
 // overhead frame flown flat cuts what passes through it), and grip as a second source: bounce
-// boards, flags and negs send back what they reflect, diffusion frames re-emit what they pass.
-// Not modelled: room inter-reflections, daylight, furniture shadows. Every figure is an estimate.
+// boards, flags and negs send back what they reflect, diffusion frames re-emit what they pass. Curtains,
+// and (with an Environment from stage.ts) sun and sky through the windows and an LED wall.
+// Not modelled: room inter-reflections, furniture shadows. Every figure is an estimate.
 import type { FloorPlan, LightFixture, LightKind, LightMeter, Location, PlanPoint, PlanSegment, UUID, PlanRect, MeterFacing } from './types';
 import { barnDoorTransmission, barnDoorsOpen, distanceFactor, fixtureProfile, openBarnDoors, photometrics, relativeIntensity, type ResolvedPhotometrics } from './photometrics';
 import type { BarnDoors } from './types';
 import { horizontalFOV } from './camera';
 import { drapeOptics, gripSpan } from './grip';
 import { eyeHeight } from './characters';
+import { AMBIENT_IDS, WINDOW_CELL, curtainPass, insideRoom, inwardNormal, type AreaSource, type Environment } from './stage';
 
 export interface Vec { x: number; y: number; z: number }
 export const vec = (x: number, y: number, z: number): Vec => ({ x, y, z });
@@ -64,10 +66,18 @@ export const DEFAULT_WINDOW_TRANSMISSION = 0.78;
 /** Each board is split into this many patches a side, so a frame only half in the beam glows only where it is lit. */
 const PATCHES = 3;
 
-export interface Scene { emitters: Emitter[]; boards: Board[]; walls: PlanSegment[]; apertures: PlanSegment[]; windowTransmission: number; patches: Patch[] }
+export interface Scene {
+  emitters: Emitter[]; boards: Board[]; walls: PlanSegment[]; apertures: PlanSegment[]; windowTransmission: number; patches: Patch[];
+  /** Diffuse rectangles: the windows' daylight and the LED wall. */
+  areas: AreaSource[];
+  /** Direction towards the sun and its level square-on, when it is up. */
+  sun?: { toward: Vec; directNormal: number };
+  plan?: FloorPlan;
+}
 
-export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION): Scene {
-  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission, patches: [] };
+export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment): Scene {
+  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission, patches: [], areas: [], plan };
+  if (env) addEnvironment(scene, env, plan);
   for (const l of lights) {
     const axis = direction(l.pan, l.tilt);
     const emits = !['bounce', 'negative', 'flag', 'diffusion'].includes(l.kind);
@@ -143,11 +153,16 @@ export function transmission(a: Vec, b: Vec, scene: Scene, ignoring: UUID[] = []
     if (!(y >= w.bottom - 0.01 && y <= w.bottom + w.height + 0.01)) continue;
     const opening = scene.apertures.find(o => distanceToSegment(q, o.a, o.b) < 0.15 && y >= o.bottom - 0.01 && y <= o.bottom + o.height + 0.01);
     if (opening) {
-      if (opening.kind === 'window') t *= scene.windowTransmission;
+      if (opening.kind === 'window') t *= scene.windowTransmission * curtainPass(opening.curtain);
       else if (opening.kind === 'door') t *= opening.isOpen ? 1 : 0;
     } else return 0;
     if (t <= 0) return 0;
   }
+  return t * boardsPass(a, b, scene, ignoring);
+}
+
+function boardsPass(a: Vec, b: Vec, scene: Scene, ignoring: UUID[]): number {
+  let t = 1;
   const ab = sub(b, a);
   for (const board of scene.boards) {
     if (ignoring.includes(board.id)) continue;
@@ -225,7 +240,139 @@ export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
     if (had) had.lux += lux; else contributions.push({ lightID: patch.lightID, lux, viaBounce: patch.board });
     total += lux;
   }
+  if (scene.sun) {
+    const lux = sunlight(point, normal, scene);
+    if (lux > 0) { contributions.push({ lightID: AMBIENT_IDS.sun, lux }); total += lux; }
+  }
+  const byArea = new Map<string, number>();
+  for (const area of scene.areas) {
+    const lux = areaIlluminance(area, point, normal, scene);
+    if (lux > 0) byArea.set(area.id, (byArea.get(area.id) ?? 0) + lux);
+  }
+  for (const [lightID, lux] of byArea) { contributions.push({ lightID, lux }); total += lux; }
   return { lux: total, contributions };
+}
+
+// MARK: Daylight and the LED wall
+
+function addEnvironment(scene: Scene, env: Environment, plan?: FloorPlan) {
+  if (env.sun) {
+    const toward = direction(env.sun.bearing, env.sun.elevation);
+    scene.sun = { toward, directNormal: env.sun.directNormal };
+  }
+  if (env.ledWall) scene.areas.push(env.ledWall);
+  if (!plan || !(env.windowLuminance > 0 || scene.sun)) return;
+  for (const w of plan.windows) {
+    const width = planDist(w.a, w.b);
+    if (!(width > 0.05) || !(w.height > 0.05)) continue;
+    const inward = inwardNormal(w, plan);
+    let lum = env.windowLuminance;
+    // A sheer turns sun on the glass into a glowing curtain; bare glass lets the sun through as a beam.
+    if (scene.sun && w.curtain === 'sheer') {
+      const onGlass = -(scene.sun.toward.x * inward.x + scene.sun.toward.z * inward.z);
+      if (onGlass > 0) lum += scene.sun.directNormal * onGlass / Math.PI;
+    }
+    if (!(lum > 0)) continue;
+    const along = { x: (w.b.x - w.a.x) / width, z: (w.b.z - w.a.z) / width };
+    // Sampled just outside the glass, so the path in passes the glass and curtains like any other light.
+    scene.areas.push({
+      id: AMBIENT_IDS.sky, origin: { x: w.a.x - inward.x * 0.06, z: w.a.z - inward.z * 0.06 }, bottom: w.bottom, along, width, height: w.height,
+      facing: inward, luminance: lum,
+      columns: Math.min(6, Math.max(2, Math.round(width / WINDOW_CELL))), rows: Math.min(6, Math.max(2, Math.round(w.height / WINDOW_CELL))),
+    });
+  }
+}
+
+/** Diffuse light from a rectangle of even luminance. The amount is exact for an unblocked
+ *  rectangle (Lambert's polygon formula, clipped to what the receptor faces); what blocks it on the
+ *  way (walls, glass, curtains, flags) is averaged over a grid of patches, weighted by how much each
+ *  patch gives. */
+export function areaIlluminance(area: AreaSource, point: Vec, normal: Vec, scene: Scene): number {
+  const f = vec(area.facing.x, 0, area.facing.z);
+  // In front of it at all?
+  const toP = vec(point.x - area.origin.x, point.y - area.bottom, point.z - area.origin.z);
+  if (!(dot(toP, f) > 1e-6)) return 0;
+  const corner = (u: number, h: number) => vec(area.origin.x + area.along.x * u, area.bottom + h, area.origin.z + area.along.z * u);
+  const quad = [corner(0, 0), corner(area.width, 0), corner(area.width, area.height), corner(0, area.height)];
+  const exact = polygonIlluminance(quad, point, normal) * area.luminance;
+  if (!(exact > 1e-9)) return 0;
+  const cw = area.width / area.columns, ch = area.height / area.rows, dA = cw * ch, soften = dA / Math.PI;
+  let weight = 0, passed = 0;
+  for (let i = 0; i < area.columns; i++) for (let j = 0; j < area.rows; j++) {
+    const c = corner((i + 0.5) * cw, (j + 0.5) * ch);
+    const d = sub(point, c);
+    const dist2 = dot(d, d);
+    if (!(dist2 > 1e-6)) continue;
+    const v = scale(d, 1 / Math.sqrt(dist2));
+    const out = dot(v, f), inc = -dot(v, normal);
+    if (!(out > 0 && inc > 0)) continue;
+    const w = out * inc * dA / (dist2 + soften);
+    weight += w;
+    passed += w * transmission(c, point, scene);
+  }
+  if (!(weight > 0)) {
+    const mid = corner(area.width / 2, area.height / 2);
+    return exact * transmission(mid, point, scene);
+  }
+  return exact * passed / weight;
+}
+
+/** Illuminance at `point` (receptor facing `normal`) from a polygon of unit luminance: Lambert's
+ *  formula over the part of the polygon in front of the receptor. */
+export function polygonIlluminance(poly: Vec[], point: Vec, normal: Vec): number {
+  // Clip to the receptor's half-space (a little in front, so the edge doesn't sit on the point).
+  const side = (q: Vec) => dot(sub(q, point), normal) - 1e-9;
+  const clipped: Vec[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const sa = side(a), sb = side(b);
+    if (sa > 0) clipped.push(a);
+    if ((sa > 0) !== (sb > 0)) {
+      const t = sa / (sa - sb);
+      clipped.push(vec(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t));
+    }
+  }
+  if (clipped.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < clipped.length; i++) {
+    const u1 = norm(sub(clipped[i], point)), u2 = norm(sub(clipped[(i + 1) % clipped.length], point));
+    const c = cross(u1, u2);
+    const cl = len(c);
+    if (!(cl > 1e-12)) continue;
+    const angle = Math.acos(Math.min(1, Math.max(-1, dot(u1, u2))));
+    sum += angle * dot(scale(c, 1 / cl), normal);
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** Direct sun at a point: it has to come in through a window or open door. Indoors, a path that
+ *  goes over a wall goes through the ceiling. Sheer and blackout curtains stop the beam. */
+export function sunlight(point: Vec, normal: Vec, scene: Scene): number {
+  const sun = scene.sun;
+  if (!sun) return 0;
+  const inc = dot(sun.toward, normal);
+  if (!(inc > 0)) return 0;
+  const far = vec(point.x + sun.toward.x * 80, point.y + sun.toward.y * 80, point.z + sun.toward.z * 80);
+  const ap = { x: point.x, z: point.z }, bp = { x: far.x, z: far.z };
+  const indoor = scene.plan ? insideRoom(ap, scene.plan) : false;
+  let t = 1, crossed = false;
+  for (const w of scene.walls) {
+    const hit = intersect(ap, bp, w.a, w.b);
+    if (!hit) continue;
+    const [s, q] = hit;
+    const y = point.y + s * (far.y - point.y);
+    if (y > w.bottom + w.height + 0.01) { if (indoor) return 0; continue; }
+    if (y < w.bottom - 0.01) continue;
+    crossed = true;
+    const opening = scene.apertures.find(o => distanceToSegment(q, o.a, o.b) < 0.15 && y >= o.bottom - 0.01 && y <= o.bottom + o.height + 0.01);
+    if (!opening) return 0;
+    if (opening.kind === 'window') t *= opening.curtain ? 0 : scene.windowTransmission;
+    else if (opening.kind === 'door') t *= opening.isOpen ? 1 : 0;
+    if (t <= 0) return 0;
+  }
+  if (indoor && !crossed) return 0;
+  t *= boardsPass(point, far, scene, []);
+  return t > 0 ? sun.directNormal * inc * t : 0;
 }
 
 export function grid(bounds: PlanRect, columns: number, rows: number, height: number, scene: Scene, normal: (p: Vec) => Vec): number[] {
@@ -245,10 +392,10 @@ export type IntensitySolution =
   | { kind: 'othersTooBright'; othersLux: number }
   | { kind: 'noContribution' };
 
-export function solveOutput(light: LightFixture, target: number, point: Vec, normal: Vec, allLights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION): IntensitySolution {
+export function solveOutput(light: LightFixture, target: number, point: Vec, normal: Vec, allLights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment): IntensitySolution {
   const others = allLights.filter(l => l.id !== light.id);
   const full = { ...light, dimmer: 1, isOn: true };
-  const fullReading = reading(point, normal, buildScene([...others, full], plan, windowTransmission));
+  const fullReading = reading(point, normal, buildScene([...others, full], plan, windowTransmission, env));
   const mine = fullReading.contributions.filter(c => c.lightID === light.id).reduce((s, c) => s + c.lux, 0);
   const othersLux = fullReading.lux - mine;
   if (!(mine > 1e-6)) return { kind: 'noContribution' };
