@@ -41,3 +41,29 @@ export const isoPresets = [100, 200, 400, 640, 800, 1280, 1600, 3200, 6400];
 export const frameRates = [23.976, 24, 25, 30, 48, 50, 60, 100, 120];
 export const shutterAngles = [45, 90, 144, 172.8, 180, 270, 360];
 export const tStops = [1.4, 2, 2.8, 4, 5.6, 8, 11, 16];
+
+// Same as the ExposureSettings extension in Exposure.swift.
+/** Thirds of a stop from T1: 2^(k/6). The pickers on both platforms list these. */
+export const thirdStop = (k: number) => Math.pow(2, k / 6);
+/** T1 to T32 in thirds. */
+export const thirdStops = Array.from({ length: 31 }, (_, k) => thirdStop(k));
+/** The T-stop `thirds` thirds of a stop away from `n`, kept between T1 and T32. */
+export function steppedStop(n: number, thirds: number): number {
+  const k = Math.round(6 * Math.log2(Math.max(n, 0.01))) + thirds;
+  return thirdStop(Math.min(Math.max(k, 0), 30));
+}
+/** ISO in thirds of a stop, as cameras offer it. */
+export const isoSteps = [100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1280, 1600, 2000, 2560, 3200, 4000, 5000, 6400, 8000, 10000, 12800];
+/** The next or previous ISO in `isoSteps`. */
+export function steppedISO(iso: number, step: number): number {
+  let best = 0;
+  isoSteps.forEach((v, i) => { if (Math.abs(Math.log2(v / iso)) < Math.abs(Math.log2(isoSteps[best] / iso))) best = i; });
+  return isoSteps[Math.min(Math.max(best + step, 0), isoSteps.length - 1)];
+}
+/** Below this a meter has nothing useful to say and no lens opens that far. */
+export const DARKEST_STOP = 0.5;
+/** The stop an incident meter would show: "T4 +⅓", or "under T0.5" when it is that dark (never "T0"). */
+export function meterStop(e: ExposureSettings, lux: number): string {
+  const n = tStopForLux(e, lux);
+  return n < DARKEST_STOP ? `under ${stopLabel(DARKEST_STOP)}` : stopLabel(n);
+}

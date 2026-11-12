@@ -246,7 +246,7 @@ struct PlanEditorView: View {
     @State private var fittedBounds: PlanRect?
     /// Information layers switched on above the essentials ("beams,readings"…).
     @AppStorage("plan.infoLayers") private var infoLayersRaw = ""
-    @AppStorage(ReadingUnit.key) private var readingUnit = ReadingUnit.tStop
+    @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     @State private var showInfoBar = false
 
     private enum DragTarget: Equatable {
@@ -265,6 +265,10 @@ struct PlanEditorView: View {
     }
     private var display: SceneDisplay { location?.displaySettings ?? SceneDisplay() }
     private var exposure: ExposureSettings { location?.exposureSettings ?? ExposureSettings() }
+    /// Camera settings for this location: every camera here shares them, and every reading follows them.
+    private var exposureBinding: Binding<ExposureSettings> {
+        Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } })
+    }
 
     private var shows3D: Bool { layout != .plan && scan != nil }
     private var showsPlan: Bool { layout != .scene || scan == nil || scene3D.error != nil }
@@ -415,22 +419,15 @@ struct PlanEditorView: View {
         return LightingAnalysis(context: context, readings: readings, scene: scene)
     }
 
-    /// One line under the exposure summary saying what the readings mean in the chosen unit.
+    /// One line under the exposure summary saying what the readings mean.
     private var keyLine: String {
-        switch readingUnit {
-        case .tStop: return "Readings are the stop a light meter would show"
-        case .stops: return "Readings are over or under \(ExposureSettings.stopLabel(exposure.tStop))"
-        case .lux, .footCandles: return "Key ≈ \(readingUnit.text(lux: exposure.keyLux, exposure: exposure)) for a correct exposure"
-        }
+        let key = "key ≈ \(ReadingExtra.luxText(exposure.keyLux))"
+        return readingExtra == .off ? "Readings are the stop a light meter would show" : "Stop a meter would show, then light level · \(key)"
     }
 
     private func readingText(_ r: LightingCalculator.Reading?) -> String? {
         guard let r, !sceneLights.isEmpty else { return nil }
-        let value = readingUnit.text(lux: r.lux, exposure: exposure)
-        switch readingUnit {
-        case .tStop, .stops: return value
-        case .lux, .footCandles: return "\(value) · \(ExposureSettings.stopsDelta(exposure.stops(forLux: r.lux)))"
-        }
+        return ReadingFormat.value(lux: r.lux, exposure: exposure, extra: readingExtra)
     }
 
     /// False-colour map of stops against key at face height (1.5 m), metered towards camera.
@@ -1458,7 +1455,7 @@ struct PlanEditorView: View {
                         ForEach(location.scans) { s in Text(s.name).tag(Optional(s.id)) }
                     }
                 }
-                Button { showExposure = true } label: { Label("Camera exposure…", systemImage: "camera.aperture") }
+                Button { showExposure = true } label: { Label("Camera settings…", systemImage: "camera.aperture") }
                 Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
                 if scan != nil {
                     Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
@@ -1654,18 +1651,19 @@ struct PlanEditorView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens camera exposure settings")
+            ExposureQuickBar(exposure: exposureBinding)
             let points = analysis.context.meters
             if !points.isEmpty && !sceneLights.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("READINGS").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
                         Menu {
-                            Picker("Show readings as", selection: $readingUnit) {
-                                ForEach(ReadingUnit.allCases) { unit in Text(unit.label).tag(unit) }
+                            Picker("After the stop", selection: $readingExtra) {
+                                ForEach(ReadingExtra.allCases) { unit in Text(unit == .off ? "Stop only" : "Stop + \(unit.label.lowercased())").tag(unit) }
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Text(readingUnit.label)
+                                Text(readingExtra == .off ? "Stop only" : "Stop + \(readingExtra.label.lowercased())")
                                 Image(systemName: "chevron.up.chevron.down")
                             }
                             .font(.fsCaption)
@@ -1673,7 +1671,7 @@ struct PlanEditorView: View {
                             .frame(minHeight: 32)
                             .background(Theme.surfaceRaised, in: Capsule())
                         }
-                        .accessibilityLabel("Show readings as \(readingUnit.label)")
+                        .accessibilityLabel("Readings: \(readingExtra == .off ? "stop only" : "stop and \(readingExtra.label.lowercased())")")
                         Spacer()
                         ProvenanceBadge(provenance: .estimated)
                     }
@@ -1733,6 +1731,7 @@ struct PlanEditorView: View {
                 Text(rig.lensSummary).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             LensPicker(focalLength: rigBinding.focalLength)
+            ExposureQuickBar(exposure: exposureBinding) { showExposure = true }
             HStack {
                 StatView(label: "H-FOV", value: Optics.formatAngle(rig.horizontalFOV))
                 StatView(label: "Height", value: UnitsFormatter.distance(rig.height))
