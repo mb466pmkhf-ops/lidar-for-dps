@@ -2,7 +2,7 @@
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, CharacterType } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter } from '../model/types';
 import {
   FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
@@ -19,7 +19,7 @@ import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type Lig
 import { usePresets } from './presetStore';
 import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
 import { kelvinPresets } from '../model/kelvin';
-import { characterDefaults, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
+import { characterDefaults, characterLabel, characterTypes, hairOf, hairStyles, isChild, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
 import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, watts } from './format';
@@ -496,16 +496,19 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
       </Panel>
       <Panel title="Person">
         <div className="chips" style={{ marginBottom: 10 }}>
-          {(['man', 'woman', 'girl', 'boy'] as CharacterType[]).map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} onClick={() => set({ type: t, height: characterDefaults[t] })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+          {characterTypes.map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} title={t === 'universal' ? 'No male or female features: in-between shape, cropped hair' : undefined} onClick={() => set({ type: t, height: characterDefaults[t] })}>{characterLabel(t)}</button>)}
         </div>
         <div className="chips" style={{ marginBottom: 10 }}>
           {(['standing', 'sitting'] as const).map(t => <button key={t} className={'chip' + (c.posture === t ? ' on' : '')} onClick={() => set({ posture: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
         </div>
-        <Slider label="Height" value={c.height} min={c.type === 'girl' || c.type === 'boy' ? 0.8 : 1.4} max={c.type === 'girl' || c.type === 'boy' ? 1.75 : 2.1} step={0.01} format={metres} onChange={v => set({ height: v }, false)} />
+        <Slider label="Height" value={c.height} min={isChild(c.type) ? 0.8 : 1.4} max={isChild(c.type) ? 1.75 : 2.1} step={0.01} format={metres} onChange={v => set({ height: v }, false)} />
         <Slider label="Build" value={c.build} min={0} max={1} step={0.05} format={v => (v < 0.2 ? 'Slim' : v < 0.4 ? 'Lean' : v < 0.6 ? 'Average' : v < 0.8 ? 'Solid' : 'Heavy')} onChange={v => set({ build: v }, false)} />
         <Slider label="Facing" value={((c.facing % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ facing: v }, false)} />
         <div className="field"><span>Skin</span>
           <div className="chips">{skinRGB.map((col, i) => <button key={i} className={'swatch' + (c.skinTone === i + 1 ? ' on' : '')} style={{ background: col }} title={skinTones[i]} aria-label={skinTones[i]} onClick={() => set({ skinTone: i + 1 })} />)}</div><span />
+        </div>
+        <div className="field"><span>Hair</span>
+          <div className="chips">{hairStyles.map(hs => <button key={hs.id} className={'chip' + (hairOf(c) === hs.id ? ' on' : '')} onClick={() => set({ hair: hs.id })}>{hs.label}</button>)}</div><span />
         </div>
       </Panel>
     </div>

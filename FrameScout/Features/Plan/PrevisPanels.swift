@@ -89,18 +89,22 @@ struct CharacterFields: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                ForEach(CharacterType.allCases) { t in
-                    TagChip(text: t.label, selected: character.type == t) {
-                        update { c in
-                            // Keep a height the user chose; an untouched one follows the type.
-                            guard c.type != t else { return }
-                            let untouched = abs(c.height - c.type.defaultHeight) < 0.005
-                            c.type = t
-                            if untouched || !t.heightRange.contains(c.height) { c.height = t.defaultHeight }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(CharacterType.allCases) { t in
+                            TagChip(text: t.label, selected: character.type == t) {
+                                update { c in
+                                    // Keep a height the user chose; an untouched one follows the type.
+                                    guard c.type != t else { return }
+                                    let untouched = abs(c.height - c.type.defaultHeight) < 0.005
+                                    c.type = t
+                                    if untouched || !t.heightRange.contains(c.height) { c.height = t.defaultHeight }
+                                }
+                            }
+                            .accessibilityHint(t == .universal ? "An adult with no male or female features" : "")
                         }
                     }
                 }
-                Spacer()
                 TagChip(text: character.posture == .sitting ? "Sitting" : "Standing", selected: true) {
                     update { $0.posture = $0.posture == .sitting ? .standing : .sitting }
                 }
@@ -128,6 +132,16 @@ struct CharacterFields: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Skin tone: \(tone.label)")
                     .accessibilityAddTraits(character.skinTone == tone ? .isSelected : [])
+                }
+            }
+            HStack(spacing: 8) {
+                Text("HAIR").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(HairStyle.allCases) { style in
+                            TagChip(text: style.label, selected: character.hairStyle == style) { update { $0.hair = style } }
+                        }
+                    }
                 }
             }
         }
