@@ -1,18 +1,21 @@
 // Port of FrameScout/Core/Models/LightingCalculator.swift. Same model, same assumptions (D-006):
 // direct light from every unit with beam shape, inverse square (with near-field terms), cosine
-// incidence, barn doors, walls/windows/doors/grip occlusion, and grip as a second source: bounce
+// incidence, barn doors, walls/windows/doors/grip occlusion (boards honour pan and tilt, so an
+// overhead frame flown flat cuts what passes through it), and grip as a second source: bounce
 // boards, flags and negs send back what they reflect, diffusion frames re-emit what they pass.
 // Not modelled: room inter-reflections, daylight, furniture shadows. Every figure is an estimate.
 import type { FloorPlan, LightFixture, LightKind, LightMeter, Location, PlanPoint, PlanSegment, UUID, PlanRect, MeterFacing } from './types';
 import { barnDoorTransmission, barnDoorsOpen, distanceFactor, fixtureProfile, openBarnDoors, photometrics, relativeIntensity, type ResolvedPhotometrics } from './photometrics';
 import type { BarnDoors } from './types';
 import { horizontalFOV } from './camera';
+import { drapeOptics, gripSpan } from './grip';
 import { eyeHeight } from './characters';
 
 export interface Vec { x: number; y: number; z: number }
 export const vec = (x: number, y: number, z: number): Vec => ({ x, y, z });
 export const at = (p: PlanPoint, height: number): Vec => ({ x: p.x, y: height, z: p.z });
 const sub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const add = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
 const scale = (a: Vec, s: number): Vec => ({ x: a.x * s, y: a.y * s, z: a.z * s });
 const dot = (a: Vec, b: Vec) => a.x * b.x + a.y * b.y + a.z * b.z;
 const len = (a: Vec) => Math.sqrt(dot(a, a));
@@ -49,7 +52,10 @@ export function boardOptics(kind: LightKind): BoardOptics {
     default: return { transmission: 1, scatter: 0, reflectance: 0 };
   }
 }
-interface Board extends BoardOptics { id: UUID; kind: LightKind; centre: Vec; normal: Vec; a: PlanPoint; b: PlanPoint; bottom: number; top: number; area: number }
+/** A board's face: a rectangle round its pivot (the stand's head), turned by pan and tilt. `right` is
+ *  level; `up` lies in the face (straight up when the board is vertical). The face spans ±halfWidth
+ *  along `right` and lo…hi along `up`; a floppy opened hangs its second panel below, so lo < −hi. */
+interface Board extends BoardOptics { id: UUID; kind: LightKind; centre: Vec; normal: Vec; right: Vec; up: Vec; halfWidth: number; lo: number; hi: number; area: number }
 /** One patch of a board lit by one unit, re-emitting like a matte surface into the side `normal` faces:
  *  the reflected part on the lit side, the scattered part out of the far side of a diffusion. */
 export interface Patch { board: UUID; lightID: UUID; centre: Vec; normal: Vec; intensity: number; radius: number }
@@ -69,9 +75,12 @@ export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTrans
       const right = direction(l.pan + 90, 0);
       scene.emitters.push({ id: l.id, position: at(l.position, l.height), axis, right, up: norm(cross(right, axis)), pm: photometrics(l), barnDoors: l.barnDoors ?? openBarnDoors });
     } else {
-      const side = planScale(unitBearing(l.pan + 90), l.width / 2);
-      const h = l.boardHeight ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
-      scene.boards.push({ id: l.id, kind: l.kind, centre: at(l.position, l.height), normal: axis, a: planSub(l.position, side), b: planAdd(l.position, side), bottom: l.height - h / 2, top: l.height + h / 2, area: l.width * h, ...boardOptics(l.kind) });
+      const span = gripSpan(l);
+      const optics = drapeOptics(l) ?? boardOptics(l.kind);
+      scene.boards.push({
+        id: l.id, kind: l.kind, centre: at(l.position, l.height), normal: axis, right: direction(l.pan + 90, 0), up: direction(l.pan, l.tilt + 90),
+        halfWidth: span.width / 2, lo: span.bottom - l.height, hi: span.top - l.height, area: span.width * (span.top - span.bottom), ...optics,
+      });
     }
   }
   scene.patches = secondarySources(scene);
@@ -87,8 +96,8 @@ function secondarySources(scene: Scene): Patch[] {
     if (!(board.reflectance > 0) && !(board.transmission * board.scatter > 0)) continue;
     const patchArea = board.area / (PATCHES * PATCHES), radius = Math.sqrt(patchArea / Math.PI);
     for (let i = 0; i < PATCHES; i++) for (let j = 0; j < PATCHES; j++) {
-      const f = (i + 0.5) / PATCHES, p = planAdd(board.a, planScale(planSub(board.b, board.a), f));
-      const centre = vec(p.x, board.bottom + (j + 0.5) / PATCHES * (board.top - board.bottom), p.z);
+      const x = ((i + 0.5) / PATCHES - 0.5) * 2 * board.halfWidth, y = board.lo + (j + 0.5) / PATCHES * (board.hi - board.lo);
+      const centre = add(board.centre, add(scale(board.right, x), scale(board.up, y)));
       for (const e of scene.emitters) {
         const side = dot(sub(e.position, centre), board.normal);
         if (side === 0) continue;
@@ -139,12 +148,17 @@ export function transmission(a: Vec, b: Vec, scene: Scene, ignoring: UUID[] = []
     } else return 0;
     if (t <= 0) return 0;
   }
+  const ab = sub(b, a);
   for (const board of scene.boards) {
     if (ignoring.includes(board.id)) continue;
-    const hit = intersect(ap, bp, board.a, board.b);
-    if (!hit) continue;
-    const y = a.y + hit[0] * (b.y - a.y);
-    if (!(y >= board.bottom && y <= board.top)) continue;
+    // Where the ray crosses the board's plane, and whether that's inside the face.
+    const across = dot(ab, board.normal);
+    if (!(Math.abs(across) > 1e-12)) continue;
+    const s = dot(sub(board.centre, a), board.normal) / across;
+    if (!(s > 1e-4 && s < 1 - 1e-4)) continue;
+    const q = sub(add(a, scale(ab, s)), board.centre);
+    const y = dot(q, board.up);
+    if (!(Math.abs(dot(q, board.right)) <= board.halfWidth + 1e-9 && y >= board.lo - 1e-9 && y <= board.hi + 1e-9)) continue;
     t *= board.transmission * (1 - board.scatter); // what a diffusion scatters comes out as its own soft source
     if (t <= 0) return 0;
   }
