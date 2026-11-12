@@ -9,6 +9,7 @@ import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISS
 import { withDefaults } from '../model/exposure';
 import { environment } from '../model/stage';
 import { eyeHeight } from '../model/characters';
+import { carryPeople, settlePeople } from '../model/placement';
 import { newCamera, newCharacter, newLight, newMeter } from '../model/factory';
 import { GRIP_PRESETS, applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
 import {
@@ -100,7 +101,12 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   };
 
   const edit = useCallback((fn: (loc: Location) => Location, undo = true) => {
-    const next = fn(locRef.current);
+    const before = locRef.current;
+    let next = fn(before);
+    // People moved, added, sat down or stood up are kept out of the furniture (placement.ts).
+    const people = next.characters ?? [];
+    const settled = settlePeople(people, planRef.current, scanID, before.characters ?? []);
+    if (settled !== people) next = { ...next, characters: settled };
     if (undo) remember();
     locRef.current = next;
     write(next);
@@ -115,7 +121,23 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     if (undo) remember();
     planRef.current = next;
     commitPlan(scanID, next);
-  }, [scanID, commitPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Seated people ride along with a moved sofa; a piece moved onto someone pushes them aside.
+    if (next.objects !== current.objects) {
+      const loc = locRef.current, people = loc.characters ?? [];
+      const settled = carryPeople(people, current, next, scanID);
+      if (settled !== people) { locRef.current = { ...loc, characters: settled }; write(locRef.current); }
+    }
+  }, [scanID, commitPlan, write]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // People saved before furniture kept them out (or moved on another device) are settled once on opening.
+  const settledFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!plan || settledFor.current === location.id) return;
+    settledFor.current = location.id;
+    const people = location.characters ?? [];
+    const settled = settlePeople(people, plan, scanID, people, true);
+    if (settled !== people) { locRef.current = { ...location, characters: settled }; write(locRef.current); }
+  }, [location.id, plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const restore = (s: Snapshot) => {
     if (s.plan && scanID && s.plan !== planRef.current) { planRef.current = s.plan; commitPlan(scanID, s.plan); }

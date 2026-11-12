@@ -18,13 +18,15 @@ export const skinRGB = ['#f5d6c2', '#e8bd9e', '#cc9975', '#ab7a57', '#80573d', '
 const reflectance = [0.45, 0.38, 0.30, 0.22, 0.15, 0.09];
 export const skinStopsFromGrey = (tone: number) => Math.log2(reflectance[Math.min(Math.max(tone, 1), 6) - 1] / 0.18);
 
+/** Seat height of a sitting person: the sofa, chair or bed they sit on (placement.ts), else a usual chair. */
+export const seatHeightOf = (c: PrevisCharacter) => c.seatHeight ?? Math.min(0.45, c.height * 0.52 * 0.5);
+
 export function eyeHeight(c: PrevisCharacter): number {
   const h = c.height;
   const child = isChild(c.type);
   const head = h / (child ? 6 : 7.5);
   const standingHip = h * 0.52;
   const sitting = c.posture === 'sitting';
-  const seat = sitting ? Math.min(0.45, standingHip * 0.5) : 0;
-  const drop = sitting ? standingHip - seat : 0;
+  const drop = sitting ? standingHip - seatHeightOf(c) : 0;
   return h - head * 0.48 - drop;
 }

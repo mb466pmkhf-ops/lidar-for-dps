@@ -1001,5 +1001,93 @@ do {
     check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
 }
 
+// MARK: Placement (same cases as web/tests/placement.test.ts)
+do {
+    let corners = [P(-3, -2.5), P(3, -2.5), P(3, 2.5), P(-3, 2.5)]
+    let sofa = PlanObject(category: "Sofa", center: P(0, 2), width: 2, depth: 0.9, height: 0.85, rotation: 0)
+    let table = PlanObject(category: "Table", center: P(0, 0.8), width: 1.1, depth: 0.6, height: 0.45, rotation: 0)
+    let chair = PlanObject(category: "Chair", center: P(-2, 0), width: 0.48, depth: 0.5, height: 0.9, rotation: .pi / 2)
+    var plan = FloorPlan()
+    plan.walls = (0..<4).map { PlanSegment(kind: .wall, a: corners[$0], b: corners[($0 + 1) % 4], height: 2.6, bottom: 0) }
+    plan.floorPolygons = [corners]
+    plan.objects = [sofa, table, chair]
+    plan.bounds = PlanRect(minX: -3, minZ: -2.5, maxX: 3, maxZ: 2.5)
+    func person(_ at: PlanPoint, _ posture: CharacterPosture = .standing, facing: Double = 180) -> PrevisCharacter {
+        var c = PrevisCharacter(name: "Ed", type: .man, position: at, facing: facing)
+        c.posture = posture
+        return c
+    }
+    func clear(_ c: PrevisCharacter, _ objects: [PlanObject] = plan.objects) -> Bool {
+        objects.allSatisfy { o in
+            let dx = c.position.x - o.center.x, dz = c.position.z - o.center.z
+            let lx = dx * cos(o.rotation) + dz * sin(o.rotation), lz = -dx * sin(o.rotation) + dz * cos(o.rotation)
+            let ox = max(0, abs(lx) - o.width / 2), oz = max(0, abs(lz) - o.depth / 2)
+            return (ox * ox + oz * oz).squareRoot() >= Placement.bodyRadius(c) - 1e-3
+        }
+    }
+    func near(_ a: Double, _ b: Double, _ tol: Double = 5e-4) -> Bool { abs(a - b) < tol }
+
+    let out = Placement.settle(person(P(0.3, 1.75)), plan: plan)
+    check(clear(out) && near(out.position.z, 2 - 0.45 - Placement.bodyRadius(out) - 0.02) && near(out.position.x, 0.3) && out.seatHeight == nil,
+          "standing person in the sofa steps out of the front (its back is to the wall)")
+    let free = person(P(1.8, -1))
+    check(Placement.settle(free, plan: plan) == free, "a person who is clear stays put")
+
+    let sat = Placement.settle(person(P(-0.4, 2.1), .sitting, facing: 90), plan: plan)
+    check(sat.posture == .sitting && near(sat.seatHeight ?? 0, 0.44) && near(sat.position.x, -0.4) && near(sat.position.z, 2) && sat.facing == 0,
+          "sitting person sits on the sofa, squared up, at the cushion height")
+    var unseated = sat; unseated.seatHeight = nil
+    check(near(sat.eyeHeight, unseated.eyeHeight + 0.44 - 0.45), "eye height follows the seat")
+
+    var wide = plan; wide.objects = [PlanObject(category: "Sofa", center: P(0, 2), width: 4, depth: 0.9, height: 0.85, rotation: 0)]
+    var noRoom = wide; noRoom.walls = []; noRoom.floorPolygons = []
+    check(Placement.settle(person(P(5, 2), .sitting, facing: 330), plan: noRoom).seatHeight == nil, "well off the sofa: no seat")
+    let turned = Placement.settle(person(P(2.05, 2), .sitting, facing: 330), plan: wide)
+    check(turned.facing == 330 && near(turned.position.x, 2 - 0.2 - 0.25), "a small turn is kept; hips stay between the arms")
+
+    let onChair = Placement.settle(person(P(-2, 0), .sitting), plan: plan)
+    check(near(onChair.seatHeight ?? 0, 0.485) && onChair.facing == 90 && near(onChair.position.x, -2.09), "sits on a turned chair, back to the wall")
+
+    let standing = person(P(0.5, 1.2))
+    var toSit = standing; toSit.posture = .sitting
+    let satDown = Placement.settle(toSit, plan: plan, before: standing)
+    check(near(satDown.seatHeight ?? 0, 0.44) && near(satDown.position.z, 2), "switching to Sitting next to the sofa sits them on it")
+    var toStand = satDown; toStand.posture = .standing
+    let up = Placement.settle(toStand, plan: plan, before: satDown)
+    check(up.seatHeight == nil && clear(up) && up.position.z < 2 - 0.45 - Placement.bodyRadius(up) && up.position.z > 0.8 + 0.3 + Placement.bodyRadius(up),
+          "standing up steps out in front, clear of the coffee table")
+    var open = plan; open.objects = [sofa]
+    let up2 = Placement.settle(toStand, plan: open, before: satDown)
+    check(near(up2.position.z, 2 - 0.45 - Placement.bodyRadius(up2) - 0.05), "with nothing in front they step straight out")
+
+    let offSeat = Placement.settle(person(P(0, 0.8), .sitting), plan: plan)
+    check(offSeat.seatHeight == nil && clear(offSeat), "sitting off any seat: usual chair height, out of the table")
+
+    let a = person(P(0, 2)), b = person(P(1.8, -1))
+    check(Placement.settle([a, b], plan: plan, scanID: nil, before: [a, b]) == nil, "nothing changed: nothing to write")
+    let all = Placement.settle([a, b], plan: plan, scanID: nil, all: true)
+    check(all != nil && all![1] == b && clear(all![0]), "settling everyone moves only the one in the sofa")
+
+    var movedPlan = plan
+    movedPlan.objects = [PlanObject(id: sofa.id, category: "Sofa", center: P(0, -2), width: 2, depth: 0.9, height: 0.85, rotation: .pi), table, chair]
+    let seated = Placement.settle(person(P(0.5, 2), .sitting, facing: 0), plan: plan)
+    let carried = Placement.carry([seated], from: plan, to: movedPlan, scanID: nil)?.first
+    check(carried.map { near($0.seatHeight ?? 0, 0.44) && near($0.position.x, -0.5, 0.005) && near($0.position.z, -2, 0.005) && $0.facing == 180 } ?? false,
+          "seated people ride along when the sofa moves and turns")
+    var tableOnto = plan; tableOnto.objects = [PlanObject(id: table.id, category: "Table", center: P(1.8, -1.1), width: 1.1, depth: 0.6, height: 0.45, rotation: 0)]
+    check(Placement.carry([free], from: plan, to: tableOnto, scanID: nil)?.first?.position != free.position, "a piece moved onto someone pushes them aside")
+    var away = plan; away.objects = [PlanObject(id: table.id, category: "Table", center: P(-1, 0.8), width: 1.1, depth: 0.6, height: 0.45, rotation: 0), sofa, chair]
+    check(Placement.carry([free], from: plan, to: away, scanID: nil) == nil, "a piece moved away from everyone: nothing to write")
+
+    // The phone draws seats people can sit on, not solid boxes.
+    let seatScene = PlanSceneBuilder.sceneGeometry(plan)
+    let sofaBounds = seatScene.root.children.first { $0.name == "Furniture" }?.children.first { $0.name.hasPrefix("Sofa") }?.mesh?.bounds()
+    check(sofaBounds.map { near(Double($0.max.y), 0.85, 1e-3) && near(Double($0.min.y), 0, 1e-3) } ?? false, "sofa drawn from the floor to its full height")
+    let seatJSON = try! JSONCoding.encoder.encode(sat)
+    let seatBack = try! JSONCoding.decoder.decode(PrevisCharacter.self, from: seatJSON)
+    check(seatBack.seatHeight == sat.seatHeight && (try! JSONCoding.decoder.decode(PrevisCharacter.self, from: JSONCoding.encoder.encode(free))).seatHeight == nil,
+          "seat height survives a save, and stays absent when not set")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

@@ -351,6 +351,7 @@ struct PlanEditorView: View {
         .onAppear {
             if scanID == nil { scanID = location?.primaryScan?.id }
             if fittedBounds == nil { fittedBounds = contentBounds() }
+            settlePeopleOnce()
             if lightingMode {
                 if location?.primaryScan != nil { layout = .split }
                 if location?.lightFixtures.isEmpty ?? true { tool = .add }
@@ -1424,7 +1425,15 @@ struct PlanEditorView: View {
     /// Every change made in the editor goes through here so it can be undone.
     private func edit(_ mutate: (inout Location) -> Void) {
         if let snapshot { history.willEdit(snapshot) }
-        store.updateLocation(ref, mutate)
+        let room = scan == nil ? nil : plan, sid = scan?.id
+        store.updateLocation(ref) { loc in
+            let before = loc.previsCharacters
+            mutate(&loc)
+            // People moved, added, sat down or stood up are kept out of the furniture (Placement).
+            if let settled = Placement.settle(loc.previsCharacters, plan: room, scanID: sid, before: before) {
+                loc.previsCharacters = settled
+            }
+        }
     }
 
     /// Changes the scan's 2D plan by hand: doors, windows, set pieces. Undoable like `edit`.
@@ -1434,7 +1443,20 @@ struct PlanEditorView: View {
         mutate(&next)
         guard next != plan else { return }
         if let snapshot { history.willEdit(snapshot) }
+        let previous = plan
         store.setFloorPlan(next, ref, scanID: scan.id)
+        // Seated people ride along with a moved sofa; a piece moved onto someone pushes them aside.
+        if next.objects != previous.objects, let people = location?.previsCharacters,
+           let settled = Placement.carry(people, from: previous, to: next, scanID: scan.id) {
+            store.updateLocation(ref) { $0.previsCharacters = settled }
+        }
+    }
+
+    /// People saved before furniture kept them out (or moved on another device) are settled once on opening.
+    private func settlePeopleOnce() {
+        guard let scan, let people = location?.previsCharacters, !people.isEmpty, !plan.isEmpty,
+              let settled = Placement.settle(people, plan: plan, scanID: scan.id, before: people, all: true) else { return }
+        store.updateLocation(ref) { $0.previsCharacters = settled }
     }
 
     private func restore(_ s: EditSnapshot) {
