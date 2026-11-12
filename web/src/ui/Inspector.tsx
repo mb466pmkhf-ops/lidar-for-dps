@@ -7,7 +7,7 @@ import {
   FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
 } from '../model/setPieces';
-import { uuid } from '../model/factory';
+import { renamedForKind, uuid } from '../model/factory';
 import {
   KIND_INFO, applyProfile, categoryLabel, filters, fixtureModifier, fixtureProfile, isAdjustable, modifiersFor, photometrics, profiles,
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
@@ -233,7 +233,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         {header}
         <Panel title={info.label}>
           <div className="chips" style={{ marginBottom: 12 }}>
-            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k })}>{KIND_INFO[k].label}</button>)}
+            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k, name: renamedForKind(l.name, l.kind, k) })}>{KIND_INFO[k].label}</button>)}
           </div>
           <GripFields light={l} replace={replace} />
           <Slider label="Width" value={l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />

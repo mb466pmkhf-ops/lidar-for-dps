@@ -354,7 +354,7 @@ var bounceBoard = LightFixture(name: "Bounce", kind: .bounce, position: P(0, -3)
 let behind = LightingCalculator.Point(x: 0.5, y: 1.5, z: -1)
 let bounceRead = C.reading(at: behind, normal: LightingCalculator.Point(x: 0, y: 0, z: -1), scene: C.Scene(lights: [cob, bounceBoard]))
 check(bounceRead.lux > 1 && bounceRead.contributions.allSatisfy { $0.viaBounce != nil }, "bounce board relights the side facing it (\(Int(bounceRead.lux)) lx)")
-// Grip as a second source (D-012). A narrow unit 3 m from a meter, a board half way.
+// Grip as a second source (D-013). A narrow unit 3 m from a meter, a board half way.
 do {
     var spot = LightFixture(name: "Spot", kind: .fresnel, position: P(0, 3)); spot.pan = 0; spot.tilt = 0; spot.height = 1.5; spot.beamAngle = 12
     func board(_ kind: LightKind) -> LightFixture { var b = LightFixture(name: "B", kind: kind, position: P(0, 1.5), pan: 180); b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b }
@@ -426,6 +426,11 @@ do {
     check(C.reading(at: lowPoint, normal: facingLight, scene: C.Scene(lights: [low, floppyAt(false)])).lux > 0
           && C.reading(at: lowPoint, normal: facingLight, scene: C.Scene(lights: [low, floppyAt(true)])).lux == 0, "an open floppy cuts lower than a closed one")
 }
+check(LightKind.renamed("Negative fill", from: .negative, to: .flag) == "Flag"
+      && LightKind.renamed("Neg", from: .negative, to: .bounce) == "Bounce"
+      && LightKind.renamed("Neg 2", from: .negative, to: .diffusion) == "Diffusion 2"
+      && LightKind.renamed("Diffusion frame 3", from: .diffusion, to: .negative) == "Negative fill 3"
+      && LightKind.renamed("Window cutter", from: .flag, to: .negative) == "Window cutter", "changing a grip kind renames its default name only")
 // Solve the output for a target.
 let solved = C.solveOutput(for: cob, target: 1000, at: at3, normal: facingKey, allLights: [cob], plan: nil)
 if case .output(let o) = solved {
@@ -460,7 +465,7 @@ check(abs(exp.exposureTime - 0.01) < 1e-12 && exp.shutterDescription == "1/100",
 check(ExposureSettings.stopLabel(2.8) == "T2.8" && ExposureSettings.stopLabel(3.17) == "T2.8 +⅓"
       && ExposureSettings.stopLabel(3.56) == "T4 −⅓" && ExposureSettings.stopLabel(5.6) == "T5.6", "stop labels in thirds")
 check(ExposureSettings.stopLabel(64) == "T64" && ExposureSettings.stopLabel(128) == "T128" && ExposureSettings.stopLabel(0.7) == "T0.71"
-      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25",
+      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25" && ExposureSettings.stopLabel(0.004) == "under T0.13",
       "stop labels past T64 and under T1")
 check(abs(ExposureSettings().keyLux - 117.6) < 1e-9 && abs({ var e = ExposureSettings(); e.iso = 100; return e.keyLux }() - 940.8) < 1e-9,
       "key lux by hand: ISO 800 → 117.6 lx, ISO 100 → 940.8 lx at T2.8, 1/48")

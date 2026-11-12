@@ -41,7 +41,7 @@ interface Emitter { id: UUID; position: Vec; axis: Vec; right: Vec; up: Vec; pm:
  *  `transmission`: fraction that gets through; `scatter`: share of that which is diffused (1 = full
  *  diffusion, 0 = a net: the beam just gets dimmer); `reflectance`: fraction thrown back off the lit face. */
 export interface BoardOptics { transmission: number; scatter: number; reflectance: number }
-/// Defaults by kind (D-012): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
+/// Defaults by kind (D-013): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
 /// about half, all of it scattered, and throws about a third back.
 export function boardOptics(kind: LightKind): BoardOptics {
   switch (kind) {

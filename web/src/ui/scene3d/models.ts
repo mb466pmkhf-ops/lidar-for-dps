@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import type { BarnDoors, CameraRig, LightFixture, LightMeter, PrevisCharacter } from '../../model/types';
 import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometrics';
 import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
-import { drape, frameGels, gripSize } from '../../model/grip';
+import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
+import { boardOptics } from '../../model/calculator';
 import { skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
@@ -282,36 +283,49 @@ function checkerTexture(): THREE.Texture {
   });
 }
 
-/** A flag, bounce, neg or diffusion frame with its rag; a floppy shows its second panel when open.
- *  Returns the frame's height and how far its lowest point sits below the pivot (pan space). */
-export function board(l: LightFixture, parent: THREE.Object3D, tiltDeg = 0): { h: number; lowest: number } {
+/** Grip on its frame with its rag: two faces back to back, so each side can show what it does with the
+ *  light (the far face of a diffusion glows with what it passes; see Scene3D). Face `+1` looks the way
+ *  the board faces (the calculator's normal), `-1` the other way. A plain face's albedo is the board's
+ *  reflectance, so a flag or neg shows a faint sheen on the side the light hits; coloured rags (lamé,
+ *  muslin, checkerboard) and frame gels show their colour; nets stay see-through. A floppy opened shows
+ *  its second panel below the first. Returns the frame's height and how far its lowest point sits below
+ *  the pivot (pan space). */
+export function board(l: LightFixture, parent: THREE.Object3D, reflectance: number, tiltDeg = 0): { h: number; lowest: number } {
   const h = (l.boardHeight as number | undefined) ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
   const w = l.width;
   const rag = drape(l);
-  const tints = frameGels(l).map(g => gelTint(g.id)).filter((x): x is number => x !== undefined);
-  const see = rag ? rag.transmission : l.kind === 'diffusion' ? 0.5 : 0;
-  let color = rag?.color ?? (l.kind === 'bounce' ? 0xf4f4f2 : l.kind === 'diffusion' ? 0xf2f2f0 : l.kind === 'negative' ? 0x060606 : 0x0a0a0a);
-  if (tints.length) color = tints[tints.length - 1];
-  const opts: THREE.MeshStandardMaterialParameters = { roughness: rag?.id === 'silver-lame' ? 0.35 : rag?.id === 'gold-lame' ? 0.4 : 0.95, metalness: rag?.id.endsWith('lame') ? 0.6 : 0, side: THREE.DoubleSide };
-  if (rag?.pattern === 'net') Object.assign(opts, { transparent: true, opacity: 1 - rag.transmission * 0.9, depthWrite: false });
-  else if (see > 0) Object.assign(opts, { transparent: true, opacity: 0.85 - see * 0.4, depthWrite: false });
-  if (rag?.pattern === 'checker') { opts.map = checkerTexture(); color = 0xffffff; }
-  const face = mat(color, opts);
+  const open = l.floppyOpen === true && gripSize(l)?.floppy === true;
+  const lo = open ? -h * 1.5 : -h / 2, hi = h / 2;
+  const see = (drapeOptics(l) ?? boardOptics(l.kind)).transmission;
+  const tint = frameGels(l).map(g => gelTint(g.id)).filter((x): x is number => x !== undefined).pop();
+  const coloured = rag && (rag.kinds[0] === 'bounce' && rag.id !== 'white-board' || rag.pattern === 'checker');
+  const lame = rag?.id.endsWith('lame') === true;
   const big = w >= 1.7, tube = big ? 0.016 : w >= 1 ? 0.011 : 0.007;
+  for (const side of [1, -1]) {
+    const face = mat(0xffffff, { roughness: lame ? 0.38 : l.kind === 'bounce' || l.kind === 'diffusion' ? 0.92 : 1, metalness: lame ? 0.6 : 0, side: THREE.FrontSide });
+    if (coloured) face.color.set(rag!.color);
+    else face.color.setRGB(reflectance, reflectance, reflectance, THREE.LinearSRGBColorSpace);
+    if (tint !== undefined) face.color.multiply(new THREE.Color(tint));
+    if (rag?.pattern === 'checker') face.map = checkerTexture();
+    if (rag?.pattern === 'net') { face.color.set(rag.color); Object.assign(face, { transparent: true, opacity: 1 - rag.transmission * 0.9, depthWrite: false }); }
+    // A rag that lets light through lets you see through it a little too, so a silk doesn't hide the set.
+    else if (see > 0) Object.assign(face, { transparent: true, opacity: 1 - see * 0.8, depthWrite: false });
+    // The board's normal is the way a unit would point: local −Z. The plane faces +Z, so turn the front face round.
+    const m = mesh(new THREE.PlaneGeometry(w - tube * 2, hi - lo - tube * 2), face, parent, v(0, (lo + hi) / 2, side * -0.002), side > 0 ? new THREE.Euler(0, Math.PI, 0) : undefined);
+    m.userData.face = side;
+    if (rag?.pattern === 'net') { m.userData.noShadow = true; m.userData.noAO = true; }
+  }
+  // The frame round the rag (two panels for an opened floppy).
   const frameMat = l.kind === 'flag' || l.kind === 'negative' ? SATIN : STEEL;
   const panel = (y0: number, y1: number) => {
-    const cloth = mesh(new THREE.PlaneGeometry(w - tube * 2, y1 - y0 - tube * 2), face, parent, v(0, (y0 + y1) / 2, 0));
-    if (see > 0 || rag?.pattern === 'net') { cloth.userData.noShadow = see > 0.3; cloth.userData.noAO = true; }
     for (const y of [y0, y1]) bar(v(-w / 2, y, 0), v(w / 2, y, 0), tube, frameMat, parent);
     for (const s of [-1, 1]) bar(v((s * w) / 2, y0, 0), v((s * w) / 2, y1, 0), tube, frameMat, parent);
   };
   panel(-h / 2, h / 2);
-  const open = l.floppyOpen === true && gripSize(l)?.floppy === true;
   if (open) panel(-h * 1.5, -h / 2);
   // Ears at the sides of a big frame, where it pivots on its stands.
   if (gripStandCount(l) === 2) for (const s of [-1, 1]) mesh(rbox(0.06, 0.1, 0.05, 0.01), SATIN, parent, v(s * (w / 2 + 0.03), 0, 0));
-  const c = Math.abs(Math.cos(rad(tiltDeg)));
-  return { h, lowest: (open ? h * 1.5 : h / 2) * c };
+  return { h, lowest: -lo * Math.abs(Math.cos(rad(tiltDeg))) };
 }
 
 // MARK: Camera

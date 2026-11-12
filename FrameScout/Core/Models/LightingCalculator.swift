@@ -10,7 +10,7 @@ import Foundation
 /// - barn doors (each leaf cuts its side of the beam with a soft edge);
 /// - walls block light; windows pass it at the glass's transmission; closed doors block,
 ///   open doors and openings don't; flags, negs and bounce boards block, diffusion frames pass half;
-/// - grip re-emits what lands on it like a matte surface (`BoardOptics`, D-012): bounce boards
+/// - grip re-emits what lands on it like a matte surface (`BoardOptics`, D-013): bounce boards
 ///   reflect 80 %, flags and negs a few percent off the lit face, and a diffusion frame scatters
 ///   what it passes out of its far face as a soft source the size of the frame (one bounce);
 /// - overlapping units add up.
@@ -26,7 +26,7 @@ struct BoardOptics: Equatable {
     /// Fraction thrown back off the lit face.
     var reflectance: Double
 
-    /// Defaults by kind (D-012): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
+    /// Defaults by kind (D-013): white board 0.8; black duvetyne about 3–4 %; a full diffusion passes
     /// about half, all of it scattered, and throws about a third back.
     static func defaults(for kind: LightKind) -> BoardOptics {
         switch kind {
