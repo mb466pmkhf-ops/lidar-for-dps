@@ -7,7 +7,7 @@ import {
   FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
 } from '../model/setPieces';
-import { uuid } from '../model/factory';
+import { renamedForKind, uuid } from '../model/factory';
 import {
   KIND_INFO, applyProfile, categoryLabel, filters, fixtureModifier, fixtureProfile, isAdjustable, modifiersFor, photometrics, profiles,
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
@@ -231,14 +231,16 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         {header}
         <Panel title={info.label}>
           <div className="chips" style={{ marginBottom: 12 }}>
-            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k })}>{KIND_INFO[k].label}</button>)}
+            {(['bounce', 'negative', 'flag', 'diffusion'] as const).map(k => <button key={k} className={'chip' + (l.kind === k ? ' on' : '')} onClick={() => set({ kind: k, name: renamedForKind(l.name, l.kind, k) })}>{KIND_INFO[k].label}</button>)}
           </div>
           <Slider label="Width" value={l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ width: v }, false)} />
           <Slider label="Frame height" value={l.boardHeight ?? l.width} min={0.1} max={6} step={0.05} format={metres} onChange={v => set({ boardHeight: v }, false)} />
           <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
           <Slider label="Facing" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
           <StandField light={l} replace={replace} />
-          <p className="note">{l.kind === 'bounce' ? 'Re-emits light that lands on it (one bounce, 80 % white board).' : l.kind === 'diffusion' ? 'Passes half the light that goes through it.' : 'Blocks light that goes through it.'}</p>
+          <p className="note">{l.kind === 'bounce' ? 'Throws back light that lands on it, as a soft source the size of the board (one bounce, 80 % white board).'
+            : l.kind === 'diffusion' ? 'Stops the hard beam. About half the light comes out of the far side, spread as a soft source the size of the lit part of the frame; about a third is thrown back.'
+            : 'Stops all light going through it. Black cloth throws a few percent back off the side the light hits.'} Estimate.</p>
         </Panel>
         <NotesPanel value={l.notes} onChange={v => set({ notes: v }, false)} />
       </div>

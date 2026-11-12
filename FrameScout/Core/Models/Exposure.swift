@@ -87,6 +87,8 @@ struct ExposureSettings: Codable, Hashable {
         let thirds = Int((6 * log2(n)).rounded())          // N = 2^(k/6) → thirds of a stop from 1
         let fullIndex = Int((Double(thirds) / 3).rounded())
         let offset = thirds - fullIndex * 3
+        // More than six stops under T1 is next to no light: say so rather than round to "T0".
+        if fullIndex < -6 { return "under \(prefix)0.13" }
         let name: String
         if fullIndex >= 0 && fullIndex < fullStops.count {
             name = trim(fullStops[fullIndex])

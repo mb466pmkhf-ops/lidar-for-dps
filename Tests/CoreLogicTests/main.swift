@@ -354,6 +354,31 @@ var bounceBoard = LightFixture(name: "Bounce", kind: .bounce, position: P(0, -3)
 let behind = LightingCalculator.Point(x: 0.5, y: 1.5, z: -1)
 let bounceRead = C.reading(at: behind, normal: LightingCalculator.Point(x: 0, y: 0, z: -1), scene: C.Scene(lights: [cob, bounceBoard]))
 check(bounceRead.lux > 1 && bounceRead.contributions.allSatisfy { $0.viaBounce != nil }, "bounce board relights the side facing it (\(Int(bounceRead.lux)) lx)")
+// Grip as a second source (D-013). A narrow unit 3 m from a meter, a board half way.
+do {
+    var spot = LightFixture(name: "Spot", kind: .fresnel, position: P(0, 3)); spot.pan = 0; spot.tilt = 0; spot.height = 1.5; spot.beamAngle = 12
+    func board(_ kind: LightKind) -> LightFixture { var b = LightFixture(name: "B", kind: kind, position: P(0, 1.5), pan: 180); b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b }
+    let meter = LightingCalculator.Point(x: 0, y: 1.5, z: 0), facingLight = C.direction(bearing: 180, tilt: 0)
+    check(C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, board(.flag)])).lux == 0
+          && C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, board(.negative)])).lux == 0, "flag and neg cut the beam completely")
+    let front = LightingCalculator.Point(x: 0.8, y: 1.5, z: 2.2), facingBoard = C.direction(bearing: 311, tilt: 0)
+    let flagBack = C.reading(at: front, normal: facingBoard, scene: C.Scene(lights: [spot, board(.flag)]))
+    let bounceBack = C.reading(at: front, normal: facingBoard, scene: C.Scene(lights: [spot, board(.bounce)]))
+    check(flagBack.lux > 0 && flagBack.contributions.allSatisfy { $0.viaBounce != nil } && abs(flagBack.lux / bounceBack.lux - 0.04 / 0.8) < 1e-6,
+          "a flag throws a little light back off its lit side")
+    let open = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot])).lux
+    let diffused = C.reading(at: meter, normal: facingLight, scene: C.Scene(lights: [spot, board(.diffusion)]))
+    check(diffused.lux > 0 && diffused.lux < open * 0.5 && diffused.contributions.allSatisfy { $0.viaBounce != nil }, "diffusion passes less, all of it scattered")
+    let side = LightingCalculator.Point(x: 1.2, y: 1.5, z: 0.3), facingFrame = C.direction(bearing: 140, tilt: 0)
+    let bare = C.reading(at: side, normal: facingFrame, scene: C.Scene(lights: [spot])).lux
+    let soft = C.reading(at: side, normal: facingFrame, scene: C.Scene(lights: [spot, board(.diffusion)])).lux
+    check(soft > bare * 4 + 1, "diffusion spreads the light past the bare beam's edge")
+}
+check(LightKind.renamed("Negative fill", from: .negative, to: .flag) == "Flag"
+      && LightKind.renamed("Neg", from: .negative, to: .bounce) == "Bounce"
+      && LightKind.renamed("Neg 2", from: .negative, to: .diffusion) == "Diffusion 2"
+      && LightKind.renamed("Diffusion frame 3", from: .diffusion, to: .negative) == "Negative fill 3"
+      && LightKind.renamed("Window cutter", from: .flag, to: .negative) == "Window cutter", "changing a grip kind renames its default name only")
 // Solve the output for a target.
 let solved = C.solveOutput(for: cob, target: 1000, at: at3, normal: facingKey, allLights: [cob], plan: nil)
 if case .output(let o) = solved {
@@ -388,7 +413,7 @@ check(abs(exp.exposureTime - 0.01) < 1e-12 && exp.shutterDescription == "1/100",
 check(ExposureSettings.stopLabel(2.8) == "T2.8" && ExposureSettings.stopLabel(3.17) == "T2.8 +⅓"
       && ExposureSettings.stopLabel(3.56) == "T4 −⅓" && ExposureSettings.stopLabel(5.6) == "T5.6", "stop labels in thirds")
 check(ExposureSettings.stopLabel(64) == "T64" && ExposureSettings.stopLabel(128) == "T128" && ExposureSettings.stopLabel(0.7) == "T0.71"
-      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25",
+      && ExposureSettings.stopLabel(0.125) == "T0.13" && ExposureSettings.stopLabel(0.25) == "T0.25" && ExposureSettings.stopLabel(0.004) == "under T0.13",
       "stop labels past T64 and under T1")
 check(abs(ExposureSettings().keyLux - 117.6) < 1e-9 && abs({ var e = ExposureSettings(); e.iso = 100; return e.keyLux }() - 940.8) < 1e-9,
       "key lux by hand: ISO 800 → 117.6 lx, ISO 100 → 940.8 lx at T2.8, 1/48")

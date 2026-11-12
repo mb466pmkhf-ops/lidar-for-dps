@@ -57,3 +57,21 @@ export function newProject(name: string): Project {
 export function newLocation(name: string): Location {
   return { id: uuid(), name, address: '', createdAt: isoNow(), tags: [], notes: '', lightingNotes: '', productionNotes: '', quickNotes: [], scans: [], photos: [], measurements: [], cameraPositions: [], shots: [] };
 }
+
+/// Short names crews use for grip (and the plan's add buttons and the built-in setups use).
+const SHORT: Partial<Record<LightKind, string>> = { bounce: 'Bounce', negative: 'Neg', flag: 'Flag', diffusion: 'Diffusion' };
+
+/// The name a unit should take when its kind changes: a name that is still the old kind's own
+/// ("Negative fill", "Neg 2") follows the change ("Flag", "Flag 2"); a name the user gave it stays.
+/// Same rule as LightKind.renamed(_:to:) on the iPhone.
+export function renamedForKind(name: string, from: LightKind, to: LightKind): string {
+  if (from === to) return name;
+  const trimmed = name.trim();
+  for (const [own, next] of [[KIND_INFO[from].label, KIND_INFO[to].label], [SHORT[from], SHORT[to] ?? KIND_INFO[to].label]] as const) {
+    if (!own) continue;
+    if (trimmed.toLowerCase() === own.toLowerCase()) return next;
+    const m = trimmed.match(/^(.*) (\d+)$/);
+    if (m && m[1].toLowerCase() === own.toLowerCase()) return `${next} ${m[2]}`;
+  }
+  return name;
+}

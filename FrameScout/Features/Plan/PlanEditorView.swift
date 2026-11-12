@@ -558,7 +558,7 @@ struct PlanEditorView: View {
         }
         scene3D.setMeters(meters, selected: selectedMeter, showLabels: d.showsLabels(.meters))
         let lights = sceneLights.filter { $0.kind.emits ? !d.isHidden(group: .lights) : !d.isHidden(group: .grip) }
-        scene3D.setLights(lights, selected: selectedLight, showLabels: d.showsLabels(.lights), showBeams: true)
+        scene3D.setLights(lights, selected: selectedLight, showLabels: d.showsLabels(.lights), showBeams: true, plan: plan)
         scene3D.applyDisplay(d)
         if scene3D.loaded, let scan { scene3D.applyAlignment(scan.alignmentValue) }
         scene3D.showSelection(at: selection.flatMap { position(of: $0)?.point })

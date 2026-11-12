@@ -253,15 +253,21 @@ function softboxOn(pm: ResolvedPhotometrics, color: THREE.Color, on: boolean, le
 }
 
 /** A flag, bounce, neg or diffusion frame. */
-export function board(l: LightFixture, parent: THREE.Object3D): number {
+/** Grip on its frame: two faces back to back, so each side can show what it does with the light
+ *  (the far face of a diffusion glows with what it passes; see Scene3D). Face `+1` looks the way the
+ *  board faces (the calculator's normal), `-1` the other way. Each face's albedo is the board's
+ *  reflectance, so a flag or neg shows a faint sheen on the side the light hits. */
+export function board(l: LightFixture, parent: THREE.Object3D, reflectance: number): number {
   const h = (l.boardHeight as number | undefined) ?? (l.kind === 'flag' ? Math.min(l.width, 0.9) : l.width);
   const w = l.width;
-  const face = l.kind === 'bounce' ? mat(0xf4f4f2, { roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
-    : l.kind === 'negative' ? mat(0x060606, { roughness: 1, metalness: 0, side: THREE.DoubleSide })
-    : l.kind === 'diffusion' ? mat(0xf2f2f0, { roughness: 0.9, metalness: 0, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
-    : mat(0x0a0a0a, { roughness: 1, metalness: 0, side: THREE.DoubleSide });
-  const cloth = mesh(new THREE.PlaneGeometry(w - 0.02, h - 0.02), face, parent);
-  if (l.kind === 'diffusion') { cloth.userData.noShadow = true; cloth.userData.noAO = true; }
+  const albedo = new THREE.Color().setRGB(reflectance, reflectance, reflectance, THREE.LinearSRGBColorSpace);
+  for (const side of [1, -1]) {
+    const face = mat(0xffffff, { roughness: l.kind === 'bounce' || l.kind === 'diffusion' ? 0.92 : 1, metalness: 0, side: THREE.FrontSide });
+    face.color.copy(albedo);
+    // The board's normal is the way a unit would point: local −Z. The plane faces +Z, so turn the front face round.
+    const m = mesh(new THREE.PlaneGeometry(w - 0.02, h - 0.02), face, parent, v(0, 0, side * -0.002), side > 0 ? new THREE.Euler(0, Math.PI, 0) : undefined);
+    m.userData.face = side;
+  }
   // A slim metal frame round the cloth.
   for (const s of [-1, 1]) {
     bar(v(-w / 2, (s * h) / 2, 0), v(w / 2, (s * h) / 2, 0), 0.008, l.kind === 'flag' ? SATIN : STEEL, parent);
