@@ -39,10 +39,36 @@ struct SunLightView: View {
         .fsScreen()
         .navigationTitle("Sun & Light")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            let calendar = Calendar.current
-            let comps = calendar.dateComponents([.hour, .minute], from: Date())
-            minutes = Double((comps.hour ?? 16) * 60 + (comps.minute ?? 0))
+        .onAppear { minutes = openingMinutes() }
+    }
+
+    /// Minutes after midnight in the location's time zone.
+    private func minutesOfDay(_ date: Date, in zone: TimeZone) -> Double {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let c = calendar.dateComponents([.hour, .minute], from: date)
+        return Double((c.hour ?? 12) * 60 + (c.minute ?? 0))
+    }
+
+    /// Opens on now while the sun is up there; at night (when a scout usually looks ahead) on solar noon.
+    private func openingMinutes() -> Double {
+        let now = Date()
+        guard let location, let c = location.coordinate else { return minutesOfDay(now, in: .current) }
+        let zone = location.timeZone
+        let events = SolarCalculator.events(on: now, latitude: c.latitude, longitude: c.longitude, timeZone: zone)
+        if let rise = events.sunrise, let set = events.sunset, now >= rise, now <= set { return minutesOfDay(now, in: zone) }
+        return events.solarNoon.map { (minutesOfDay($0, in: zone) / 5).rounded() * 5 } ?? 12 * 60
+    }
+
+    /// The day's own landmarks instead of fixed hours, so the chips never fall after dark.
+    private func timeChips(_ location: Location) -> [(label: String, minutes: Double)] {
+        guard let c = location.coordinate else { return [] }
+        let zone = location.timeZone
+        let e = SolarCalculator.events(on: selectedDate(location), latitude: c.latitude, longitude: c.longitude, timeZone: zone)
+        let marks: [(String, Date?)] = [("Sunrise", e.sunrise), ("Golden AM ends", e.goldenHourMorningEnd), ("Noon", e.solarNoon),
+                                        ("Golden PM", e.goldenHourEveningStart), ("Sunset", e.sunset)]
+        return marks.compactMap { name, date in
+            date.map { (label: "\(name) \(UnitsFormatter.time($0, in: zone))", minutes: (minutesOfDay($0, in: zone) / 5).rounded() * 5) }
         }
     }
 
@@ -66,8 +92,8 @@ struct SunLightView: View {
             Slider(value: $minutes, in: 0...1439, step: 5)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach([7, 9, 12, 15, 16, 18, 20], id: \.self) { h in
-                        TagChip(text: "\(h):00", selected: Int(minutes) == h * 60) { minutes = Double(h * 60) }
+                    ForEach(timeChips(location), id: \.label) { chip in
+                        TagChip(text: chip.label, selected: abs(minutes - chip.minutes) < 1) { minutes = chip.minutes }
                     }
                 }
             }

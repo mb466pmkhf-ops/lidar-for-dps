@@ -38,7 +38,7 @@ export function demoBundle(): ProjectBundle {
     l.name = name;
     return l;
   };
-  const key = { ...aimed('Key', 'softbox', P(-1.2, 0.2), sofa, 'cob-600-d'), modifierID: 'softbox-90-grid', role: 'key' as const, height: 2.1, tilt: -25, dimmer: 0.25 };
+  const key = { ...aimed('Key', 'softbox', P(-1.2, 0.2), sofa, 'cob-600-d'), modifierID: 'softbox-90-grid', role: 'key' as const, height: 2.1, tilt: -25, dimmer: 0.12 };
   const fill = { ...aimed('Fill', 'ledPanel', P(2.2, -0.6), sofa, 'panel-1x1-bi'), role: 'fill' as const, colorTemperature: 4300, dimmer: 0.3, height: 1.8, tilt: -15 };
   const back = { ...aimed('Back', 'fresnel', P(-0.9, 2.25), P(0, 1.8), 'fresnel-led-200-bi'), role: 'back' as const, height: 2.4, tilt: -50, beamAngle: 30, dimmer: 0.4, barnDoors: { top: 12, bottom: 90, left: 90, right: 10 } };
   const bounce = { ...aimed('Bounce', 'bounce', P(1.7, 1.0), sofa), width: 1.2 };
