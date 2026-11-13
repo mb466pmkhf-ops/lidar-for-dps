@@ -292,11 +292,32 @@ final class WallFader {
     private var userHidden: [Bool] = []
     private var cut: [Bool] = []
 
+    /// The scan's walls, windows and doors, and stage pieces standing against them.
+    private var roomWalls: [SCNNode] = []
+    private var stagePieces: [SCNNode] = []
+
     func configure(walls: [SCNNode], world: SCNNode, centre: SIMD3<Float>) {
         lock.lock(); defer { lock.unlock() }
-        self.walls = walls
+        roomWalls = walls
         self.world = world
         self.centre = centre
+        rebuild()
+    }
+
+    /// Backdrops, corners and curtains of the studio set: cut away like the wall behind them.
+    func configure(stagePieces: [SCNNode]) {
+        lock.lock(); defer { lock.unlock() }
+        stagePieces.forEach { $0.isHidden = false }
+        self.stagePieces = stagePieces
+        rebuild()
+    }
+
+    /// Call with the lock held.
+    private func rebuild() {
+        for (i, wall) in walls.enumerated() where i < cut.count && cut[i] { wall.isHidden = userHidden[i] }
+        let walls = roomWalls + stagePieces
+        self.walls = walls
+        guard let world else { mids = []; userHidden = []; cut = []; return }
         // Wall meshes can sit on child nodes with vertices in room coordinates, so measure the geometry.
         mids = walls.map { wall in
             var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude), hi = -lo
@@ -1218,7 +1239,9 @@ final class VirtualSceneModel: ObservableObject {
         guard v != builtStage else { return }
         builtStage = v
         stageHolder.childNodes.forEach { $0.removeFromParentNode() }
-        if let v { stageHolder.addChildNode(StageSceneKit.build(v)) }
+        let stage = v.map(StageSceneKit.build)
+        if let stage { stageHolder.addChildNode(stage) }
+        wallFader.configure(stagePieces: stage.map(StageSceneKit.cutawayPieces) ?? [])
         if let d = v?.daylight {
             stageOwnsSun = true
             let b = d.bearing * .pi / 180, e = max(d.elevation, 0) * .pi / 180

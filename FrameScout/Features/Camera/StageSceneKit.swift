@@ -36,14 +36,25 @@ enum StageSceneKit {
         let root = SCNNode()
         root.name = "stage"
         if let layout = v.backdrop {
-            for bd in layout.pieces { root.addChildNode(backdrop(bd, v: v)) }
-            for c in layout.corners { root.addChildNode(corner(c, layout: layout, v: v)) }
+            for bd in layout.pieces { root.addChildNode(named(backdrop(bd, v: v), cutawayName)) }
+            for c in layout.corners { root.addChildNode(named(corner(c, layout: layout, v: v), cutawayName)) }
         }
         if let f = v.floor { root.addChildNode(floor(f, colour: v.floorColour, polygons: v.floorPolygons, y: v.floorY)) }
-        for c in v.curtains { root.addChildNode(curtain(c, v: v)) }
+        for c in v.curtains { root.addChildNode(named(curtain(c, v: v), cutawayName)) }
         if v.daylight != nil { root.addChildNode(lid(v)) }
         return root
     }
+
+    /// Name of the pieces that stand against a wall (backdrops, corners, curtains): the dollhouse
+    /// view cuts them away with the walls, or a backdrop on a camera-side wall blocks the view.
+    static let cutawayName = "stage:cutaway"
+
+    /// The pieces of a built stage that are cut away with the walls.
+    static func cutawayPieces(_ root: SCNNode) -> [SCNNode] {
+        root.childNodes(passingTest: { n, _ in n.name == cutawayName })
+    }
+
+    private static func named(_ n: SCNNode, _ name: String) -> SCNNode { n.name = name; return n }
 
     // MARK: Backdrop
 
