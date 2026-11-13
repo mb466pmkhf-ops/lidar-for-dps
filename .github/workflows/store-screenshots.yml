@@ -1,0 +1,98 @@
+name: App Store screenshots
+
+# Captures the sample project on the largest iPhone and iPad simulators and turns the screens into
+# App Store screenshots with captions (scripts/store-screenshots.py), at the exact sizes App Store
+# Connect asks for: 1320 × 2868 (6.9-inch iPhone) and 2064 × 2752 (13-inch iPad).
+# Results go to the branch ci-screenshots/store and the run's artifacts.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/store-screenshots.py
+      - .github/workflows/store-screenshots.yml
+
+jobs:
+  store:
+    name: Store screenshots (iPhone + iPad)
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Pick the largest iPhone and iPad
+        run: |
+          pick() {
+            xcrun simctl list devices available -j | python3 -c '
+          import json, sys, re
+          want = sys.argv[1]
+          devices = [d | {"runtime": r} for r, ds in json.load(sys.stdin)["devices"].items()
+                     if "iOS" in r for d in ds if re.search(want, d["name"])]
+          devices.sort(key=lambda d: (d["runtime"], d["name"]))
+          print(devices[-1]["udid"] if devices else "")' "$1"
+          }
+          IPHONE=$(pick 'iPhone.*Pro Max')
+          IPAD=$(pick 'iPad Pro.*13')
+          [ -n "$IPHONE" ] && [ -n "$IPAD" ] || { echo "::error::No Pro Max iPhone or 13-inch iPad Pro simulator"; xcrun simctl list devices available; exit 1; }
+          echo "IPHONE=$IPHONE" >> "$GITHUB_ENV"
+          echo "IPAD=$IPAD" >> "$GITHUB_ENV"
+          xcrun simctl list devices | grep -E "$IPHONE|$IPAD"
+      - name: Build for the Simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project FrameScout.xcodeproj -scheme FrameScout -configuration Debug \
+            -destination "id=$IPHONE" -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee xcodebuild-sim.log | grep -E "error:|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild-sim.log
+      - name: Capture
+        run: |
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          mkdir -p raw
+          for DEVICE in iphone ipad; do
+            UDID=$([ "$DEVICE" = iphone ] && echo "$IPHONE" || echo "$IPAD")
+            xcrun simctl boot "$UDID"
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+            xcrun simctl install "$UDID" "$APP"
+            for SCREEN in plan lighting previs sun measurements; do
+              xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
+              xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen "$SCREEN"
+              sleep 12
+              xcrun simctl io "$UDID" screenshot "raw/$DEVICE-$SCREEN.png"
+            done
+            xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
+            xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen lighting -appearance.night YES
+            sleep 12
+            xcrun simctl io "$UDID" screenshot "raw/$DEVICE-lighting-night.png"
+            xcrun simctl shutdown "$UDID"
+          done
+          ls -la raw
+      - name: Add captions at App Store sizes
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 scripts/store-screenshots.py raw store
+          mkdir -p store/raw && cp raw/*.png store/raw/
+      - name: Publish to a branch
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd store
+          git init -q
+          git checkout -q -b ci-screenshots/store
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -qm "App Store screenshots for $GITHUB_SHA"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots/store
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-screenshots
+          path: store
+          retention-days: 30
