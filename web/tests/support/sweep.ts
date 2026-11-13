@@ -17,6 +17,13 @@ import { settlePeople } from '../../src/model/placement';
 import { LIGHTING_SETUPS, buildSetup } from '../../src/model/setups';
 import { BACKDROPS, FLOORS, type StudioSetup } from '../../src/model/stage';
 import { sensorPresets } from '../../src/model/camera';
+
+/** The camera formats the sweep was generated with. Fixed, so adding cameras to the library
+ *  doesn't reshuffle the 150 saved scenes. */
+const SWEEP_SENSORS = ['arri-35-og', 'arri-35-169', 'arri-minilf-og', 'arri-minilf-169', 'arri-mini-og',
+  'red-vraptor-8k-vv', 'red-vraptor-6k-s35', 'red-komodo-6k', 'sony-venice2-86k', 'sony-venice-6k-179',
+  'sony-venice-4k-s35', 'sony-fx6', 'generic-ff', 'generic-s35-4perf', 'generic-s35-169', 'generic-m43', 'generic-s16']
+  .filter(id => sensorPresets.some(s => s.id === id));
 import { eyeHeight } from '../../src/model/characters';
 import { isoSteps, frameRates, shutterAngles, thirdStops } from '../../src/model/exposure';
 import type { CharacterType, HairStyle } from '../../src/model/types';
@@ -147,7 +154,7 @@ function grip(rng: Rng, b: Built, target: PlanPoint, kind: GripKind = rng.pick(G
 function rig(rng: Rng, at: PlanPoint, toward: PlanPoint, height = rng.r2(0.6, 1.9)): CameraRig {
   return {
     position: at, height, pan: r2(bearingFrom(at, toward)), tilt: rng.int(-12, 6), focalLength: rng.pick([14, 18, 24, 32, 40, 50, 65, 85, 135]),
-    sensorID: rng.pick(sensorPresets).id, aspect: rng.pick(['sensor', 'r239', 'r200', 'r185', 'r178', 'r143'] as const),
+    sensorID: rng.pick(SWEEP_SENSORS), aspect: rng.pick(['sensor', 'r239', 'r200', 'r185', 'r178', 'r143'] as const),
   };
 }
 

@@ -175,9 +175,6 @@ struct HomeView: View {
     /// The ways to start, minus the ones this phone can't do.
     private var startRows: [StartRow] {
         var rows: [StartRow] = []
-        if DeviceCapabilities.hasCamera {
-            rows.append(StartRow(title: "Viewfinder", subtitle: "Frame lines for your lens", image: "camera.aperture") { router.start(.viewfinder(.quick)) })
-        }
         if DeviceCapabilities.supportsWorldTracking {
             rows.append(StartRow(title: "Measure", subtitle: DeviceCapabilities.hasLiDAR ? nil : "Estimated without LiDAR", image: "ruler") { router.start(.measure(.quick)) })
         }

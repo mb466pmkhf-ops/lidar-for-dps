@@ -202,6 +202,43 @@ enum KnownQuirks {
     private static let nativeAspectAbout1 = UnitQuirk(text: "Native aspect about 1.69:1 (12.52 × 7.41 mm), close to 16:9.",
         source: "Wikipedia: Super 16", url: "https://en.wikipedia.org/wiki/Super_16_mm_film")
 
+    private static let pitchArri35 = UnitQuirk(text: "Size worked out from ARRI's 6.075 µm photosite pitch and the mode's photosite count. Check the format chart before a lens test.",
+        source: "How FrameScan models it")
+    private static let pitchArriLf = UnitQuirk(text: "Size worked out from ARRI's 8.25 µm photosite pitch and the mode's photosite count. Check the format chart before a lens test.",
+        source: "How FrameScan models it")
+    private static let sixFiveFor2x = UnitQuirk(text: "A 6:5 area made for 2× anamorphic: desqueezed it is about 2.4:1.",
+        source: "General crew practice")
+    private static let fourThreeFor2x = UnitQuirk(text: "A 4:3 area for 2× anamorphic: desqueezed it is about 2.67:1, usually cropped to 2.39:1.",
+        source: "General crew practice")
+    private static let lfWidthAt239 = UnitQuirk(text: "Full LF width with a 2.39:1 height: large-format lenses still needed for the width.",
+        source: "General crew practice")
+    private static let needs65Lenses = UnitQuirk(text: "59.9 mm diagonal: full-frame and LF lenses vignette here, so plan 65 mm-format lenses.",
+        source: "How FrameScan models it")
+    private static let windowedModes = UnitQuirk(text: "Lower resolutions can window the sensor and frame tighter. Check the recording mode before trusting the lines.",
+        source: "General crew practice")
+    private static let c70SharesSensor = UnitQuirk(text: "The C70 uses the same Super 35 sensor as the C300 Mark III.",
+        source: "General crew practice")
+    private static let redS35Spec = UnitQuirk(text: "26.21 × 13.82 mm, 8192 × 4320 photosites. Classic Super 35 lenses cover it.",
+        source: "RED V-Raptor 8K S35 tech specs", url: "https://docs.red.com/955-0215/955-0215_V1.4_Rev-B%20RED%20PS,%20V-RAPTOR%208K%20S35%20Operation%20Guide/Content/C_TechSpecs/Specs_V-RAPTOR.htm")
+    private static let venice86k179 = UnitQuirk(text: "8640 × 4556 photosites; needs a 40.63 mm image circle.",
+        source: "Sony Venice 2 recording formats", url: "https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf")
+    private static let venice82k239 = UnitQuirk(text: "8192 × 3432 photosites; needs a 36.95 mm image circle.",
+        source: "Sony Venice 2 recording formats", url: "https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf")
+    private static let venice58k65 = UnitQuirk(text: "5792 × 4854 photosites, made for 2× anamorphic; needs a 31.44 mm image circle.",
+        source: "Sony Venice 2 recording formats", url: "https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf")
+    private static let venice58k43 = UnitQuirk(text: "5792 × 4276 photosites; needs a 29.95 mm image circle.",
+        source: "Sony Venice 2 recording formats", url: "https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf")
+    private static let threePerf = UnitQuirk(text: "3-perf pulls down three perforations a frame: about 1.78:1 and a quarter less film than 4-perf.",
+        source: "Wikipedia: 3-perf", url: "https://en.wikipedia.org/wiki/3-perf")
+    private static let academyAperture = UnitQuirk(text: "The Academy camera aperture, 0.864 × 0.630 in: the classic 1.37:1 frame.",
+        source: "Wikipedia: Academy ratio", url: "https://en.wikipedia.org/wiki/Academy_ratio")
+    private static let fivePerf65 = UnitQuirk(text: "5-perf 65 mm camera aperture, about 2.2:1.",
+        source: "Wikipedia: 70 mm film", url: "https://en.wikipedia.org/wiki/70_mm_film")
+    private static let imax1570 = UnitQuirk(text: "15-perf 65 mm runs sideways through the camera: about 1.43:1.",
+        source: "Wikipedia: IMAX", url: "https://en.wikipedia.org/wiki/IMAX")
+    private static let standard16 = UnitQuirk(text: "Standard 16 camera aperture, about 1.37:1. Super 16 is wider on the same film.",
+        source: "Wikipedia: 16 mm film", url: "https://en.wikipedia.org/wiki/16_mm_film")
+
     static let sensors: [String: [UnitQuirk]] = [
         "arri-35-og": [upTo75Fps, needsA3396, openGateNeedsArri],
         "arri-35-169": [upTo120Fps, q2855MmImage],
@@ -220,5 +257,27 @@ enum KnownQuirks {
         "generic-s35-169": [a169Crop],
         "generic-m43": [cropFactor20, videoModesRecordA],
         "generic-s16": [needsSuper16Lenses, nativeAspectAbout1],
+        "arri-35-46-169": [pitchArri35],
+        "arri-35-65": [pitchArri35, sixFiveFor2x],
+        "arri-minilf-239": [pitchArriLf, lfWidthAt239],
+        "arri-65-og": [pitchArriLf, needs65Lenses],
+        "arri-mini-32k": [pitchArriLf],
+        "arri-mini-43": [pitchArriLf, fourThreeFor2x],
+        "bmd-ursacine-12k": [windowedModes],
+        "bmd-ursa-12k": [windowedModes],
+        "bmd-pocket-6k": [windowedModes],
+        "bmd-pocket-4k": [windowedModes],
+        "canon-c500-2": [windowedModes],
+        "canon-c300-3": [c70SharesSensor, windowedModes],
+        "red-vraptor-8k-s35": [redS35Spec],
+        "sony-venice2-86k-179": [venice86k179],
+        "sony-venice2-82k-239": [venice82k239],
+        "sony-venice2-58k-65": [venice58k65, sixFiveFor2x],
+        "sony-venice2-58k-43": [venice58k43, fourThreeFor2x],
+        "generic-s35-3perf": [threePerf],
+        "generic-academy": [academyAperture],
+        "generic-65-5perf": [fivePerf65],
+        "generic-imax-1570": [imax1570],
+        "generic-16": [standard16],
     ]
 }

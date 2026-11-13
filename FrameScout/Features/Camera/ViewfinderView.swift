@@ -45,6 +45,8 @@ final class ViewfinderModel: NSObject, ObservableObject {
         /// Burn camera, lens and framing into saved frames. Optional so older saved settings decode.
         var burnInInfo: Bool? = nil
         var burnsInInfo: Bool { burnInInfo ?? true }
+        /// Lens set from `LensLibrary`; nil means any focal length. Optional so older settings decode.
+        var lensID: String? = nil
     }
 
     static let squeezes: [Double] = [1, 1.25, 1.3, 1.5, 1.65, 1.8, 2]
@@ -66,14 +68,17 @@ final class ViewfinderModel: NSObject, ObservableObject {
     @Published private(set) var phoneLens = ""
     @Published private(set) var focusLocked = false
     @Published private(set) var exposureBias: Float = 0
-    @Published private(set) var attitude = ViewfinderMath.Attitude(roll: 0, tilt: 0)
+    /// Updated 30 times a second, so it lives in its own object: only the level redraws, and
+    /// the menus and buttons aren't rebuilt under your finger (that kept the camera menu shut).
+    let motionState = ViewfinderMotion()
+    var attitude: ViewfinderMath.Attitude { motionState.attitude }
     @Published var lastSavedMessage: String?
     @Published var focusIndicator: CGPoint?
 
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "framescout.viewfinder")
-    private let motion = CMMotionManager()
+    private let motionManager = CMMotionManager()
     private var device: AVCaptureDevice?
     private var zoomObservation: NSKeyValueObservation?
     private var photoDelegate: PhotoCaptureDelegate?
@@ -102,6 +107,22 @@ final class ViewfinderModel: NSObject, ObservableObject {
     // MARK: Derived optics
 
     var rig: CameraRig { settings.rig }
+
+    var lens: LensSeries? { LensLibrary.lens(id: settings.lensID) }
+
+    /// Focal lengths the strip and pinch step through: the lens set's, or the common ones.
+    var focalSteps: [Double] { lens?.steps ?? LensLibrary.commonFocalLengths }
+
+    /// Picks a lens set: carries its squeeze and snaps the focal length to a lens it has.
+    func chooseLens(_ id: String?) {
+        settings.lensID = id
+        guard let lens = LensLibrary.lens(id: id) else { return }
+        settings.squeeze = lens.squeeze
+        settings.rig.focalLength = lens.nearest(to: settings.rig.focalLength)
+    }
+
+    /// Estimated: the lens set is made for a smaller format than this sensor.
+    var mayVignette: Bool { lens?.mayVignette(on: rig.sensor) ?? false }
 
     var target: ViewfinderMath.Size {
         ViewfinderMath.targetFOV(focalLength: settings.rig.focalLength, sensor: settings.rig.sensor,
@@ -140,7 +161,8 @@ final class ViewfinderModel: NSObject, ObservableObject {
     var displayZoom: Double { zoom / displayZoomBase }
 
     var lensDescription: String {
-        var parts = [Optics.formatFocal(settings.rig.focalLength), settings.rig.sensor.displayName]
+        let focal = Optics.formatFocal(settings.rig.focalLength)
+        var parts = [lens.map { "\($0.displayName) \(focal)" } ?? focal, settings.rig.sensor.displayName]
         if settings.squeeze > 1 { parts.append(String(format: "%g× anamorphic", settings.squeeze)) }
         if settings.rig.aspect != .sensor { parts.append(settings.rig.aspect.label) }
         return parts.joined(separator: " · ")
@@ -165,7 +187,7 @@ final class ViewfinderModel: NSObject, ObservableObject {
     }
 
     func stop() {
-        motion.stopDeviceMotionUpdates()
+        motionManager.stopDeviceMotionUpdates()
         let session = self.session
         queue.async { session.stopRunning() }
     }
@@ -367,15 +389,16 @@ final class ViewfinderModel: NSObject, ObservableObject {
     // MARK: Level
 
     private func startMotion() {
-        guard motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
-        motion.deviceMotionUpdateInterval = 1.0 / 30
-        motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
-            guard let self, let g = data?.gravity else { return }
+        guard motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else { return }
+        motionManager.deviceMotionUpdateInterval = 1.0 / 30
+        let state = motionState
+        motionManager.startDeviceMotionUpdates(to: .main) { data, _ in
+            guard let g = data?.gravity else { return }
             let raw = ViewfinderMath.attitude(gravityX: g.x, gravityY: g.y, gravityZ: g.z)
             // Light smoothing so the level line doesn't shimmer.
             let k = 0.25
-            self.attitude = .init(roll: self.attitude.roll + (raw.roll - self.attitude.roll) * k,
-                                  tilt: self.attitude.tilt + (raw.tilt - self.attitude.tilt) * k)
+            let a = state.attitude
+            state.attitude = .init(roll: a.roll + (raw.roll - a.roll) * k, tilt: a.tilt + (raw.tilt - a.tilt) * k)
         }
     }
 
@@ -452,6 +475,42 @@ final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         completion(error == nil ? photo.fileDataRepresentation() : nil)
+    }
+}
+
+/// Phone tilt and roll, published on its own so only the views that draw them redraw.
+@MainActor
+final class ViewfinderMotion: ObservableObject {
+    @Published var attitude = ViewfinderMath.Attitude(roll: 0, tilt: 0)
+}
+
+/// Horizon level across the frame, drawn from its own motion object.
+struct ViewfinderLevel: View {
+    @ObservedObject var motion: ViewfinderMotion
+    let frame: CGRect
+
+    var body: some View {
+        Canvas { ctx, _ in
+            guard frame.width > 0 else { return }
+            let roll = motion.attitude.roll
+            let level = abs(roll) < 0.5
+            let arm = min(frame.width, frame.height) * 0.28
+            let gap: CGFloat = 26
+            let angle = CGFloat(-roll * .pi / 180)
+            let dx = cos(angle), dy = sin(angle)
+            let c = CGPoint(x: frame.midX, y: frame.midY)
+            var line = Path()
+            line.move(to: CGPoint(x: c.x - dx * (gap + arm), y: c.y - dy * (gap + arm)))
+            line.addLine(to: CGPoint(x: c.x - dx * gap, y: c.y - dy * gap))
+            line.move(to: CGPoint(x: c.x + dx * gap, y: c.y + dy * gap))
+            line.addLine(to: CGPoint(x: c.x + dx * (gap + arm), y: c.y + dy * (gap + arm)))
+            ctx.stroke(line, with: .color(.white.opacity(level ? 0.95 : 0.5)), lineWidth: level ? 1.5 : 1)
+            // Fixed reference ticks so you can see which way to turn.
+            var ticks = Path()
+            ticks.move(to: CGPoint(x: c.x - gap - arm - 10, y: c.y)); ticks.addLine(to: CGPoint(x: c.x - gap - arm - 2, y: c.y))
+            ticks.move(to: CGPoint(x: c.x + gap + arm + 2, y: c.y)); ticks.addLine(to: CGPoint(x: c.x + gap + arm + 10, y: c.y))
+            ctx.stroke(ticks, with: .color(.white.opacity(0.6)), lineWidth: 1)
+        }
     }
 }
 
@@ -570,6 +629,11 @@ struct ViewfinderView: View {
     @State private var flash = false
     @State private var pinchSteps = 0
     @State private var showCalibration = false
+    @State private var showCameras = false
+    @State private var showLenses = false
+    @State private var showFrames = false
+    /// The last frame saved this session, shown as a thumbnail that opens the location's photos.
+    @State private var lastFrame: (ref: LocationRef, photo: ReferencePhoto)?
 
     var body: some View {
         GeometryReader { geo in
@@ -581,6 +645,11 @@ struct ViewfinderView: View {
                 frameOverlay
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
+                if model.settings.showLevel {
+                    ViewfinderLevel(motion: model.motionState, frame: frameRect)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
                 if let p = model.focusIndicator {
                     Rectangle()
                         .stroke(Color.white.opacity(model.focusLocked ? 1 : 0.8), lineWidth: 1)
@@ -626,6 +695,22 @@ struct ViewfinderView: View {
         .onChange(of: model.settings) { _, _ in model.updateZoom(imageRect: imageRect) }
         .onChange(of: imageRect) { _, rect in model.updateZoom(imageRect: rect) }
         .onChange(of: model.baseFOV) { _, _ in model.updateZoom(imageRect: imageRect) }
+        .sheet(isPresented: $showCameras) {
+            ViewfinderCameraSheet(sensorID: $model.settings.rig.sensorID)
+        }
+        .sheet(isPresented: $showLenses) {
+            ViewfinderLensSheet(lensID: model.settings.lensID, sensor: model.rig.sensor) { model.chooseLens($0) }
+        }
+        .sheet(isPresented: $showFrames) {
+            if let ref = lastFrame?.ref {
+                NavigationStack {
+                    PhotoGalleryView(ref: ref, offersViewfinder: false)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button("Done") { showFrames = false } }
+                        }
+                }
+            }
+        }
         .sheet(isPresented: $showCalibration) {
             ViewfinderCalibrationSheet(calibration: $model.settings.calibration)
                 .presentationDetents([.medium])
@@ -670,7 +755,7 @@ struct ViewfinderView: View {
             }
 
             if model.settings.compareNeighbours {
-                let lenses = LensLibrary.commonFocalLengths
+                let lenses = model.focalSteps
                 for step in [-1, 1] {
                     let f = ViewfinderMath.steppedFocalLength(from: model.rig.focalLength, by: step, in: lenses)
                     guard abs(f - model.rig.focalLength) > 0.01 else { continue }
@@ -683,37 +768,11 @@ struct ViewfinderView: View {
                 }
             }
 
-            if model.settings.showLevel {
-                drawLevel(ctx, in: frame)
-            }
-
             ctx.draw(Text(Optics.formatFocal(model.rig.focalLength)).font(.fsMono).foregroundColor(.white),
                      at: CGPoint(x: frame.minX + 6, y: frame.minY + 5), anchor: .topLeading)
             ctx.draw(Text(model.rig.aspect == .sensor ? "" : model.rig.aspect.label).font(.fsMono).foregroundColor(.white.opacity(0.8)),
                      at: CGPoint(x: frame.maxX - 6, y: frame.minY + 5), anchor: .topTrailing)
         }
-    }
-
-    /// Horizon line across the frame: two arms either side of the centre, solid when level.
-    private func drawLevel(_ ctx: GraphicsContext, in frame: CGRect) {
-        let roll = model.attitude.roll
-        let level = abs(roll) < 0.5
-        let arm = min(frame.width, frame.height) * 0.28
-        let gap: CGFloat = 26
-        let angle = CGFloat(-roll * .pi / 180)
-        let dx = cos(angle), dy = sin(angle)
-        let c = CGPoint(x: frame.midX, y: frame.midY)
-        var line = Path()
-        line.move(to: CGPoint(x: c.x - dx * (gap + arm), y: c.y - dy * (gap + arm)))
-        line.addLine(to: CGPoint(x: c.x - dx * gap, y: c.y - dy * gap))
-        line.move(to: CGPoint(x: c.x + dx * gap, y: c.y + dy * gap))
-        line.addLine(to: CGPoint(x: c.x + dx * (gap + arm), y: c.y + dy * (gap + arm)))
-        ctx.stroke(line, with: .color(.white.opacity(level ? 0.95 : 0.5)), lineWidth: level ? 1.5 : 1)
-        // Fixed reference ticks so you can see which way to turn.
-        var ticks = Path()
-        ticks.move(to: CGPoint(x: c.x - gap - arm - 10, y: c.y)); ticks.addLine(to: CGPoint(x: c.x - gap - arm - 2, y: c.y))
-        ticks.move(to: CGPoint(x: c.x + gap + arm + 2, y: c.y)); ticks.addLine(to: CGPoint(x: c.x + gap + arm + 10, y: c.y))
-        ctx.stroke(ticks, with: .color(.white.opacity(0.6)), lineWidth: 1)
     }
 
     /// Pinch out = longer lens, one step per ~18 % of pinch.
@@ -724,7 +783,8 @@ struct ViewfinderView: View {
         }
         let steps = Int((log(Double(scale)) / log(1.18)).rounded(.towardZero))
         if steps != pinchSteps {
-            let f = ViewfinderMath.steppedFocalLength(from: model.settings.rig.focalLength, by: steps - pinchSteps)
+            let f = ViewfinderMath.steppedFocalLength(from: model.settings.rig.focalLength, by: steps - pinchSteps,
+                                                      in: model.focalSteps)
             model.settings.rig.focalLength = f
             pinchSteps = steps
         }
@@ -794,23 +854,22 @@ struct ViewfinderView: View {
         .accessibilityLabel("Viewfinder settings")
     }
 
-    /// One monospaced line of facts, like a camera monitor's status bar.
+    /// Only what needs acting on: a frame the phone can't show, a lens that may not cover, a saved frame.
+    /// The full camera report goes on the saved photo instead.
     private var readout: some View {
         HStack(spacing: 14) {
-            Text("H \(Optics.formatAngle(model.target.width))  V \(Optics.formatAngle(model.target.height))")
-            Text(String(format: "tilt %+.1f°", model.attitude.tilt))
-            Text(String(format: "phone %.1f× %@", model.displayZoom, model.phoneLens))
-            Spacer()
             if model.tooWide(imageRect: imageRect) {
-                Text("wider than the phone sees — frame cut off")
-                    .foregroundStyle(Theme.danger)
+                Text("Wider than the phone sees, frame cut off")
+            } else if model.mayVignette {
+                Text("\(model.lens?.coverage.label ?? "This") lens on a bigger sensor: dark corners likely (estimate)")
             }
+            Spacer()
             if let msg = model.lastSavedMessage {
                 Text(msg)
             }
         }
-        .font(.fsMono)
-        .foregroundStyle(.white.opacity(0.85))
+        .font(.fsCaption)
+        .foregroundStyle(.white.opacity(0.9))
         .lineLimit(1)
         .minimumScaleFactor(0.7)
         .shadow(color: .black.opacity(0.9), radius: 2)
@@ -818,21 +877,18 @@ struct ViewfinderView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewfinderLensStrip(focalLength: $model.settings.rig.focalLength)
+            ViewfinderLensStrip(focalLength: $model.settings.rig.focalLength, steps: model.focalSteps,
+                                lens: model.lens)
             HStack(alignment: .center, spacing: 18) {
-                Menu {
-                    ForEach(SensorLibrary.manufacturers, id: \.self) { maker in
-                        Section(maker.isEmpty ? "Generic" : maker) {
-                            ForEach(SensorLibrary.presets.filter { $0.manufacturer == maker }) { s in
-                                Button { model.settings.rig.sensorID = s.id } label: {
-                                    if s.id == model.rig.sensorID { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
-                                }
-                            }
-                        }
-                    }
-                } label: {
+                Button { showLenses = true } label: {
+                    menuLabel(model.lens?.displayName ?? "Any lens", systemImage: "camera.aperture")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Lens: \(model.lens?.displayName ?? "any lens")")
+                Button { showCameras = true } label: {
                     menuLabel(model.rig.sensor.displayName, systemImage: "video")
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Camera: \(model.rig.sensor.displayName)")
                 Menu {
                     Picker("Frame lines", selection: $model.settings.rig.aspect) {
@@ -851,6 +907,17 @@ struct ViewfinderView: View {
                     menuLabel(model.settings.squeeze == 1 ? "Spherical" : String(format: "%g× ana", model.settings.squeeze))
                 }
                 Spacer(minLength: 0)
+                if let last = lastFrame {
+                    Button { showFrames = true } label: {
+                        StoredImage(url: StoragePaths.photoURL(last.ref, last.photo), maxPixel: 160)
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous)
+                                .stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Saved frames")
+                }
                 Button(action: captureFrame) {
                     Circle()
                         .stroke(Color.white, lineWidth: 2)
@@ -884,15 +951,31 @@ struct ViewfinderView: View {
         guard frame.width > 0 else { return }
         withAnimation(.linear(duration: 0.1)) { flash = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { flash = false }
-        let description = model.lensDescription + String(format: " · tilt %+.0f°", model.attitude.tilt)
+        let report = cameraReport()
         let ref = target.locationRef ?? viewfinderDropLocation()
         let burnIn = model.settings.burnsInInfo ? burnInLines(locationName: ref.flatMap { store.location($0)?.name }) : []
         model.capture(frameRect: frame, imageRect: imageRect, burnIn: burnIn) { data in
             guard let data, let ref else { return }
-            store.addPhoto(data, to: ref, source: .viewfinder, caption: description, lensDescription: model.lensDescription)
-            model.lastSavedMessage = "saved to \(store.location(ref)?.name ?? "location")"
+            guard let photo = store.addPhoto(data, to: ref, source: .viewfinder, lensDescription: report) else { return }
+            lastFrame = (ref, photo)
+            model.lastSavedMessage = "Saved to \(store.location(ref)?.name ?? "location") photos"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.lastSavedMessage = nil }
         }
+    }
+
+    /// Everything the live view leaves out, logged on the saved photo: lens and camera, then
+    /// the angles and how the phone was held.
+    private func cameraReport() -> String {
+        let rig = model.rig
+        var optics = [model.lensDescription]
+        if model.settings.squeeze == 1 { optics.append("spherical") }
+        var view = ["H \(Optics.formatAngle(model.target.width)) V \(Optics.formatAngle(model.target.height))"]
+        view.append(String(format: "sensor %.2f × %.2f mm", rig.sensor.width, rig.sensor.height))
+        view.append(String(format: "tilt %+.1f°, roll %+.1f°", model.attitude.tilt, model.attitude.roll))
+        view.append(String(format: "phone %.1f× %@", model.displayZoom, model.phoneLens))
+        if abs(model.exposureBias) > 0.01 { view.append(String(format: "%+.1f EV", model.exposureBias)) }
+        if model.mayVignette { view.append("lens may vignette (estimate)") }
+        return [optics.joined(separator: " · "), view.joined(separator: " · ")].joined(separator: "\n")
     }
 
     /// Camera report for the saved frame: what was chosen, then where and when.
@@ -921,16 +1004,22 @@ struct ViewfinderView: View {
 }
 
 /// Focal lengths as plain numbers; the chosen one is white and underlined, like the site's nav.
+/// With a lens set chosen it lists that set's lenses (a zoom's steps, and any focal length in its range).
 struct ViewfinderLensStrip: View {
     @Binding var focalLength: Double
+    var steps: [Double] = LensLibrary.commonFocalLengths
+    var lens: LensSeries? = nil
     @State private var showCustom = false
     @State private var customText = ""
+
+    /// Primes in a set only come in their sizes; zooms and "any lens" take a typed focal length.
+    private var allowsCustom: Bool { lens == nil || lens?.isZoom == true }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    ForEach(LensLibrary.commonFocalLengths, id: \.self) { f in
+                    ForEach(steps, id: \.self) { f in
                         let selected = abs(f - focalLength) < 0.01
                         Button { focalLength = f } label: {
                             Text("\(Int(f))")
@@ -944,31 +1033,137 @@ struct ViewfinderLensStrip: View {
                         .buttonStyle(.plain)
                         .id(f)
                     }
-                    let isCustom = !LensLibrary.commonFocalLengths.contains { abs($0 - focalLength) < 0.01 }
-                    Button {
-                        customText = String(format: "%g", focalLength)
-                        showCustom = true
-                    } label: {
-                        Text(isCustom ? Optics.formatFocal(focalLength) : "mm…")
-                            .font(.fsLabel).tracking(Theme.tracking)
-                            .foregroundStyle(isCustom ? Color.white : Color.white.opacity(0.5))
-                            .padding(.horizontal, 8)
-                            .frame(minHeight: 34)
+                    if allowsCustom {
+                        let isCustom = !steps.contains { abs($0 - focalLength) < 0.01 }
+                        Button {
+                            customText = String(format: "%g", focalLength)
+                            showCustom = true
+                        } label: {
+                            Text(isCustom ? Optics.formatFocal(focalLength) : "mm…")
+                                .font(.fsLabel).tracking(Theme.tracking)
+                                .foregroundStyle(isCustom ? Color.white : Color.white.opacity(0.5))
+                                .padding(.horizontal, 8)
+                                .frame(minHeight: 34)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .onAppear { proxy.scrollTo(focalLength, anchor: .center) }
             .onChange(of: focalLength) { _, f in withAnimation { proxy.scrollTo(f, anchor: .center) } }
         }
-        .alert("Focal length (mm)", isPresented: $showCustom) {
+        .alert(lens.map { "Focal length (\(Int($0.focalLengths.first ?? 0))–\(Int($0.focalLengths.last ?? 0)) mm)" } ?? "Focal length (mm)",
+               isPresented: $showCustom) {
             TextField("mm", text: $customText).keyboardType(.decimalPad)
             Button("Set") {
                 if let v = Double(customText.replacingOccurrences(of: ",", with: ".")), v > 1, v < 2000 {
-                    focalLength = v
+                    focalLength = lens?.nearest(to: v) ?? v
                 }
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+/// Camera formats grouped by maker, with search: too many for a menu, and a sheet keeps
+/// working while the live image updates behind it.
+struct ViewfinderCameraSheet: View {
+    @Binding var sensorID: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private func matches(_ s: SensorFormat) -> Bool {
+        query.isEmpty || s.displayName.localizedCaseInsensitiveContains(query)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(SensorLibrary.manufacturers, id: \.self) { maker in
+                    let formats = SensorLibrary.presets.filter { $0.manufacturer == maker && matches($0) }
+                    if !formats.isEmpty {
+                        Section(maker.isEmpty ? "Film and generic" : maker) {
+                            ForEach(formats) { s in
+                                Button {
+                                    sensorID = s.id
+                                    dismiss()
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(s.name).foregroundStyle(Theme.textPrimary)
+                                            Text(s.sizeDescription).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                                        }
+                                        Spacer()
+                                        if s.id == sensorID { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .searchable(text: $query, prompt: "Camera or format")
+            .navigationTitle("Camera")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// Lens sets: picking one limits the strip to its focal lengths and sets its squeeze.
+struct ViewfinderLensSheet: View {
+    let lensID: String?
+    let sensor: SensorFormat
+    var onPick: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    row(title: "Any lens", detail: "Common focal lengths, or type one", selected: LensLibrary.lens(id: lensID) == nil) {
+                        onPick(nil)
+                    }
+                }
+                Section {
+                    ForEach(LensLibrary.series) { lens in
+                        row(title: lens.displayName, detail: detail(lens), selected: lens.id == lensID) { onPick(lens.id) }
+                    }
+                } footer: {
+                    Text("Coverage is the maker's format class. The dark-corner warning compares it with the camera's sensor and is an estimate.")
+                }
+            }
+            .navigationTitle("Lens")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func detail(_ lens: LensSeries) -> String {
+        let range = lens.isZoom
+            ? "\(Int(lens.focalLengths[0]))–\(Int(lens.focalLengths[1])) mm"
+            : "\(lens.focalLengths.count) lenses, \(Int(lens.focalLengths.first ?? 0))–\(Int(lens.focalLengths.last ?? 0)) mm"
+        var parts = [range, lens.coverage.label]
+        if lens.squeeze > 1 { parts.append(String(format: "%g× anamorphic", lens.squeeze)) }
+        if lens.mayVignette(on: sensor) { parts.append("may vignette on this camera") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func row(title: String, detail: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            dismiss()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(Theme.textPrimary)
+                    Text(detail).font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                if selected { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+            }
         }
     }
 }

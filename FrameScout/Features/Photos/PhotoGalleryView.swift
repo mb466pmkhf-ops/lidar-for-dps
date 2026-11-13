@@ -4,7 +4,11 @@ import UIKit
 
 struct PhotoGalleryView: View {
     let ref: LocationRef
+    /// Off when the gallery is opened from inside the viewfinder itself.
+    var offersViewfinder = true
     @EnvironmentObject private var store: ProjectStore
+    @EnvironmentObject private var router: AppRouter
+    @State private var onlyFramed = false
     @State private var showCamera = false
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var viewing: ReferencePhoto?
@@ -12,11 +16,23 @@ struct PhotoGalleryView: View {
     private let columns = [GridItem(.adaptive(minimum: 110), spacing: 6)]
 
     var body: some View {
-        let photos = store.location(ref)?.photos ?? []
+        let all = store.location(ref)?.photos ?? []
+        let hasFramed = all.contains { $0.source == .viewfinder }
+        // Newest first, so a frame you just saved is at the top.
+        let photos = Array((onlyFramed && hasFramed ? all.filter { $0.source == .viewfinder } : all).reversed())
         ScrollView {
-            if photos.isEmpty {
+            if all.isEmpty {
                 EmptyStateView(systemImage: "photo.on.rectangle", title: "No reference photos",
-                               message: "Take photos here, snap them during a scan, or grab frames in the lens viewfinder.")
+                               message: "Take photos here, snap them during a scan, or take framed photos through your lens.")
+            }
+            if hasFramed && all.contains(where: { $0.source != .viewfinder }) {
+                Picker("Show", selection: $onlyFramed) {
+                    Text("All").tag(false)
+                    Text("Framed").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 6)
+                .padding(.top, 6)
             }
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(photos) { photo in
@@ -44,6 +60,10 @@ struct PhotoGalleryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if offersViewfinder && DeviceCapabilities.hasCamera {
+                    Button { router.start(.viewfinder(CaptureTarget(ref))) } label: { Image(systemName: "camera.aperture") }
+                        .accessibilityLabel("Take a framed photo")
+                }
                 PhotosPicker(selection: $pickerItems, maxSelectionCount: 30, matching: .images) {
                     Image(systemName: "photo.badge.plus")
                 }
@@ -94,10 +114,12 @@ struct PhotoDetailView: View {
                     TextField("Caption", text: $caption)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(saveCaption)
-                    HStack {
-                        Text(photo.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        if let lens = photo.lensDescription { Text("· \(lens)") }
-                        if photo.pose != nil { Text("· position recorded in scan") }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(photo.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            if photo.pose != nil { Text("· position recorded in scan") }
+                        }
+                        if let lens = photo.lensDescription { Text(lens).textSelection(.enabled) }
                     }
                     .font(.fsCaption)
                     .foregroundStyle(Theme.textSecondary)

@@ -1065,7 +1065,7 @@ do {
     check(Swift.zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
     check(Swift.zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
           "fixtures listed small to large within a family")
-    check(SensorLibrary.manufacturers == ["ARRI", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
+    check(SensorLibrary.manufacturers == ["ARRI", "Blackmagic", "Canon", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
     check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
 }
 
@@ -1197,6 +1197,26 @@ do {
     let json = #"{"id":"6F9F5A10-0000-4000-8000-000000000001","name":"Web","address":"","createdAt":"2026-11-13T10:00:00Z","tags":[],"notes":"","lightingNotes":"","productionNotes":"","quickNotes":[],"scans":[],"photos":[],"measurements":[],"cameraPositions":[],"shots":[],"looks":[{"id":"6F9F5A10-0000-4000-8000-000000000002","name":"Day","lights":[]}],"activeLookID":"6F9F5A10-0000-4000-8000-000000000002"}"#
     let decoded = try? JSONCoding.decoder.decode(Location.self, from: Data(json.utf8))
     check(decoded?.looks?.first?.name == "Day" && decoded?.activeLookID != nil, "looks written by the web app load on the phone")
+}
+
+// MARK: Lens library
+do {
+    let ids = LensLibrary.series.map(\.id)
+    check(Set(ids).count == ids.count, "lens series ids are unique")
+    check(LensLibrary.series.allSatisfy { s in s.focalLengths == s.focalLengths.sorted() && s.focalLengths.count >= (s.isZoom ? 2 : 4) },
+          "every lens set lists its focal lengths short to long")
+    check(LensLibrary.series.allSatisfy { !$0.isZoom || $0.focalLengths.count == 2 }, "zooms give their two ends")
+    let cooke = LensLibrary.lens(id: "cooke-s4i")!
+    check(cooke.nearest(to: 30) == 32 && cooke.contains(27) && !cooke.contains(28), "primes snap to the nearest lens in the set")
+    let zoom = LensLibrary.lens(id: "angenieux-24-290")!
+    check(zoom.nearest(to: 12) == 24 && zoom.nearest(to: 400) == 290 && zoom.nearest(to: 61) == 61, "zooms clamp to their range")
+    check(zoom.steps.first == 24 && zoom.steps.last == 290 && zoom.steps.contains(50), "zoom steps run end to end through common focal lengths")
+    let s35 = SensorLibrary.format(id: "generic-s35-4perf"), lf = SensorLibrary.format(id: "arri-minilf-og")
+    check(!cooke.mayVignette(on: s35) && cooke.mayVignette(on: lf), "a Super 35 set warns on a large-format sensor")
+    check(!LensLibrary.lens(id: "arri-signature")!.mayVignette(on: lf), "large-format lenses cover the Mini LF")
+    check(LensLibrary.lens(id: LensLibrary.anyID) == nil && LensLibrary.lens(id: nil) == nil, "any lens has no set")
+    check(LensLibrary.series.filter { $0.squeeze > 1 }.allSatisfy { $0.squeeze == 2 }, "anamorphic sets carry their squeeze")
+    check(SensorLibrary.presets.allSatisfy { $0.width > $0.height && $0.width < 80 }, "camera formats are landscape and in millimetres")
 }
 
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
