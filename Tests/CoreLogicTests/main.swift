@@ -1157,5 +1157,22 @@ do {
           "seat height survives a save, and stays absent when not set")
 }
 
+// Kit list (KitList.swift; same rules as web/src/model/kit.ts).
+do {
+    var key = LightFixture(name: "Key", kind: .fresnel, position: P(0, 0), pan: 0)
+    key.filterIDs = ["cto-half"]
+    var key2 = key; key2.id = UUID(); key2.isOn = false
+    let neg = LightFixture(name: "Neg", kind: .negative, position: P(1, 0))
+    let kit = KitList(lights: [key, key2, neg])
+    check(kit.units.count == 1 && kit.units[0].qty == 2, "kit list counts two of the same unit as one line")
+    check(kit.gels == [KitList.Line(qty: 2, item: "½ CTO")], "kit list counts a gel once per unit")
+    check(kit.grip.count == 1, "kit list lists grip separately from units")
+    check(kit.stands.reduce(0) { $0 + $1.qty } == 3, "kit list counts a stand for every unit and board")
+    check(kit.drawRated >= kit.drawNow && kit.drawNow > 0 && abs(kit.drawRated - 2 * key.profile.ratedPower) < 1e-9,
+          "rated power counts every unit; draw as set counts only units that are on")
+    let text = kit.text(title: "Test")
+    check(text.hasPrefix("Test\n") && text.contains("A at 230 V") && text.contains("2 × ½ CTO"), "kit list writes plain text")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

@@ -318,3 +318,34 @@ details.what summary { cursor: pointer; list-style: none; color: var(--text3); }
 details.what summary::-webkit-details-marker { display: none; }
 details.what p { margin: 6px 0 0; }
 .chip.ghost { border-color: transparent; color: var(--accent); }
+
+/* Plan sheet: the hand-off page. Fixed light colours so it prints the same from night mode. */
+.sheet-scrim { display: block; overflow: auto; padding: 24px 16px; }
+.sheet { width: min(980px, 100%); margin: 0 auto; background: #fff; color: #15181a; border-radius: var(--radius-lg); padding: 24px 28px 28px; }
+.sheet .faint, .sheet .note { color: #5d6468; }
+.sheet .btn { color: #15181a; background: #fff; border-color: #d6dadc; }
+.sheet .btn.primary { background: #1F5FD1; color: #fff; border-color: #1F5FD1; }
+.sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.sheet-actions .spacer { flex: 1; }
+.sheet-head h2 { margin: 0; font-size: 22px; font-weight: 500; }
+.sheet-head p { margin: 4px 0 0; }
+.sheet-plan { display: block; width: 100%; height: auto; margin: 16px 0 4px; border: 1px solid #d6dadc; border-radius: var(--radius); }
+.sheet h3 { margin: 20px 0 8px; font-size: 15px; font-weight: 500; }
+.sheet-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sheet-table.narrow { width: auto; min-width: 50%; }
+.sheet-table th { text-align: left; font-weight: 500; color: #5d6468; border-bottom: 1px solid #d6dadc; padding: 6px 8px 6px 0; }
+.sheet-table td { border-bottom: 1px solid #eceeef; padding: 6px 8px 6px 0; vertical-align: top; }
+.sheet-table td.mono { white-space: nowrap; }
+.sheet-kits { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 24px; }
+.sheet-kit h4 { margin: 0 0 4px; font-size: 13px; font-weight: 500; color: #5d6468; }
+.sheet-kit ul { margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.6; }
+.sheet-power { font-size: 13px; margin: 16px 0 0; }
+@media print {
+  @page { margin: 12mm; }
+  body * { visibility: hidden; }
+  .sheet, .sheet * { visibility: visible; }
+  .sheet-scrim { position: absolute; inset: 0; padding: 0; background: none; overflow: visible; }
+  .sheet { position: absolute; left: 0; top: 0; width: 100%; padding: 0; border-radius: 0; }
+  .sheet-actions { display: none; }
+  .sheet-table tr, .sheet-kit { break-inside: avoid; }
+}

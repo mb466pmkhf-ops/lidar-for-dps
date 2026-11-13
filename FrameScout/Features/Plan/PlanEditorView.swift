@@ -1582,6 +1582,20 @@ struct PlanEditorView: View {
         } catch {}
     }
 
+    /// Units, modifiers, gels, grip, stands and estimated power as plain text, for the gaffer.
+    private func shareKitList() {
+        guard let location else { return }
+        let lights = location.lightFixtures.filter { $0.scanID == nil || $0.scanID == scan?.id }
+        let title = "\(store.project(ref.projectID)?.name ?? "") — \(location.name)"
+        let text = KitList(lights: lights).text(title: title)
+        let name = location.name.replacingOccurrences(of: "/", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name) – kit list.txt")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            sharedDiagram = SharedFile(url: url)
+        } catch {}
+    }
+
     private func saveMeasurement() {
         guard measurePoints.count == 2, let d = measureDistance else { return }
         let m = DistanceMeasurement(kind: measurementKind, label: measurementLabel, value: d, horizontal: d,
@@ -1746,6 +1760,7 @@ struct PlanEditorView: View {
             Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
         }
         Button { shareDiagram() } label: { Label("Share diagram (PNG)", systemImage: "square.and.arrow.up") }
+        Button { shareKitList() } label: { Label("Share kit list and power", systemImage: "list.bullet.rectangle") }
         Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
         if location?.primaryScan != nil {
             Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
