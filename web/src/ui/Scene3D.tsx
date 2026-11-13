@@ -195,6 +195,15 @@ export function Scene3D(p: Props) {
       baseOverride();
       scene.traverse(o => { if (o.userData.noAO || o.userData.cut) o.visible = false; });
     };
+    // The shading pass draws the scene with one stand-in material, and three.js hands that material to
+    // the backdrop too: a flat backdrop is a 2 m square meant for screen space, so it came out as a dark
+    // panel standing at the middle of the room. Leave the backdrop out of that pass.
+    const baseOverrideRender = gtao.renderOverride.bind(gtao);
+    gtao.renderOverride = (...args: Parameters<GTAOPass['renderOverride']>) => {
+      const backdrop = scene.background;
+      scene.background = null;
+      try { baseOverrideRender(...args); } finally { scene.background = backdrop; }
+    };
     composer.addPass(gtao);
     const bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.32, 0.55, 1.15);
     composer.addPass(bloom);
