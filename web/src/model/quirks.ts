@@ -190,6 +190,43 @@ const needsSuper16Lenses = q('Needs Super 16 lenses: standard 16 mm lenses can v
 const nativeAspectAbout1 = q('Native aspect about 1.69:1 (12.52 × 7.41 mm), close to 16:9.',
   'Wikipedia: Super 16', 'https://en.wikipedia.org/wiki/Super_16_mm_film');
 
+const pitchArri35 = q('Size worked out from ARRI\'s 6.075 µm photosite pitch and the mode\'s photosite count. Check the format chart before a lens test.',
+  'How FrameScan models it');
+const pitchArriLf = q('Size worked out from ARRI\'s 8.25 µm photosite pitch and the mode\'s photosite count. Check the format chart before a lens test.',
+  'How FrameScan models it');
+const sixFiveFor2x = q('A 6:5 area made for 2× anamorphic: desqueezed it is about 2.4:1.',
+  'General crew practice');
+const fourThreeFor2x = q('A 4:3 area for 2× anamorphic: desqueezed it is about 2.67:1, usually cropped to 2.39:1.',
+  'General crew practice');
+const lfWidthAt239 = q('Full LF width with a 2.39:1 height: large-format lenses still needed for the width.',
+  'General crew practice');
+const needs65Lenses = q('59.9 mm diagonal: full-frame and LF lenses vignette here, so plan 65 mm-format lenses.',
+  'How FrameScan models it');
+const windowedModes = q('Lower resolutions can window the sensor and frame tighter. Check the recording mode before trusting the lines.',
+  'General crew practice');
+const c70SharesSensor = q('The C70 uses the same Super 35 sensor as the C300 Mark III.',
+  'General crew practice');
+const redS35Spec = q('26.21 × 13.82 mm, 8192 × 4320 photosites. Classic Super 35 lenses cover it.',
+  'RED V-Raptor 8K S35 tech specs', 'https://docs.red.com/955-0215/955-0215_V1.4_Rev-B%20RED%20PS,%20V-RAPTOR%208K%20S35%20Operation%20Guide/Content/C_TechSpecs/Specs_V-RAPTOR.htm');
+const venice86k179 = q('8640 × 4556 photosites; needs a 40.63 mm image circle.',
+  'Sony Venice 2 recording formats', 'https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf');
+const venice82k239 = q('8192 × 3432 photosites; needs a 36.95 mm image circle.',
+  'Sony Venice 2 recording formats', 'https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf');
+const venice58k65 = q('5792 × 4854 photosites, made for 2× anamorphic; needs a 31.44 mm image circle.',
+  'Sony Venice 2 recording formats', 'https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf');
+const venice58k43 = q('5792 × 4276 photosites; needs a 29.95 mm image circle.',
+  'Sony Venice 2 recording formats', 'https://77snszqv.media.zestyio.com/Sony_VENICE2_RecordingFormats.pdf');
+const threePerf = q('3-perf pulls down three perforations a frame: about 1.78:1 and a quarter less film than 4-perf.',
+  'Wikipedia: 3-perf', 'https://en.wikipedia.org/wiki/3-perf');
+const academyAperture = q('The Academy camera aperture, 0.864 × 0.630 in: the classic 1.37:1 frame.',
+  'Wikipedia: Academy ratio', 'https://en.wikipedia.org/wiki/Academy_ratio');
+const fivePerf65 = q('5-perf 65 mm camera aperture, about 2.2:1.',
+  'Wikipedia: 70 mm film', 'https://en.wikipedia.org/wiki/70_mm_film');
+const imax1570 = q('15-perf 65 mm runs sideways through the camera: about 1.43:1.',
+  'Wikipedia: IMAX', 'https://en.wikipedia.org/wiki/IMAX');
+const standard16 = q('Standard 16 camera aperture, about 1.37:1. Super 16 is wider on the same film.',
+  'Wikipedia: 16 mm film', 'https://en.wikipedia.org/wiki/16_mm_film');
+
 export const sensorQuirks: Record<string, UnitQuirk[]> = {
   'arri-35-og': [upTo75Fps, needsA3396, openGateNeedsArri],
   'arri-35-169': [upTo120Fps, q2855MmImage],
@@ -208,6 +245,28 @@ export const sensorQuirks: Record<string, UnitQuirk[]> = {
   'generic-s35-169': [a169Crop],
   'generic-m43': [cropFactor20, videoModesRecordA],
   'generic-s16': [needsSuper16Lenses, nativeAspectAbout1],
+  'arri-35-46-169': [pitchArri35],
+  'arri-35-65': [pitchArri35, sixFiveFor2x],
+  'arri-minilf-239': [pitchArriLf, lfWidthAt239],
+  'arri-65-og': [pitchArriLf, needs65Lenses],
+  'arri-mini-32k': [pitchArriLf],
+  'arri-mini-43': [pitchArriLf, fourThreeFor2x],
+  'bmd-ursacine-12k': [windowedModes],
+  'bmd-ursa-12k': [windowedModes],
+  'bmd-pocket-6k': [windowedModes],
+  'bmd-pocket-4k': [windowedModes],
+  'canon-c500-2': [windowedModes],
+  'canon-c300-3': [c70SharesSensor, windowedModes],
+  'red-vraptor-8k-s35': [redS35Spec],
+  'sony-venice2-86k-179': [venice86k179],
+  'sony-venice2-82k-239': [venice82k239],
+  'sony-venice2-58k-65': [venice58k65, sixFiveFor2x],
+  'sony-venice2-58k-43': [venice58k43, fourThreeFor2x],
+  'generic-s35-3perf': [threePerf],
+  'generic-academy': [academyAperture],
+  'generic-65-5perf': [fivePerf65],
+  'generic-imax-1570': [imax1570],
+  'generic-16': [standard16],
 };
 
 export const quirksForFixture = (id: string): UnitQuirk[] => fixtureQuirks[id] ?? [];

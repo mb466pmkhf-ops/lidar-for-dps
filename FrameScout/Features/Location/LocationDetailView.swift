@@ -229,11 +229,6 @@ struct LocationDetailView: View {
             rows.append(RowItem(title: "Measure", subtitle: DeviceCapabilities.hasLiDAR ? "Tape measure in AR" : "Tape measure in AR, estimated without LiDAR",
                                 systemImage: "ruler") { router.start(.measure(CaptureTarget(ref))) })
         }
-        if DeviceCapabilities.hasCamera {
-            rows.append(RowItem(title: "Viewfinder", subtitle: "Frame lines for your lens", systemImage: "camera.aperture") {
-                router.start(.viewfinder(CaptureTarget(ref)))
-            })
-        }
         return rows
     }
 
@@ -344,6 +339,11 @@ struct LocationDetailView: View {
                 Button { showCamera = true } label: { Label("Take Photo", systemImage: "camera") }
                     .buttonStyle(HairlineButtonStyle())
                     .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                if DeviceCapabilities.hasCamera {
+                    Button { router.start(.viewfinder(CaptureTarget(ref))) } label: { Label("Framed", systemImage: "camera.aperture") }
+                        .buttonStyle(HairlineButtonStyle())
+                        .accessibilityLabel("Take a framed photo through your lens")
+                }
                 PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
                     Label("Import", systemImage: "photo.badge.plus")
                 }

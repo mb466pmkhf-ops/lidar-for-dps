@@ -61,7 +61,7 @@ describe('library order', () => {
   });
 
   it('lists camera makers A to Z with generic formats last, same as the phone', () => {
-    expect([...new Set(sensorPresets.map(s => s.manufacturer))]).toEqual(['ARRI', 'RED', 'Sony', '']);
+    expect([...new Set(sensorPresets.map(s => s.manufacturer))]).toEqual(['ARRI', 'Blackmagic', 'Canon', 'RED', 'Sony', '']);
     const swift = read('../../FrameScout/Core/Models/Camera.swift');
     const sw = [...swift.matchAll(/SensorFormat\(id: "([^"]+)", manufacturer: "([^"]*)", name: "([^"]+)", width: ([\d.]+), height: ([\d.]+)\)/g)]
       .map(m => ({ id: m[1], manufacturer: m[2], name: m[3], width: Number(m[4]), height: Number(m[5]) }));
