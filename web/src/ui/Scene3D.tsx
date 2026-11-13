@@ -25,7 +25,7 @@ import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, pho
 import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
-import { boardOptics, buildScene, type MeterPoint } from '../model/calculator';
+import { boardOptics, buildScene, distanceToSegment, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
@@ -86,6 +86,26 @@ function cookie(pm: ResolvedPhotometrics, l: LightFixture, half: number): THREE.
 }
 
 /** Free what a removed part of the scene held on the graphics card. */
+/** Builds every surface's shader, then calls `done` once the browser has them ready. Like
+ *  `renderer.compileAsync`, but it stops when the view closes (three's version kept polling a
+ *  renderer that had been freed and threw "reading 'isReady'" on every open), counts a material
+ *  freed meanwhile as ready, and never waits more than 5 s: drawing compiles whatever is left. */
+function warmUp(a: Api, done: () => void) {
+  let materials: Set<THREE.Material>;
+  try { materials = a.renderer.compile(a.scene, a.camera); } catch { done(); return; }
+  const started = performance.now();
+  const check = () => {
+    if (a.closed) return;
+    for (const m of materials) {
+      const program = (a.renderer.properties.get(m) as { currentProgram?: { isReady(): boolean } }).currentProgram;
+      if (!program || program.isReady()) materials.delete(m);
+    }
+    if (materials.size === 0 || performance.now() - started > 5000) done();
+    else setTimeout(check, 10);
+  };
+  check();
+}
+
 function dispose(root: THREE.Object3D) {
   root.traverse(o => {
     const m = o as THREE.Mesh;
@@ -113,7 +133,13 @@ interface Api {
   trash: THREE.Object3D[];
   /** Shaders are being prepared off the main thread where the browser can; nothing is drawn till then. */
   warming?: boolean; warmed?: boolean;
+  /** The view has closed: its renderer is gone, so nothing may wait on it any more. */
+  closed?: boolean;
+  /** Backdrop pieces, with the walls they stand on: they fade with those walls. */
+  backdropFades: BackdropFade[];
 }
+
+interface BackdropFade { group: THREE.Object3D; walls: number[]; level: number; mats: { m: THREE.Material; base: number }[] }
 
 export function Scene3D(p: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -229,7 +255,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -260,6 +286,15 @@ export function Scene3D(p: Props) {
         for (const { m, base } of w.mats) { m.opacity = base * (0.05 + 0.95 * w.level); m.depthWrite = w.level > 0.6 && base > 0.5; }
         a.wallGroups[i]?.traverse(o => { o.userData.cut = w.level < 0.5; });
       });
+      // A backdrop goes with the wall it stands on, so one on a near wall doesn't hide the set.
+      for (const f of a.backdropFades) {
+        const level = Math.min(1, ...f.walls.map(i => a.walls[i]?.level ?? 1));
+        if (level === f.level) continue;
+        f.level = level;
+        fading = true;
+        for (const { m, base } of f.mats) { m.opacity = base * (0.05 + 0.95 * level); m.depthWrite = level > 0.6 && base > 0.5; }
+        f.group.traverse(o => { o.userData.cut = level < 0.5; });
+      }
       if (fading) invalidate();
       if (a.warming || pending <= 0) { streak = 0; return; }
       pending--;
@@ -301,9 +336,13 @@ export function Scene3D(p: Props) {
     renderer.domElement.addEventListener('pointerdown', pd);
     renderer.domElement.addEventListener('pointerup', pu);
     return () => {
+      if (api.current) api.current.closed = true;
       cancelAnimationFrame(frame); ro.disconnect(); controls.dispose();
       for (const o of api.current?.trash ?? []) dispose(o);
       composer.dispose(); target.dispose(); renderer.dispose();
+      // Give the graphics context back too: the browser keeps only about 16, so opening room after room
+      // used to push out the oldest, and past that a live 3D view could go black.
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
   }, []);
@@ -370,8 +409,10 @@ export function Scene3D(p: Props) {
     const daylight = loc.daylight?.isOn ? { sun: sunPlacement(loc, scan), levels: daylightLevels(loc.daylight.sky ?? 'clear', sunPlacement(loc, scan).elevation) } : undefined;
     // Fitted to the screen, the brightest unit at full output, 3 m off, sits a little over mid-grey
     // (or the daylight or LED wall when they are brighter). It depends on the sources alone: moving a
-    // person, a flag or a frame, or dimming a unit, never changes how bright the other units look.
-    const brightest = Math.max(0, ...lit.map(x => illuminanceOnAxis(photometrics({ ...x.l, dimmer: 1 }), 3)),
+    // person, a flag or a frame, dimming a unit or switching one off never changes how bright the
+    // other units look (switching off the key used to brighten everything else to fill the screen).
+    const rigged = hidden.has('lights') ? [] : p.lights.filter(l => KIND_INFO[l.kind].emits);
+    const brightest = Math.max(0, ...rigged.map(l => illuminanceOnAxis(photometrics({ ...l, dimmer: 1, isOn: true }), 3)),
       (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWalls[0]?.luminance ?? 0) * 1.5);
     const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
     const scale = reference > 0 ? Math.PI / reference : 0;
@@ -431,6 +472,7 @@ export function Scene3D(p: Props) {
 
     // The studio backdrop, on one wall or round several.
     const layout = backdropLayout(loc, p.plan);
+    a.backdropFades = [];
     if (layout) {
       const ledColour = new THREE.Color(...Object.values(kelvinRGB(loc.studio?.kelvin ?? 6500)) as [number, number, number]);
       const holder = keep('stage:backdrop', JSON.stringify([layout, loc.studio?.kelvin]), () => {
@@ -441,6 +483,26 @@ export function Scene3D(p: Props) {
         for (const c of layout.corners) g.add(backdropCorner(c, layout.info.kind, colour, sweep));
         g.userData.builds = builds;
         return g;
+      });
+      // Which walls each piece stands on (a corner: the walls either side), for fading with them.
+      const wallIndex = (q: { x: number; z: number }) => {
+        let best = -1, d = 0.3;
+        (p.plan?.walls ?? []).forEach((w, i) => { const e = distanceToSegment(q, w.a, w.b); if (e < d) { d = e; best = i; } });
+        return best;
+      };
+      const pieceWalls = [
+        ...layout.pieces.map(bd => [(p.plan?.walls ?? []).findIndex(w => w.id === bd.wall.id)]),
+        ...layout.corners.map(c => [wallIndex(c.tangentA), wallIndex(c.tangentB)]),
+      ];
+      a.backdropFades = holder.children.map((g, i) => {
+        const mats = new Map<THREE.Material, number>();
+        g.traverse(o => {
+          const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+          if (!(o as THREE.Mesh).isMesh || !m || mats.has(m)) return;
+          if (m.userData.fadeBase === undefined) { m.userData.fadeBase = m.opacity; m.transparent = true; }
+          mats.set(m, m.userData.fadeBase as number);
+        });
+        return { group: g, walls: (pieceWalls[i] ?? []).filter(w => w >= 0), level: -1, mats: [...mats].map(([m, base]) => ({ m, base })) };
       });
       const nits = env?.ledWalls[0]?.luminance ?? 0;
       for (const b of holder.userData.builds as BackdropBuild[]) {
@@ -642,11 +704,14 @@ export function Scene3D(p: Props) {
     // A beam is redrawn when its unit, the room or anything in the way changes.
     const blockers = [...surfaces, ...[...next.values()].map(e => e.obj).filter(o => o.userData.blocks)];
     const inTheWay = `${roomGen.current}|${JSON.stringify(p.lights.filter(l => !KIND_INFO[l.kind].emits))}|${JSON.stringify((loc.characters ?? []).map(c => [c.position, c.height, c.posture, c.facing]))}`;
+    // Haze on the same scale as the light: a unit dimmed to 10 % shows a tenth of the haze, where it
+    // used to show nearly all of it (a room of units at their lowest came out white with haze).
+    const haze = (pm: ResolvedPhotometrics) => beamStrength(pm) * Math.min(1.5, illuminanceOnAxis(pm, 3) * scale / (1.25 * Math.PI));
     for (const { l, pm, pan } of beams) {
       const key = `${pan.userData.shape}|${inTheWay}`;
       if (pan.userData.beamKey === key) {
         const u = pan.userData.beam?.userData.uniforms;
-        if (u) { u.color.value.copy(pan.userData.color); u.strength.value = beamStrength(pm); }
+        if (u) { u.color.value.copy(pan.userData.color); u.strength.value = haze(pm); }
         continue;
       }
       const tilt = pan.userData.tilt as THREE.Object3D;
@@ -655,7 +720,7 @@ export function Scene3D(p: Props) {
       const origin = new THREE.Vector3(0, 0, pan.userData.front).applyMatrix4(tilt.matrixWorld);
       const q = new THREE.Quaternion(); tilt.getWorldQuaternion(q);
       const b = beam(l, pm, origin, q, pan.userData.color, blockers.filter(o => o !== pan), { store: reachCache.current, key: inTheWay });
-      if (b) { b.position.set(0, 0, pan.userData.front); tilt.add(b); }
+      if (b) { b.position.set(0, 0, pan.userData.front); tilt.add(b); b.userData.uniforms.strength.value = haze(pm); }
       pan.userData.beam = b; pan.userData.beamKey = key;
     }
     a.renderer.shadowMap.needsUpdate = true;
@@ -664,9 +729,8 @@ export function Scene3D(p: Props) {
     // instead of freezing on the first frame.
     if (!a.warmed) {
       a.warmed = true; a.warming = true; setWarming(true);
-      const done = () => { if (!a.warming) return; a.warming = false; setWarming(false); a.invalidate(3); };
-      a.renderer.compileAsync(a.scene, a.camera).then(done, done);
-      setTimeout(done, 5000); // never wait longer than this: drawing compiles whatever is left
+      const done = () => { if (!a.warming || a.closed) return; a.warming = false; setWarming(false); a.invalidate(3); };
+      warmUp(a, done);
     }
 
     // Reading tags: the calculator's figures, in the unit chosen in the panel.

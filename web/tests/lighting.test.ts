@@ -16,6 +16,13 @@ describe('photometrics port', () => {
     }
   });
 
+  it('picking a unit that dims less far lifts the dimmer to its lowest', () => {
+    const dim = { ...newLight('fresnel', { x: 0, z: 0 }), dimmer: 0.2 };
+    const hmi = applyProfile(dim, profiles.find(p => p.id === 'hmi-1800-par')!);
+    expect(hmi.dimmer).toBe(0.5);
+    expect(applyProfile(dim, profiles.find(p => p.id === 'cob-300-d')!).dimmer).toBe(0.2);
+  });
+
   it('a lambertian solid-angle factor is π', () => {
     expect(solidAngleFactor('lambertian', 120)).toBeCloseTo(Math.PI, 10);
   });

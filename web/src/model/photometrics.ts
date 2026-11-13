@@ -359,6 +359,9 @@ export function applyProfile(l: LightFixture, p: FixtureProfile): LightFixture {
   n.power = powerLabel(p);
   delete n.photometricOverride;
   if (!p.hasBarnDoors) delete n.barnDoors;
+  // An HMI can't dim below half: keep the dimmer where the unit really is, so the output shown
+  // matches the readings (they always used the unit's lowest). Same as Swift.
+  n.dimmer = Math.min(Math.max(l.dimmer, p.minOutput), 1);
   return n;
 }
 
