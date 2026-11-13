@@ -75,8 +75,10 @@ jobs:
           ls -la raw
       - name: Add captions at App Store sizes
         run: |
-          python3 -m pip install --quiet pillow
-          python3 scripts/store-screenshots.py raw store
+          # The runner's Homebrew Python refuses global pip installs, so use a throwaway venv.
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet pillow
+          "$RUNNER_TEMP/venv/bin/python" scripts/store-screenshots.py raw store
           mkdir -p store/raw && cp raw/*.png store/raw/
       - name: Publish to a branch
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
