@@ -30,8 +30,8 @@ pub fn oauth_listen(state: tauri::State<'_, Pending>) -> Result<u16, String> {
 #[tauri::command]
 pub async fn oauth_wait(app: tauri::AppHandle, state: tauri::State<'_, Pending>, url: String) -> Result<String, String> {
     let listener = state.0.lock().map_err(|e| e.to_string())?.take().ok_or("Sign-in wasn't started.")?;
-    if !url.starts_with("https://") {
-        return Err("Sign-in needs an https address.".into());
+    if !is_sign_in_url(&url) {
+        return Err("Sign-in needs the sync server's https sign-in address.".into());
     }
     open_browser(&url)?;
     let query = tauri::async_runtime::spawn_blocking(move || wait_for_callback(listener, TIMEOUT))
@@ -42,6 +42,18 @@ pub async fn oauth_wait(app: tauri::AppHandle, state: tauri::State<'_, Pending>,
         let _ = w.set_focus();
     }
     Ok(query)
+}
+
+/// The web view may only open a Supabase sign-in page in the system browser, so a page that went
+/// wrong can't use this command to open arbitrary sites. The server is configurable, so the host
+/// isn't fixed; the scheme and path are.
+pub fn is_sign_in_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    !host.is_empty()
+        && host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
+        && (path == "auth/v1/authorize" || path.starts_with("auth/v1/authorize?"))
+        && !url.chars().any(|c| c.is_control() || c == ' ' || c == '"')
 }
 
 fn open_browser(url: &str) -> Result<(), String> {
@@ -149,6 +161,18 @@ mod tests {
         });
         assert_eq!(wait_for_callback(listener, Duration::from_secs(5)).unwrap(), "code=abc&state=1");
         client.join().unwrap();
+    }
+
+    #[test]
+    fn only_sign_in_pages_open() {
+        assert!(is_sign_in_url("https://abc.supabase.co/auth/v1/authorize?provider=google&redirect_to=x"));
+        assert!(is_sign_in_url("https://my-server.example.com:8443/auth/v1/authorize?provider=apple"));
+        assert!(!is_sign_in_url("http://abc.supabase.co/auth/v1/authorize?provider=google"));
+        assert!(!is_sign_in_url("https://evil.example.com/login"));
+        assert!(!is_sign_in_url("https://user@evil.example.com/auth/v1/authorize"));
+        assert!(!is_sign_in_url("https://abc.supabase.co/auth/v1/authorizeX"));
+        assert!(!is_sign_in_url("https:///auth/v1/authorize"));
+        assert!(!is_sign_in_url("file:///etc/passwd"));
     }
 
     #[test]

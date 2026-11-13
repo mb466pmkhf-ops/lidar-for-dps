@@ -90,6 +90,10 @@ jobs:
         run: |
           npm ci
           npx tauri build ${{ matrix.args }}
+      - name: Native tests (sign-in loopback)
+        if: matrix.name == 'macOS'
+        working-directory: web/src-tauri
+        run: cargo test --locked
         env:
           VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
