@@ -10,7 +10,7 @@ import { keyLux } from '../model/exposure';
 import { cssRGB } from '../model/kelvin';
 import { planReach } from '../model/rigging';
 import { skinRGB } from '../model/characters';
-import { readingShort, stopColor, stopLegend } from './format';
+import { lengthUnits, metres, readingShort, stopColor, stopLegend } from './format';
 import { setPieceName } from '../model/setPieces';
 import { drape, gripSpan } from '../model/grip';
 
@@ -492,7 +492,7 @@ export function PlanCanvas(props: Props) {
           const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
           if (len < 1 || v.scale < 40) return null;
           const mid = { x: (w.a.x + w.b.x) / 2, z: (w.a.z + w.b.z) / 2 };
-          return <g key={'d' + w.id}>{labelFor(`${len.toFixed(2)} m`, mid, 4)}</g>;
+          return <g key={'d' + w.id}>{labelFor(metres(len), mid, 4)}</g>;
         })}
         {plan && selection?.kind === 'object' && (() => {
           const o = plan.objects.find(x => x.id === selection.id);
@@ -534,11 +534,19 @@ export function PlanCanvas(props: Props) {
             </g>
           );
         })()}
-        <g transform={`translate(16,${size.h - 24})`} pointerEvents="none">
-          <line x1={0} y1={0} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={0} stroke="var(--ink)" />
-          <line x1={0} y1={-5} x2={0} y2={5} stroke="var(--ink)" /><line x1={v.scale * (v.scale > 60 ? 1 : 2)} y1={-5} x2={v.scale * (v.scale > 60 ? 1 : 2)} y2={5} stroke="var(--ink)" />
-          <text x={v.scale * (v.scale > 60 ? 0.5 : 1)} y={-8} textAnchor="middle" fill="var(--ink)" fontSize={11} fontFamily="ui-monospace, monospace">{v.scale > 60 ? '1 m' : '2 m'}</text>
-        </g>
+        {(() => {
+          // Scale bar: 1 or 2 m, or 3 or 6 ft, whichever reads at this zoom.
+          const imp = lengthUnits() === 'imperial';
+          const len = imp ? (v.scale > 60 ? 0.9144 : 1.8288) : (v.scale > 60 ? 1 : 2);
+          const w = v.scale * len;
+          return (
+            <g transform={`translate(16,${size.h - 24})`} pointerEvents="none">
+              <line x1={0} y1={0} x2={w} y2={0} stroke="var(--ink)" />
+              <line x1={0} y1={-5} x2={0} y2={5} stroke="var(--ink)" /><line x1={w} y1={-5} x2={w} y2={5} stroke="var(--ink)" />
+              <text x={w / 2} y={-8} textAnchor="middle" fill="var(--ink)" fontSize={11} fontFamily="ui-monospace, monospace">{imp ? (v.scale > 60 ? '3 ft' : '6 ft') : (v.scale > 60 ? '1 m' : '2 m')}</text>
+            </g>
+          );
+        })()}
       </svg>
       {props.hint && <div className="plan-hint">{props.hint}</div>}
       <div className="zoom" onPointerDown={e => e.stopPropagation()}>

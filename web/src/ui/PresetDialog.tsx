@@ -1,6 +1,7 @@
 // "My presets": save the lights you placed as your own setup, and tune or share the ones you have.
 // Same fields and labels as the phone (FrameScout/Features/Plan/LightingPresetViews.swift).
 import { useState } from 'react';
+import { LengthStepper } from './LengthStepper';
 import type { ExposureSettings, FloorPlan, LightFixture, PlanPoint, PlanSegment, PrevisCharacter } from '../model/types';
 import { ANCHOR_LABEL, capturePersonPreset, captureWindowPreset, decodePresets, encodePresets, nearestWindow, presetSummary, type LightingPreset, type PresetAnchor, type PresetUnit } from '../model/presets';
 import { planDist } from '../model/calculator';
@@ -94,17 +95,17 @@ function UnitEditor({ anchor, unit, onChange, onRemove }: { anchor: PresetAnchor
       {anchor === 'person' ? (
         <>
           <Step label="Angle from camera" value={unit.angle} step={5} min={-180} max={180} unit="°" onChange={v => set({ angle: v })} />
-          <Step label="Distance" value={unit.distance} step={0.1} min={0.3} max={15} unit="m" onChange={v => set({ distance: v })} />
-          <Step label="Above eyes" value={unit.rise} step={0.1} min={-1.5} max={4} unit="m" onChange={v => set({ rise: v })} />
+          <LengthStepper compact label="Distance" value={unit.distance} min={0.3} max={15} onChange={v => set({ distance: v })} />
+          <LengthStepper compact label="Above eyes" value={unit.rise} min={-1.5} max={4} onChange={v => set({ rise: v })} />
           {emits && (unit.stopsUnderKey !== undefined
             ? <Step label="Stops under key (− is over)" value={unit.stopsUnderKey} step={0.5} min={-3} max={6} unit="st" onChange={v => set({ stopsUnderKey: v })} />
             : <p className="note">Keeps its dimmer ({Math.round(unit.light.dimmer * 100)} %), as it didn't light the face when saved.</p>)}
         </>
       ) : (
         <>
-          <Step label="Along the window" value={unit.along} step={0.1} min={-10} max={10} unit="m" onChange={v => set({ along: v })} />
-          <Step label="Out from the glass" value={unit.out} step={0.1} min={-10} max={20} unit="m" onChange={v => set({ out: v })} />
-          <Step label="Height" value={unit.height} step={0.1} min={0} max={12} unit="m" onChange={v => set({ height: v })} />
+          <LengthStepper compact label="Along the window" value={unit.along} min={-10} max={10} onChange={v => set({ along: v })} />
+          <LengthStepper compact label="Out from the glass" value={unit.out} min={-10} max={20} onChange={v => set({ out: v })} />
+          <LengthStepper compact label="Height" value={unit.height} min={0} max={12} onChange={v => set({ height: v })} />
           {emits && <Step label="Dimmer" value={Math.round(unit.light.dimmer * 100)} step={5} min={0} max={100} unit="%" onChange={v => set({ light: { ...unit.light, dimmer: v / 100 } })} />}
         </>
       )}

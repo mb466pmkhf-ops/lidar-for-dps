@@ -2,6 +2,8 @@
 // raises into walls. Sizes are typed, so nothing here is labelled as measured.
 import { useState } from 'react';
 import type { Project } from '../model/types';
+import { LengthStepper } from './LengthStepper';
+import { area, useLengthUnits } from './format';
 import { ROOM_LIMITS, defaultRoom, normalise, roomArea, roomOutline, buildRoomPlan, type RoomSpec } from '../model/room';
 
 function Stepper({ label, note, value, step, min, max, unit, onChange }: { label: string; note?: string; value: number; step: number; min: number; max: number; unit: string; onChange(v: number): void }) {
@@ -23,6 +25,7 @@ export function RoomDialog({ projects, currentProjectID, onCreate, onClose }: {
   projects: Project[]; currentProjectID?: string;
   onCreate(name: string, spec: RoomSpec, projectID: string | undefined): void; onClose(): void;
 }) {
+  useLengthUnits();
   const [name, setName] = useState('New room');
   const [spec, setSpec] = useState<RoomSpec>(defaultRoom);
   const [projectID, setProjectID] = useState(currentProjectID ?? projects[0]?.id ?? '');
@@ -53,9 +56,9 @@ export function RoomDialog({ projects, currentProjectID, onCreate, onClose }: {
             {plan.windows.map(w => <line key={w.id} x1={x(w.a.x)} y1={z(w.a.z)} x2={x(w.b.x)} y2={z(w.b.z)} stroke="var(--window)" strokeWidth={4} />)}
             {plan.doors.map(w => <line key={w.id} x1={x(w.a.x)} y1={z(w.a.z)} x2={x(w.b.x)} y2={z(w.b.z)} stroke="var(--door)" strokeWidth={4} />)}
           </svg>
-          <Stepper label="Length" value={spec.length} step={0.1} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} unit="metres" onChange={v => patch({ length: v })} />
-          <Stepper label="Width" value={spec.width} step={0.1} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} unit="metres" onChange={v => patch({ width: v })} />
-          <Stepper label="Ceiling height" note="Used to build the 3D room" value={spec.ceiling} step={0.1} min={ROOM_LIMITS.ceilingMin} max={ROOM_LIMITS.ceilingMax} unit="metres" onChange={v => patch({ ceiling: v })} />
+          <LengthStepper label="Length" value={spec.length} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ length: v })} />
+          <LengthStepper label="Width" value={spec.width} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ width: v })} />
+          <LengthStepper label="Ceiling height" note="Used to build the 3D room" value={spec.ceiling} min={ROOM_LIMITS.ceilingMin} max={ROOM_LIMITS.ceilingMax} onChange={v => patch({ ceiling: v })} />
           <Stepper label="Windows" note="Along the top wall" value={spec.windows} step={1} min={0} max={4} unit="count" onChange={v => patch({ windows: v })} />
           <label className="toggle"><input type="checkbox" checked={spec.door} onChange={e => patch({ door: e.target.checked })} /> Add a door on the left wall</label>
           {projects.length > 0 && (
@@ -67,7 +70,7 @@ export function RoomDialog({ projects, currentProjectID, onCreate, onClose }: {
             </label>
           )}
         </div>
-        <p className="note">Floor area {roomArea(s).toFixed(1)} m². Sizes you type are saved as entered by hand, not as measurements.</p>
+        <p className="note">Floor area {area(roomArea(s))}. Sizes you type are saved as entered by hand, not as measurements.</p>
         <div className="actions" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn primary">Build the room</button>
