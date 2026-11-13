@@ -1,0 +1,145 @@
+name: App Store release (iPhone)
+
+# Builds a signed App Store build and uploads it to TestFlight. It never submits for review:
+# that stays a button press in App Store Connect.
+#
+# Runs when you push a tag like v1.0.0, or by hand (Actions → App Store release → Run workflow).
+# Needs the paid Apple Developer Program and these repository settings (Docs/RELEASE.md):
+#   secrets   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (contents of the .p8 file), APPLE_TEAM_ID
+#   variable  IOS_BUNDLE_ID (optional; defaults to the bundle id in the Xcode project)
+# Signing is cloud-managed by Xcode with the App Store Connect key, so no certificate or
+# provisioning profile is stored anywhere.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version shown in the App Store (e.g. 1.0.0). Empty = keep the project version.'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-store-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: All checks
+    uses: ./.github/workflows/build.yml
+
+  testflight:
+    name: Signed build → TestFlight
+    needs: checks
+    runs-on: macos-15
+    environment: app-store   # add required reviewers on this environment to approve each upload
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the Apple settings are in place
+        run: |
+          missing=""
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. Follow Docs/RELEASE.md (needs the paid Apple Developer Program)."
+            exit 1
+          fi
+      - name: Xcode version
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Version and build number
+        id: ver
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF#refs/tags/v}"; fi
+          if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "::error::Version '$VERSION' must look like 1.0 or 1.0.0"; exit 1
+          fi
+          # Every upload needs a higher build number. The run number only ever goes up.
+          BUILD=$(( 100 + GITHUB_RUN_NUMBER ))
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Version ${VERSION:-(project)} build $BUILD"
+      - name: App Store Connect key
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
+      - name: Archive (signed for the App Store)
+        run: |
+          set -o pipefail
+          EXTRA=()
+          [ -n "${{ steps.ver.outputs.version }}" ] && EXTRA+=(MARKETING_VERSION="${{ steps.ver.outputs.version }}")
+          [ -n "$IOS_BUNDLE_ID" ] && EXTRA+=(PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID")
+          xcodebuild archive \
+            -project FrameScout.xcodeproj \
+            -scheme FrameScout \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/FrameScout.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}" \
+            "${EXTRA[@]}" \
+            2>&1 | tee archive.log | grep -E "error:|\*\* ARCHIVE" || true
+          grep -q "\*\* ARCHIVE SUCCEEDED \*\*" archive.log
+      - name: Check the archive before upload
+        run: |
+          APP="$RUNNER_TEMP/FrameScout.xcarchive/Products/Applications/FrameScout.app"
+          test -f "$APP/PrivacyInfo.xcprivacy" || { echo "::error::Privacy manifest missing from the app bundle"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$APP/Info.plist"
+          codesign --verify --deep --strict "$APP"
+      - name: Upload to TestFlight
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/FrameScout.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee export.log | grep -E "error:|Upload|\*\* EXPORT" || true
+          grep -q "\*\* EXPORT SUCCEEDED \*\*" export.log
+          echo "### Uploaded build ${{ steps.ver.outputs.build }} to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+          echo "It appears in App Store Connect → TestFlight after Apple finishes processing (about 10–30 minutes)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-logs
+          path: |
+            archive.log
+            export.log
+          if-no-files-found: ignore

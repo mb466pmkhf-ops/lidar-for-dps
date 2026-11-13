@@ -23,6 +23,7 @@ struct SyncSettingsView: View {
     @State private var message: String?
     @State private var notice: String?
     @State private var editingServer = false
+    @State private var confirmDelete = false
 
     static let minPassword = 8
 
@@ -47,6 +48,11 @@ struct SyncSettingsView: View {
                         Text("Changes sync within a few seconds while the app is open. Edits made on two devices at once are merged item by item.")
                     }
                     Section { Button("Server…") { startEditingServer() } }
+                    Section {
+                        Button("Delete account…", role: .destructive) { confirmDelete = true }
+                    } footer: {
+                        Text("Removes the account and every project synced to it from the server. Projects on this iPhone stay here.")
+                    }
                 } else if let pending = pendingEmail {
                     verifySection(pending)
                 } else {
@@ -67,6 +73,12 @@ struct SyncSettingsView: View {
             .navigationTitle("Account & sync")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .confirmationDialog("Delete your account?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete account", role: .destructive) { run { try await sync.deleteAccount() } }
+                Button("Keep my account", role: .cancel) {}
+            } message: {
+                Text("Your account and every project synced to it are removed from the server, on all your devices. Projects on this iPhone stay. This can't be undone.")
+            }
         }
     }
 

@@ -254,6 +254,25 @@ final class CloudSync: ObservableObject {
         if config != nil { status = .signedOut }
     }
 
+    /// Deletes the account and every project synced to it on the server, then signs out.
+    /// Projects on this iPhone stay. Needs `delete_my_account()` from web/supabase/schema.sql.
+    func deleteAccount() async throws {
+        guard let config, let url = URL(string: "\(config.url)/rest/v1/rpc/delete_my_account") else { throw SyncError.notConfigured }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404 { throw SyncError.server("This sync server can't delete accounts yet. Its owner needs to run the newest web/supabase/schema.sql.") }
+        guard (200..<300).contains(code) else {
+            throw SyncError.server("Couldn't delete the account: \(code) \(String(data: data, encoding: .utf8) ?? "")")
+        }
+        signOut()
+    }
+
     private func post(path: String, body: [String: String]) async throws -> [String: Any] {
         guard let config, let url = URL(string: "\(config.url)/auth/v1/\(path)") else { throw SyncError.notConfigured }
         var req = URLRequest(url: url)

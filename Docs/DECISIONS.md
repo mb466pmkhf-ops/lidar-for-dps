@@ -242,3 +242,25 @@ same cases tested on both sides):
   and no figure is shown for them. The iPhone now draws sofas, chairs and beds with a seat, back and arms
   (scanned ones too) instead of solid boxes, so a seated figure isn't hidden inside the box.
 - Not covered: people overlapping each other, lights or stands; furniture overlapping furniture.
+
+## D-018 · App Store release pipeline — 2026-11-13
+
+Vorbi asked for a production pipeline to the App Store with checks, tests, copyright, design,
+marketing and fixed vulnerabilities. Choices:
+
+- **No fastlane.** `xcodebuild archive` + `-exportArchive` with `destination = upload` and an App Store
+  Connect API key do the signing (cloud-managed) and the TestFlight upload
+  (`.github/workflows/release-ios.yml`). One less Ruby toolchain to keep secure, and no certificate or
+  profile is stored anywhere. Submitting for review stays a manual press in App Store Connect.
+- **Every release runs every check first** (`build.yml` is reusable): the Xcode build, core tests,
+  Swift/TS parity, look sheet, model validators, plus new release gates: `npm audit` on shipped
+  packages, a licence allow list with generated notices (`scripts/third-party-notices.mjs`), and
+  `scripts/check-store-rules.py` (privacy manifest reasons, export compliance, usage texts,
+  account deletion).
+- **Account deletion** (rule 5.1.1(v)) is a Postgres function `delete_my_account()` in
+  `web/supabase/schema.sql`, run with the owner's rights; the account's rows go with it. Local
+  projects stay on the device. Needs the owner to run the newer schema on the live project.
+- **Licence:** the code is "all rights reserved" (`LICENSE`) until the owner chooses otherwise.
+  Third-party code is MIT/Apache/BSD/MPL-style only; anything else fails the release gate.
+- Still open: store name and bundle id (D-001, Vorbi chose to decide later), native Sign in with
+  Apple once the paid team exists (rule 4.8).

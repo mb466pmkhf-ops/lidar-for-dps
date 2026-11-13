@@ -44,3 +44,24 @@ grant select, insert, update, delete on public.framescan_projects to authenticat
 alter table public.framescan_projects drop constraint if exists framescan_projects_size;
 alter table public.framescan_projects add constraint framescan_projects_size
   check (pg_column_size(doc) < 5000000 and pg_column_size(plans) < 20000000 and length(name) <= 500);
+
+-- 4. Delete account (App Store rule 5.1.1(v): an app that creates accounts must let people delete
+--    them). Removes the signed-in user's projects and the account itself. Projects stay on the
+--    devices that have them. Runs with the owner's rights because users can't delete from auth.users.
+create or replace function public.delete_my_account() returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'Not signed in' using errcode = '28000';
+  end if;
+  delete from public.framescan_projects where owner = uid;
+  delete from auth.users where id = uid;
+end;
+$$;
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
