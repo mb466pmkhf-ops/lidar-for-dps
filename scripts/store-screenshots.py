@@ -53,6 +53,15 @@ def wrap(draw, text, font, width):
     return lines
 
 
+def looks_blank(raw: Path) -> bool:
+    """True when the screen under the status bar is nearly one colour (the screen hadn't drawn yet)."""
+    img = Image.open(raw).convert("L")
+    body = img.crop((0, round(img.height * 0.12), img.width, img.height)).resize((64, 128))
+    values = list(body.tobytes())
+    most = max(values.count(v) for v in set(values))
+    return most / len(values) > 0.9
+
+
 def compose(raw: Path, caption: str, size: tuple[int, int]) -> Image.Image:
     w, h = size
     canvas = Image.new("RGB", size, BACKGROUND)
@@ -86,11 +95,14 @@ def main(raw_dir: Path, out_dir: Path) -> int:
             if not raw.exists():
                 missing.append(raw.name)
                 continue
+            if looks_blank(raw):
+                missing.append(raw.name + " (blank: the screen hadn't drawn)")
+                continue
             img = compose(raw, caption, size)
             assert img.size == size
             img.save(out_dir / f"{device}-{n}-{screen}.png", optimize=True)
     if missing:
-        print("Missing raw screenshots: " + ", ".join(missing))
+        print("Missing or unusable raw screenshots: " + ", ".join(missing))
         return 1
     print(f"Wrote {len(SHOTS) * len(SIZES)} store screenshots to {out_dir}")
     return 0
