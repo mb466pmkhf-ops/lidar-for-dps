@@ -97,6 +97,18 @@ export class SupabaseClient {
 
   signOut() { this.session = undefined; this.onSession?.(undefined); }
 
+  /** Deletes the account and every project synced to it, then signs out. Local copies stay. */
+  async deleteAccount(): Promise<void> {
+    const res = await fetch(`${this.base()}/rest/v1/rpc/delete_my_account`, {
+      method: 'POST',
+      headers: { apikey: this.config.anonKey, Authorization: `Bearer ${await this.token()}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (res.status === 404) throw new Error("This sync server can't delete accounts yet. Its owner needs to run the newest web/supabase/schema.sql.");
+    if (!res.ok) throw new Error(`Couldn't delete the account: ${res.status} ${await res.text()}`);
+    this.signOut();
+  }
+
   private async token(): Promise<string> {
     if (!this.session) throw new Error('Not signed in');
     if (Date.now() > this.session.expiresAt - 60_000) {

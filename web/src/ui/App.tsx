@@ -273,6 +273,7 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
   const [error, setError] = useState<string | undefined>(initialError);
   const [notice, setNotice] = useState<string>();
   const [editServer, setEditServer] = useState(!client);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useWorkspace();
 
   const run = async (fn: () => Promise<void>) => {
@@ -300,6 +301,7 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
       <div className="dialog" role="dialog" aria-modal="true" aria-label="Account and sync" onClick={e => e.stopPropagation()}>
         <h2>Account &amp; sync</h2>
         <p>Keeps the lighting plan the same on your iPhone, this browser and the desktop app. Scan meshes and photos stay on the phone; only the plan, lights, people, meters and the 2D floor plan sync.</p>
+        <p className="muted" style={{ fontSize: 12 }}>© 2026 FrameScout. <a href={`${import.meta.env.BASE_URL}third-party-notices.txt`} target="_blank" rel="noreferrer">Open-source notices</a></p>
         {session && !editServer ? (
           <>
             <p>Signed in as <strong>{session.email}</strong>. {workspace.state.kind === 'synced' ? 'Everything is up to date.' : workspace.state.kind === 'error' ? workspace.state.message : ''}</p>
@@ -308,6 +310,19 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
               <button className="btn" onClick={() => workspace.signOut()}>Sign out</button>
               <button className="btn ghost" onClick={() => setEditServer(true)}>Server…</button>
             </div>
+            {confirmDelete ? (
+              <div className="stack">
+                <p><strong>Delete your account?</strong> This removes the account and every project synced to it from the server, on all your devices. Projects already on this computer stay here. It can't be undone.</p>
+                <div className="actions">
+                  <button className="btn danger" disabled={busy} onClick={() => run(async () => { await workspace.deleteAccount(); setConfirmDelete(false); })}>Delete account</button>
+                  <button className="btn ghost" onClick={() => setConfirmDelete(false)}>Keep my account</button>
+                </div>
+              </div>
+            ) : (
+              <div className="actions">
+                <button className="btn ghost danger" onClick={() => setConfirmDelete(true)}>Delete account…</button>
+              </div>
+            )}
           </>
         ) : editServer ? (
           <>

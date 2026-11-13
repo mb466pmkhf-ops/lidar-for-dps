@@ -219,6 +219,13 @@ export class Workspace {
 
   signOut() { this.client?.signOut(); }
 
+  /** Deletes the account on the server. Projects on this device are kept and upload again only
+   *  if someone signs in to an account later. */
+  async deleteAccount() {
+    if (!this.client?.session) throw new Error('Not signed in');
+    await this.client.deleteAccount();
+  }
+
   private setState(s: SyncState) { this.state = s; this.emit(); }
 
   // MARK: Sync

@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:   # the App Store release workflow runs every check here first
 
 permissions:
   contents: read
@@ -94,3 +95,25 @@ jobs:
               assert UsdGeom.GetStageUpAxis(s) == 'Y' and UsdGeom.GetStageMetersPerUnit(s) == 1.0
               print(f, 'ok', len(list(s.Traverse())), 'prims')
           "
+
+  release-gates:
+    name: Release gates (licences, vulnerabilities, store rules)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Known vulnerabilities in shipped npm packages
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
+      - name: Licences allowed and notices up to date
+        run: |
+          (cd web/src-tauri && cargo metadata --format-version 1 --locked > /tmp/cargo-metadata.json)
+          node scripts/third-party-notices.mjs --cargo-metadata /tmp/cargo-metadata.json --check
+      - name: App Store rules (privacy manifest, encryption flag, usage texts)
+        run: python3 scripts/check-store-rules.py
+

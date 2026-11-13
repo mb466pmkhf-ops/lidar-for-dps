@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var newProjectName = ""
     @State private var showImporter = false
     @State private var showSync = false
+    @State private var showAbout = false
     @State private var showDrawRoom = false
     @State private var showListing = false
     @AppStorage(Theme.nightKey) private var night = false
@@ -132,6 +133,7 @@ struct HomeView: View {
                 Menu {
                     // Import and sign-in have their own rows and button; this menu is only for settings.
                     Toggle(isOn: $useImperial) { Label("Imperial units (ft/in)", systemImage: "ruler") }
+                    Button { showAbout = true } label: { Label("About FrameScout", systemImage: "info.circle") }
                 } label: {
                     Image(systemName: "gearshape").font(.title3).foregroundStyle(HomeStyle.accent)
                 }
@@ -148,6 +150,7 @@ struct HomeView: View {
             Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showSync) { SyncSettingsView() }
+        .sheet(isPresented: $showAbout) { AboutView() }
         .sheet(isPresented: $showDrawRoom) { DrawRoomView() }
         .sheet(isPresented: $showListing) { listingSheet }
 #if DEBUG
