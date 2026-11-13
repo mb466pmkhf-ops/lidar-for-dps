@@ -46,10 +46,12 @@ const quickLights: { label: string; kind: LightKind; profile?: string }[] = [
   { label: 'Practical', kind: 'practical', profile: 'bulb-tungsten-100' },
   { label: 'Lantern', kind: 'spaceLight', profile: 'lantern-300-bi' },
 ];
-const gripItems: { label: string; kind: LightKind; size?: string; drape?: string }[] = [
+type GripItem = { label: string; kind: LightKind; size?: string; drape?: string };
+// The four basic boards first; named frame sizes and rags behind "Frames and rags".
+const gripBasics: GripItem[] = [
   { label: 'Bounce', kind: 'bounce' }, { label: 'Neg', kind: 'negative' }, { label: 'Flag', kind: 'flag' }, { label: 'Diffusion', kind: 'diffusion' },
-  ...GRIP_PRESETS.map(g => ({ label: g.label, kind: drapeByID(g.drape)!.kinds[0] as LightKind, size: g.size, drape: g.drape })),
 ];
+const gripFrames: GripItem[] = GRIP_PRESETS.map(g => ({ label: g.label, kind: drapeByID(g.drape)!.kinds[0] as LightKind, size: g.size, drape: g.drape }));
 
 const snap = (v: number) => Math.round(v * 20) / 20;
 
@@ -79,6 +81,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [lightMenu, setLightMenu] = useState(false);
   const [setMenu, setSetMenu] = useState(false);
+  const [moreGrip, setMoreGrip] = useState(false);
   const [missedWall, setMissedWall] = useState(false);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const [, force] = useState(0);
@@ -382,7 +385,10 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
                 <div className="label" style={{ marginBottom: 8 }}>Lights</div>
                 <div className="chips">{quickLights.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, profile: q.profile }); setLightMenu(false); }}>{q.label}</button>)}</div>
                 <div className="label" style={{ margin: '12px 0 8px' }}>Grip</div>
-                <div className="chips">{gripItems.map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, size: q.size, drape: q.drape }); setLightMenu(false); }}>{q.label}</button>)}</div>
+                <div className="chips">
+                  {(moreGrip ? [...gripBasics, ...gripFrames] : gripBasics).map(q => <button key={q.label} className="chip" onClick={() => { setTool({ kind: 'light', light: q.kind, size: q.size, drape: q.drape }); setLightMenu(false); }}>{q.label}</button>)}
+                  {!moreGrip && <button className="chip ghost" onClick={() => setMoreGrip(true)}>Frames and rags…</button>}
+                </div>
                 <p className="note">Pick any fixture type, or any size, rag and gel for grip, after placing it.</p>
               </div>
             )}

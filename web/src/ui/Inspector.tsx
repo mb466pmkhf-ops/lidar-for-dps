@@ -226,8 +226,8 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
       </div>
       <div className="actions" style={{ marginTop: 12 }}>
         <button className="btn small" onClick={() => p.aimMode(true)}><Icon name="aim" /> Aim at…</button>
-        <button className="btn small" onClick={duplicate}><Icon name="copy" /> Duplicate</button>
-        <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>
+        <button className="btn small ghost" onClick={duplicate} title="Duplicate" aria-label="Duplicate"><Icon name="copy" /></button>
+        <button className="btn small ghost danger" onClick={remove} title="Delete" aria-label="Delete"><Icon name="trash" /></button>
       </div>
     </section>
   );
@@ -290,12 +290,6 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
           </select><span />
         </label>
         <Quirks items={quirksForFixture(profile.id)} />
-        <label className="field"><span>Role</span>
-          <select value={l.role ?? ''} onChange={e => { const v = e.target.value as LightRole | ''; const n = { ...l }; if (v) n.role = v; else delete n.role; replace(n); }} aria-label="Role">
-            <option value="">None</option>
-            {roles.map(r => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
-          </select><span />
-        </label>
         <Slider label="Output" value={l.dimmer} min={profile.minOutput} max={1} step={0.01} format={pct} onChange={v => set({ dimmer: v }, false)} />
         {profile.color.rgb && (
           <div className="field"><span>Colour</span>
@@ -338,7 +332,13 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         <StandField light={l} replace={replace} />
       </Panel>
 
-      <Panel title="Advanced · beam and shaping" collapsible open={false}>
+      <Panel title="More · modifier, gels, barn doors, throw" collapsible open={false}>
+        <label className="field"><span>Role</span>
+          <select value={l.role ?? ''} onChange={e => { const v = e.target.value as LightRole | ''; const n = { ...l }; if (v) n.role = v; else delete n.role; replace(n); }} aria-label="Role">
+            <option value="">None</option>
+            {roles.map(r => <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>)}
+          </select><span />
+        </label>
         <label className="field"><span>Modifier</span>
           <select value={l.modifierID ?? currentMod?.id ?? 'none'} onChange={e => set({ modifierID: e.target.value })} aria-label="Modifier">
             {profile.defaultModifierID === undefined && <option value="none">None</option>}
@@ -366,9 +366,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
             ))}
           </>
         )}
-      </Panel>
-
-      <Panel title="Advanced · throw and photometric data" collapsible open={false}>
+        <div className="label" style={{ margin: '16px 0 6px' }}>Throw and photometric data</div>
         <div className="readout" style={{ marginBottom: 14 }}>
           <div><div className="label">Draw</div><div className="v">≈ {watts(pm.drawWatts)}</div></div>
           <div><div className="label">At 3 m on axis</div><div className="v">≈ {fmtLux(illuminanceOnAxis(pm, 3))}</div></div>
@@ -434,7 +432,7 @@ function OverrideEditor({ light, replace }: { light: LightFixture; replace(l: Li
 
 function NotesPanel({ value, onChange }: { value: string; onChange(v: string): void }) {
   return (
-    <Panel title="Notes">
+    <Panel title={value ? 'Notes' : 'Notes · none yet'} collapsible open={!!value}>
       <textarea rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder="Rigging, power, gel cuts…" aria-label="Notes" />
     </Panel>
   );
@@ -504,16 +502,19 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
         )}
         {dialog === 'manage' && <ManagePresetsDialog onClose={() => setDialog(undefined)} />}
       </Panel>
-      <Panel title="Person">
-        <div className="chips" style={{ marginBottom: 10 }}>
-          {characterTypes.map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} title={t === 'universal' ? 'No male or female features: in-between shape, cropped hair' : undefined} onClick={() => set({ type: t, height: characterDefaults[t] })}>{characterLabel(t)}</button>)}
-        </div>
+      <Panel title="Position">
         <div className="chips" style={{ marginBottom: 10 }}>
           {(['standing', 'sitting'] as const).map(t => <button key={t} className={'chip' + (c.posture === t ? ' on' : '')} onClick={() => set({ posture: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
         </div>
+        <Slider label="Facing" value={((c.facing % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ facing: v }, false)} />
+      </Panel>
+      {/* What they look like matters less for a lighting plan, so it starts folded. */}
+      <Panel title={`Look · ${characterLabel(c.type)}, ${metres(c.height)}`} collapsible open={false}>
+        <div className="chips" style={{ marginBottom: 10 }}>
+          {characterTypes.map(t => <button key={t} className={'chip' + (c.type === t ? ' on' : '')} title={t === 'universal' ? 'No male or female features: in-between shape, cropped hair' : undefined} onClick={() => set({ type: t, height: characterDefaults[t] })}>{characterLabel(t)}</button>)}
+        </div>
         <Slider label="Height" value={c.height} min={isChild(c.type) ? 0.8 : 1.4} max={isChild(c.type) ? 1.75 : 2.1} step={0.01} format={metres} onChange={v => set({ height: v }, false)} />
         <Slider label="Build" value={c.build} min={0} max={1} step={0.05} format={v => (v < 0.2 ? 'Slim' : v < 0.4 ? 'Lean' : v < 0.6 ? 'Average' : v < 0.8 ? 'Solid' : 'Heavy')} onChange={v => set({ build: v }, false)} />
-        <Slider label="Facing" value={((c.facing % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ facing: v }, false)} />
         <div className="field"><span>Skin</span>
           <div className="chips">{skinRGB.map((col, i) => <button key={i} className={'swatch' + (c.skinTone === i + 1 ? ' on' : '')} style={{ background: col }} title={skinTones[i]} aria-label={skinTones[i]} onClick={() => set({ skinTone: i + 1 })} />)}</div><span />
         </div>
@@ -658,8 +659,13 @@ function Overview(p: InspectorProps) {
             </button>
           );
         }) : <p className="note">Add a person or a meter to see readings.</p>}
-        {p.meters.length > 0 && <p className="note"><Badge /> The stop a light meter would show at the camera settings above{extraText(1) ? ', then the light level' : ''}. Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}; no room reflections.</p>}
-        <p className="note">At {stopLabel(e.tStop)} the lens is about f/{fStop(e).toFixed(1)} ({Math.round(e.lensTransmission * 100)} % transmission); exposure time {speedLabel(exposureTime(e))}. A T-stop is a camera setting, not a measure of how bright the scene is.</p>
+        {p.meters.length > 0 && (
+          <details className="note what">
+            <summary><Badge /> What this means</summary>
+            <p>The stop a light meter would show at the camera settings above{extraText(1) ? ', then the light level' : ''}. Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}; no room reflections.</p>
+            <p>At {stopLabel(e.tStop)} the lens is about f/{fStop(e).toFixed(1)} ({Math.round(e.lensTransmission * 100)} % transmission); exposure time {speedLabel(exposureTime(e))}. A T-stop is a camera setting, not a measure of how bright the scene is.</p>
+          </details>
+        )}
       </Panel>
       <Panel title="Lights">
         {p.lights.length ? p.lights.map(l => (

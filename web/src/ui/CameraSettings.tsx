@@ -1,5 +1,6 @@
 // The camera settings every reading is worked out from, kept in view above the inspector so a change
 // shows on every reading at once. Same steps as ExposureQuickBar / ExposureSheet on the iPhone.
+import { useState } from 'react';
 import type { ExposureSettings } from '../model/types';
 import { exposureTime, frameRates, isoSteps, keyLux, shutterAngles, speedLabel, steppedISO, steppedStop, stopLabel, thirdStops, trim } from '../model/exposure';
 import { lux as fmtLux, READING_EXTRAS, readingExtra, setReadingExtra, useReadingExtra, type ReadingExtra } from './format';
@@ -26,18 +27,42 @@ function Stepper({ label, value, options, format, onChange, onStep }: {
   );
 }
 
+const OPEN_KEY = 'framescan.camera.open';
+
+/** Folded by default to one line: the stop you work at (with its steps) and a summary of the rest.
+ *  Opening it shows every setting; the choice is remembered on this device. */
 export function CameraSettingsBar({ exposure: e, onChange }: { exposure: ExposureSettings; onChange(patch: Partial<ExposureSettings>): void }) {
   useReadingExtra();
   const extra = readingExtra();
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } });
+  const toggle = () => { const next = !open; setOpen(next); try { localStorage.setItem(OPEN_KEY, next ? '1' : '0'); } catch { /* private mode */ } };
+  // A 180° shutter is the norm, so the line only names the shutter when it's something else.
+  const shutter = e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : Math.abs(e.shutterAngle - 180) > 0.01 ? `${trim(e.shutterAngle)}°` : '';
+  const summary = [`ISO ${e.iso}`, `${trim(e.frameRate)} fps`, shutter, e.ndStops ? ndLabel(e.ndStops) : ''].filter(Boolean).join(' · ');
+  const stop = (
+    <Stepper label="T-stop" value={e.tStop} options={thirdStops} format={v => stopLabel(v)}
+      onChange={v => onChange({ tStop: v })} onStep={d => onChange({ tStop: steppedStop(e.tStop, d) })} />
+  );
+  if (!open) {
+    return (
+      <section className="cam-bar folded" aria-label="Camera settings">
+        <div className="cam-fold">
+          {stop}
+          <button className="cam-summary" onClick={toggle} aria-expanded={false} title={`All camera settings and reading units (${speedLabel(exposureTime(e))})`}>
+            <span className="mono">{summary}</span><span aria-hidden="true"> ›</span>
+          </button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="cam-bar" aria-label="Camera settings">
       <div className="cam-bar-head">
-        <h3>Camera settings</h3>
+        <button className="btn ghost small cam-head-btn" onClick={toggle} aria-expanded={true}><h3>Camera settings ▾</h3></button>
         <span className="mono muted" title="Incident reading that exposes a subject correctly at these settings">key ≈ {fmtLux(keyLux(e))}</span>
       </div>
       <div className="cam-grid">
-        <Stepper label="T-stop" value={e.tStop} options={thirdStops} format={v => stopLabel(v)}
-          onChange={v => onChange({ tStop: v })} onStep={d => onChange({ tStop: steppedStop(e.tStop, d) })} />
+        {stop}
         <Stepper label="ISO" value={e.iso} options={isoSteps} format={v => String(v)}
           onChange={v => onChange({ iso: v })} onStep={d => onChange({ iso: steppedISO(e.iso, d) })} />
       </div>

@@ -48,9 +48,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stopmark { width: 36px; height: 12px; flex: none; }
 html[data-theme=night] .stopmark { opacity: .5; }
 .crumbs { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text2); }
-.main { display: grid; grid-template-columns: 260px minmax(0, 1fr) 340px; min-height: 0; }
-.main.no-inspector { grid-template-columns: 260px minmax(0, 1fr); }
-.sidebar { border-right: 1px solid var(--hair); overflow: auto; padding: 16px 0; background: var(--surface); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+.main.no-inspector { grid-template-columns: minmax(0, 1fr); }
+/* Projects open as a drawer from the menu button: Home already lists every room, so the plan gets the width. */
+.sidebar { border-right: 1px solid var(--hair); overflow: auto; padding: 16px 0; background: var(--surface);
+  position: fixed; top: 60px; bottom: 0; left: 0; width: min(300px, 85vw); z-index: 10; transform: translateX(-100%); visibility: hidden; transition: transform .2s, visibility .2s; }
+.sidebar.open { transform: none; visibility: visible; }
+.drawer-scrim { position: fixed; inset: 60px 0 0 0; z-index: 9; background: var(--scrim); }
 .inspector { border-left: 1px solid var(--hair); overflow: auto; background: var(--surface); }
 .stage { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 
@@ -152,15 +156,14 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .empty h2 { font-weight: 500; color: var(--text); }
 
 /* Small screens: inspector becomes a bottom sheet, sidebar a drawer. */
-.menu-btn { display: none; }
+.menu-btn { display: inline-flex; }
+/* One row of tools: labels drop off before the row would wrap. */
+@media (max-width: 1240px) { .toolbar .tool .txt { display: none; } }
 @media (max-width: 900px) {
   .main, .main.no-inspector { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .field { grid-template-columns: 96px minmax(0, 1fr) auto; }
   .brand { display: none; }
-  .sidebar { position: fixed; top: 60px; bottom: 0; left: 0; width: min(300px, 85vw); z-index: 10; transform: translateX(-100%); transition: transform .2s; }
-  .sidebar.open { transform: none; box-shadow: 0 0 0 100vmax var(--scrim); }
   .inspector { border-left: 0; border-top: 1px solid var(--hair); max-height: 45vh; }
-  .menu-btn { display: inline-flex; }
   .plan-legend .bar { width: 150px; }
   .tool .txt { display: none; }
 }
@@ -298,7 +301,20 @@ button.meter-row, .meter-row.row { width: 100%; margin: 0; border-radius: 0; }
 .cam-btn { height: 36px; border: 1px solid var(--hair); background: var(--raised); border-radius: var(--radius); cursor: pointer; font-size: 18px; line-height: 1; }
 .cam-btn:hover { border-color: var(--hair2); }
 .cam-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cam-bar.folded { padding: 8px 16px; }
+.cam-fold { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px; align-items: end; }
+.cam-fold .cam-step .label { display: none; }
+.cam-summary { min-height: 36px; border: 0; background: none; color: var(--text2); text-align: right; cursor: pointer; font-size: 12px; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cam-summary:hover { color: var(--accent); }
+.cam-head-btn { padding: 0; }
 .cam-readings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cam-readings .label { font-size: 12px; }
 .cam-readings .seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 @media (max-width: 900px) { .cam-bar { position: static; } }
+
+/* "What this means": longer explanations stay one line until asked for (Docs/LOOK.md). */
+details.what { margin-top: 8px; }
+details.what summary { cursor: pointer; list-style: none; color: var(--text3); }
+details.what summary::-webkit-details-marker { display: none; }
+details.what p { margin: 6px 0 0; }
+.chip.ghost { border-color: transparent; color: var(--accent); }

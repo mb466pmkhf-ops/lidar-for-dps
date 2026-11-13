@@ -48,7 +48,7 @@ enum LuxFormat {
 }
 
 /// Bottom panel for the selected lighting unit: the controls used most while building a setup.
-/// Everything else is in Details.
+/// Everything else (beam, tilt, gels, barn doors, draw) is behind the one "All settings" button.
 struct LightPanel: View {
     let light: LightFixture
     @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
@@ -58,8 +58,6 @@ struct LightPanel: View {
     var onDuplicate: () -> Void
     var onDelete: () -> Void
     @State private var message: String?
-    /// Beam, tilt and draw; off by default to keep the panel short.
-    @AppStorage("lightPanel.more") private var showMore = false
 
     var body: some View {
         let pm = light.photometrics
@@ -89,20 +87,6 @@ struct LightPanel: View {
                 }
                 ColourControls(light: light, update: update)
                 standRow
-                if showMore {
-                    HStack(spacing: 14) {
-                        if pm.beamIsAdjustable, let range = pm.beamRange {
-                            compact("Beam", value: light.beamAngle, range: range, format: { String(format: "%.0f°", $0) }) { v in
-                                update { $0.beamAngle = v }
-                            }
-                        }
-                        compact("Tilt", value: light.tilt, range: -90...45, format: { String(format: "%+.0f°", $0) }) { v in
-                            update { $0.tilt = v }
-                        }
-                    }
-                    Text("DRAW ≈ " + LuxFormat.watts(pm.drawWatts)).font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
-                        .accessibilityLabel("Estimated power draw \(LuxFormat.watts(pm.drawWatts))")
-                }
                 readout
             } else {
                 HStack(spacing: 14) {
@@ -120,12 +104,6 @@ struct LightPanel: View {
                 Text(message).font(.fsCaption).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 10) {
-                if light.kind.emits {
-                    Button { withAnimation(.snappy) { showMore.toggle() } } label: {
-                        Label(showMore ? "Less" : "More", systemImage: showMore ? "chevron.up" : "chevron.down")
-                    }
-                    .buttonStyle(HairlineButtonStyle())
-                }
                 Button(action: onDetails) { Label("All settings", systemImage: "slider.horizontal.3") }
                     .buttonStyle(HairlineButtonStyle())
                 Spacer()
