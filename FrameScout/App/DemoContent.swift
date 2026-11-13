@@ -134,7 +134,7 @@ enum DemoContent {
         // Fixture types from the library, so readings and draw come from the photometric model.
         var key = aimed("Key", .softbox, P(-1.2, 0.2), to: sofa)
         key.apply(profile: FixtureLibrary.profile(id: "cob-600-d")!)
-        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.25
+        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.12
         var fill = aimed("Fill", .ledPanel, P(2.2, -0.6), to: sofa)
         fill.apply(profile: FixtureLibrary.profile(id: "panel-1x1-bi")!)
         fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.8; fill.tilt = -15

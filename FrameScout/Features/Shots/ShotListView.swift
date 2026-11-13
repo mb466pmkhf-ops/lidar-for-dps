@@ -139,7 +139,7 @@ struct ShotRow: View {
                 if let photoID = shot.photoID, let photo = store.location(ref)?.photos.first(where: { $0.id == photoID }) {
                     StoredImage(url: StoragePaths.photoURL(ref, photo), maxPixel: 200)
                 } else {
-                    Text(String(format: "%02d", shot.number)).font(.fsValue).foregroundStyle(Theme.info)
+                    Text("\(shot.number)").font(.fsHeadline).foregroundStyle(Theme.info)
                 }
             }
             .frame(width: 64, height: 48)

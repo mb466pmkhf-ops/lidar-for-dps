@@ -15,7 +15,8 @@ enum UnitsFormatter {
             return precise ? String(format: "%d′ %.1f″", feet, inches) : String(format: "%d′ %.0f″", feet, inches.rounded())
         }
         if metres < 1 && precise { return String(format: "%.1f cm", metres * 100) }
-        return String(format: precise ? "%.3f m" : "%.2f m", metres)
+        // Centimetres: what a LiDAR scan or AR tape can honestly claim (millimetres would overstate it).
+        return String(format: "%.2f m", metres)
     }
 
     static func area(_ squareMetres: Double?) -> String {

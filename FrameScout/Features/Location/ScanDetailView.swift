@@ -26,7 +26,16 @@ struct ScanDetailView: View {
                 ZStack {
                     SceneKitContainer(model: preview, orbit: true)
                     if !preview.loaded {
-                        if let error = preview.error { Text(error).font(.fsCaption).foregroundStyle(Theme.danger) } else { ProgressView() }
+                        if preview.error != nil {
+                            // No mesh files with this scan (a drawn room, the sample, or a scan synced from another
+                            // device): say so plainly and point to the plan's 3D view, which is built from the floor plan.
+                            VStack(spacing: 10) {
+                                Text("No 3D mesh is saved with this scan on this phone.")
+                                    .font(.fsCaption).foregroundStyle(Theme.textSecondary).multilineTextAlignment(.center)
+                                Button("Open the plan") { router.open(.lighting(ref)) }.buttonStyle(HairlineButtonStyle())
+                            }
+                            .padding()
+                        } else { ProgressView() }
                     }
                 }
                 .frame(height: 300)

@@ -38,6 +38,8 @@ struct FrameScoutApp: App {
                 .preferredColorScheme(night ? .dark : .light)
                 .tint(Theme.accent)
                 .font(.fsBody)
+                // List section headers in sentence case, as written (Docs/LOOK.md: no ALL-CAPS labels).
+                .textCase(nil)
                 .task { CloudSync.shared.attach(store) }
         }
         .onChange(of: scenePhase) { _, phase in

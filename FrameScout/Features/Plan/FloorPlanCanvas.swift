@@ -453,8 +453,26 @@ struct PlanRenderer {
         }
     }
 
+    /// True when two rigs stand on the same spot looking the same way (a shot made from a camera position).
+    private static func sameSetup(_ a: CameraRig, _ b: CameraRig) -> Bool {
+        hypot(a.position.x - b.position.x, a.position.z - b.position.z) < 0.05 && abs(a.pan - b.pan) < 1
+    }
+
+    /// A shot taken from a saved camera position is drawn once, labelled with both names (as on desktop).
+    private var mergedCameras: [PlanCameraMarker] {
+        let shots = overlay.cameras.filter(\.isShot)
+        return overlay.cameras.compactMap { cam in
+            if !cam.isShot { return shots.contains { Self.sameSetup($0.rig, cam.rig) } ? nil : cam }
+            guard let pos = overlay.cameras.first(where: { !$0.isShot && Self.sameSetup($0.rig, cam.rig) }) else { return cam }
+            var merged = cam
+            merged.label = "\(cam.label) · \(pos.label)"
+            merged.selected = cam.selected || pos.selected
+            return merged
+        }
+    }
+
     private func drawCameras(_ ctx: inout GraphicsContext, _ labels: inout [PlanLabel]) {
-        for cam in overlay.cameras {
+        for cam in mergedCameras {
             let origin = s(cam.rig.position)
             let half = cam.rig.horizontalFOV / 2
             let color = cam.isShot ? Theme.info : Theme.accent
