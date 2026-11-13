@@ -192,7 +192,8 @@ export function App() {
         </>
       ) : (
       <div className={'main' + (location ? '' : ' no-inspector')}>
-        <nav className={'sidebar' + (drawer ? ' open' : '')} aria-label="Projects">
+        {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
+        <nav className={'sidebar' + (drawer ? ' open' : '')} aria-label="Projects" onKeyDown={e => { if (e.key === 'Escape') setDrawer(false); }}>
           <div className="side-h"><span className="label">Projects</span><button className="btn small" onClick={addProject} title="New project"><Icon name="plus" /></button></div>
           {projects.map(p => (
             <div key={p.id}>

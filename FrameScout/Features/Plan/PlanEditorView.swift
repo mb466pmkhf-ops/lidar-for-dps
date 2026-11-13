@@ -222,6 +222,8 @@ struct PlanEditorView: View {
     @State private var selection: PlanSelection?
     @State private var layout: PlanLayout = .plan
     @State private var addItem: PlanAddItem = .light("cob-600-d")
+    /// Named frame sizes and rags show after "Frames and rags…"; the four basic boards come first.
+    @State private var showGripFrames = false
     @State private var zoom: CGFloat = 1
     @State private var pinchBase: CGFloat = 1
     @State private var pan: CGSize = .zero
@@ -1671,8 +1673,13 @@ struct PlanEditorView: View {
                         ForEach([LightKind.bounce, .negative, .flag, .diffusion], id: \.self) { k in
                             TagChip(text: k.label, selected: kind == k) { addItem = .grip(k) }
                         }
-                        ForEach(GripCatalog.presets) { p in
-                            TagChip(text: p.label, selected: presetID == p.id) { addItem = .gripPreset(p.id) }
+                        if showGripFrames || presetID != nil {
+                            ForEach(GripCatalog.presets) { p in
+                                TagChip(text: p.label, selected: presetID == p.id) { addItem = .gripPreset(p.id) }
+                            }
+                        } else {
+                            Button("Frames and rags…") { showGripFrames = true }
+                                .font(.fsCaption).foregroundStyle(Theme.accent).padding(.horizontal, 8)
                         }
                     }
                 }

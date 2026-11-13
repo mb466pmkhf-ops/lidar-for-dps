@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Bottom panel for a stand-in person: type, height, build, skin tone and posture in one place.
+/// Bottom panel for a stand-in person: the face reading and "Light this person" first; type, height,
+/// build, skin, hair and posture folded under "Look and pose".
 struct CharacterPanel: View {
     @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
 
@@ -22,16 +23,14 @@ struct CharacterPanel: View {
     var onPreset: ((LightingPreset) -> Void)? = nil
     var onSavePreset: (() -> Void)? = nil
     var onManagePresets: (() -> Void)? = nil
+    @AppStorage("personPanel.look") private var showLook = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 TextField("Name", text: Binding(get: { character.name }, set: { v in update { $0.name = v } }))
                     .font(.fsHeadline)
-                Spacer()
-                Text(character.summary).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
-            CharacterFields(character: character, update: update)
             if let reading {
                 HStack {
                     Text("Face").font(.fsLabel).tracking(Theme.tracking).foregroundStyle(Theme.textTertiary)
@@ -67,13 +66,32 @@ struct CharacterPanel: View {
                 }
                 .accessibilityHint("Places a starting lighting setup round this person, set for the camera's exposure")
             }
+            // What they look like matters less for lighting than where they face, so it starts folded.
+            DisclosureGroup(isExpanded: $showLook) {
+                CharacterFields(character: character, update: update).padding(.top, 6)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Look and pose").font(.fsCaption)
+                    Text(character.summary).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+            }
+            .tint(Theme.textPrimary)
             HStack(spacing: 10) {
                 Button(action: onAim) { Label("Turn to face…", systemImage: "arrow.turn.up.right") }
                     .buttonStyle(HairlineButtonStyle())
-                Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
-                    .buttonStyle(HairlineButtonStyle())
                 Spacer()
-                Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                // Duplicate and Delete in one quiet menu, as on the light panel.
+                Menu {
+                    Button(action: onDuplicate) { Label("Duplicate", systemImage: "plus.square.on.square") }
+                    Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 40, height: 36)
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(Theme.hairlineStrong, lineWidth: 0.5))
+                }
+                .accessibilityLabel("Duplicate or delete")
             }
         }
         .padding()
