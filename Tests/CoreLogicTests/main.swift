@@ -1174,5 +1174,30 @@ do {
     check(text.hasPrefix("Test\n") && text.contains("A at 230 V") && text.contains("2 × ½ CTO"), "kit list writes plain text")
 }
 
+// Named looks (Looks.swift; same rules as web/src/model/looks.ts).
+do {
+    var room = Location(name: "Room")
+    room.lightFixtures = (0..<4).map { LightFixture(name: "L\($0)", kind: .fresnel, position: P(Double($0), 0)) }
+    room.shots = [Shot(number: 1, rig: CameraRig())]
+    let day = room.saveLook(named: "Day", scanID: nil)
+    check(room.activeLook(scanID: nil)?.name == "Day" && room.looks(scanID: nil).first?.lights == room.lightFixtures, "a saved look holds the live lights")
+    room.lightFixtures = Array(room.lightFixtures.prefix(2))
+    let night = room.saveLook(named: "Night", scanID: nil)
+    check(room.looks(scanID: nil).first { $0.id == day }?.lights.count == 4, "save as a new look leaves the look you were on as it was")
+    room.lightFixtures = room.lightFixtures.map { var l = $0; l.dimmer = 0.05; return l }
+    room.switchLook(to: day, scanID: nil)
+    check(room.lightFixtures.count == 4 && room.activeLookID == day, "switching loads the other look's lights")
+    room.switchLook(to: night, scanID: nil)
+    check(room.lightFixtures.count == 2 && room.lightFixtures.allSatisfy { $0.dimmer == 0.05 }, "switching away keeps the edits made in a look")
+    room.shots[0].lookID = night
+    room.renameLook(night, to: "Late")
+    check(room.activeLook(scanID: nil)?.name == "Late", "a look can be renamed")
+    room.deleteLook(night)
+    check(room.activeLookID == nil && room.shots[0].lookID == nil && room.lightFixtures.count == 2, "deleting a look clears its links and keeps the lights")
+    let json = #"{"id":"6F9F5A10-0000-4000-8000-000000000001","name":"Web","address":"","createdAt":"2026-11-13T10:00:00Z","tags":[],"notes":"","lightingNotes":"","productionNotes":"","quickNotes":[],"scans":[],"photos":[],"measurements":[],"cameraPositions":[],"shots":[],"looks":[{"id":"6F9F5A10-0000-4000-8000-000000000002","name":"Day","lights":[]}],"activeLookID":"6F9F5A10-0000-4000-8000-000000000002"}"#
+    let decoded = try? JSONCoding.decoder.decode(Location.self, from: Data(json.utf8))
+    check(decoded?.looks?.first?.name == "Day" && decoded?.activeLookID != nil, "looks written by the web app load on the phone")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

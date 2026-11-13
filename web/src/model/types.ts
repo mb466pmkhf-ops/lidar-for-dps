@@ -96,6 +96,8 @@ export interface CameraPosition {
 export interface Shot {
   id: UUID; number: number; title: string; rig: CameraRig; subject?: PlanPoint; subjectHeight: number;
   cameraPositionID?: UUID; scanID?: UUID; notes: string; photoID?: UUID; createdAt: string;
+  /** The named look this shot is lit with (looks.ts). */
+  lookID?: UUID;
   [key: string]: unknown;
 }
 
@@ -125,6 +127,10 @@ export interface Location {
   studio?: StudioSetup;
   /** Sun and sky outside the windows (stage.ts). */
   daylight?: DaylightSetup;
+  /** Saved copies of the lights ("Day", "Night"); `lights` is the live set (looks.ts). */
+  looks?: import('./looks').LightingLook[];
+  /** The look the live lights belong to. */
+  activeLookID?: UUID;
   [key: string]: unknown;
 }
 

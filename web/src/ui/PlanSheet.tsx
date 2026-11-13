@@ -10,6 +10,7 @@ import { lightSupport, lightSupportInfo } from '../model/rigging';
 import { amps, kitList, kitText, type KitLine } from '../model/kit';
 import { metres, pct, reading as fmtReading, watts } from './format';
 import { Icon } from './icons';
+import { activeLook } from '../model/looks';
 
 /** The on-screen plan as a standalone SVG, with the day-theme colours written in so it prints light. */
 export function planSnapshot(svg: SVGSVGElement): { url: string; w: number; h: number } {
@@ -57,7 +58,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   exposure: ExposureSettings; plan?: { url: string; w: number; h: number }; onClose(): void;
 }) {
   const kit = useMemo(() => kitList(lights), [lights]);
-  const title = `${project.name} — ${location.name}`;
+  const look = activeLook(location, location.primaryScanID ?? location.scans[location.scans.length - 1]?.id);
+  const title = `${project.name} — ${location.name}${look ? ` · ${look.name}` : ''}`;
   const [copied, setCopied] = useState(false);
   const camera = [stopLabel(e.tStop), `ISO ${e.iso}`, `${trim(e.frameRate)} fps`, e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`, e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : ''].filter(Boolean).join(' · ');
   const savePNG = () => {

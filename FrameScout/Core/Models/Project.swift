@@ -135,6 +135,10 @@ struct Location: Identifiable, Codable, Hashable {
     var studio: StudioSetup? = nil
     /// Sun and sky outside the windows (see `Stage`).
     var daylight: DaylightSetup? = nil
+    /// Saved copies of the lights ("Day", "Night"); `lights` is the live set (see `Looks.swift`).
+    var looks: [LightingLook]? = nil
+    /// The look the live lights belong to.
+    var activeLookID: UUID? = nil
 
     var dateScanned: Date? { scans.map(\.createdAt).max() }
 

@@ -224,6 +224,8 @@ struct PlanEditorView: View {
     @State private var addItem: PlanAddItem = .light("cob-600-d")
     /// Named frame sizes and rags show after "Frames and rags…"; the four basic boards come first.
     @State private var showGripFrames = false
+    @State private var showSaveLook = false
+    @State private var newLookName = ""
     @State private var zoom: CGFloat = 1
     @State private var pinchBase: CGFloat = 1
     @State private var pan: CGSize = .zero
@@ -340,6 +342,13 @@ struct PlanEditorView: View {
                 FixturePicker(selectedID: currentAddProfileID) { p in addItem = .light(p.id) }
             }
             .presentationDetents([.medium, .large])
+        }
+        .alert("Save these lights as a look", isPresented: $showSaveLook) {
+            TextField("Name (e.g. Day, Night)", text: $newLookName)
+            Button("Save") { let name = newLookName; let sid = scan?.id; edit { $0.saveLook(named: name, scanID: sid) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Switch between looks from this menu. Shots can name the look they use.")
         }
         .alert("Save measurement", isPresented: $showSaveMeasurement) {
             TextField("Label (e.g. Living room width)", text: $measurementLabel)
@@ -1745,6 +1754,33 @@ struct PlanEditorView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    /// Named looks: saved copies of the room's lights. Picking one switches; the look you leave keeps its edits.
+    @ViewBuilder
+    private var looksMenu: some View {
+        if let location {
+            let sid = scan?.id
+            let looks = location.looks(scanID: sid)
+            let active = location.activeLook(scanID: sid)
+            Menu {
+                ForEach(looks) { look in
+                    Button { edit { $0.switchLook(to: look.id, scanID: sid) } } label: {
+                        if look.id == active?.id { Label(look.name, systemImage: "checkmark") } else { Text(look.name) }
+                    }
+                }
+                Section {
+                    Button { newLookName = looks.isEmpty ? "Day" : "Night"; showSaveLook = true } label: {
+                        Label(looks.isEmpty ? "Save these lights as a look…" : "Save as a new look…", systemImage: "plus")
+                    }
+                    if let active {
+                        Button(role: .destructive) { edit { $0.deleteLook(active.id) } } label: { Label("Delete “\(active.name)”", systemImage: "trash") }
+                    }
+                }
+            } label: {
+                Label(active.map { "Look: \($0.name)" } ?? "Looks", systemImage: "square.stack.3d.up")
+            }
+        }
+    }
+
     /// The options menu, from the navigation bar or (sideways) the 3D tool rail.
     @ViewBuilder
     private var optionsMenuItems: some View {
@@ -1754,6 +1790,7 @@ struct PlanEditorView: View {
             }
         }
         Button { showExposure = true } label: { Label("Camera settings…", systemImage: "camera.aperture") }
+        looksMenu
         Toggle("Exposure map", isOn: Binding(get: { display.luxMapOn }, set: { v in updateDisplay { $0.showLuxMap = v ? true : nil } }))
         Button { showStage = true } label: { Label("Daylight and studio set…", systemImage: "sun.horizon") }
         if scan != nil {

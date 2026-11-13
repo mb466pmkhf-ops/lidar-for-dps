@@ -139,6 +139,8 @@ struct Shot: Identifiable, Codable, Hashable {
     var notes: String = ""
     var photoID: UUID? = nil
     var createdAt: Date = Date()
+    /// The named look this shot is lit with (see `Looks.swift`).
+    var lookID: UUID? = nil
 
     var code: String { String(format: "SHOT %02d", number) }
 
