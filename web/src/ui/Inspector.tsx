@@ -27,6 +27,7 @@ import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quir
 import { fromInput, lengthUnitLabel, toInput, useLengthUnits } from './format';
 import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, stopColor, watts } from './format';
 import { Icon } from './icons';
+import { activeLook, deleteLook, looksOf, renameLook, saveLook, setShotLook, switchLook } from '../model/looks';
 import { GripFields } from './GripPanel';
 import type { Selection } from './PlanCanvas';
 
@@ -584,7 +585,7 @@ function CameraInspector(p: InspectorProps) {
     shots: loc.shots.map(x => (x.id === s.id ? { ...x, rig: { ...x.rig, ...patch } } : x)),
     cameraPositions: loc.cameraPositions.map(x => (x.id === s.id ? { ...x, rig: { ...x.rig, ...patch } } : x)),
   }), undo);
-  const title = shot ? `SHOT ${String(shot.number).padStart(2, '0')}${shot.title ? ' · ' + shot.title : ''}` : cam!.name;
+  const title = shot ? `Shot ${String(shot.number).padStart(2, '0')}${shot.title ? ' · ' + shot.title : ''}` : cam!.name;
   const remove = () => {
     p.edit(loc => ({ ...loc, shots: loc.shots.filter(x => x.id !== s.id), cameraPositions: loc.cameraPositions.filter(x => x.id !== s.id) }));
     p.select(undefined);
@@ -599,6 +600,22 @@ function CameraInspector(p: InspectorProps) {
         <p className="mono muted">{Math.round(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
         {cam && <div className="actions" style={{ marginTop: 12 }}><button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button></div>}
       </section>
+      {shot && looksOf(p.location, p.scan?.id).length > 0 && (() => {
+        const looks = looksOf(p.location, p.scan?.id);
+        const linked = looks.find(l => l.id === shot.lookID);
+        const on = activeLook(p.location, p.scan?.id);
+        return (
+          <Panel title="Look">
+            <label className="field"><span>Lit with</span>
+              <select value={linked?.id ?? ''} aria-label="Look for this shot" onChange={e => p.edit(loc => setShotLook(loc, shot.id, e.target.value || undefined))}>
+                <option value="">No look chosen</option>
+                {looks.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select><span />
+            </label>
+            {linked && linked.id !== on?.id && <div className="actions"><button className="btn small" onClick={() => p.edit(loc => switchLook(loc, linked.id, p.scan?.id))}>Switch the room to {linked.name}</button></div>}
+          </Panel>
+        );
+      })()}
       <Panel title="Camera">
         <Slider label="Focal length" value={rig.focalLength} min={10} max={200} step={1} format={v => `${Math.round(v)}mm`} onChange={v => setRig({ focalLength: v }, false)} />
         <Slider label="Lens height" value={rig.height} min={0.1} max={4} step={0.05} format={metres} onChange={v => setRig({ height: v }, false)} />
@@ -670,6 +687,7 @@ function Overview(p: InspectorProps) {
           </details>
         )}
       </Panel>
+      <LooksPanel {...p} />
       <Panel title="Lights">
         {p.lights.length ? p.lights.map(l => (
           <button key={l.id} className="meter-row row" style={{ display: 'grid', padding: '8px 0' }} onClick={() => p.select({ kind: 'light', id: l.id })}>
@@ -687,6 +705,41 @@ function Overview(p: InspectorProps) {
           onChange={v => p.edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), windowTransmission: v } }), false)} />
       </Panel>
     </div>
+  );
+}
+
+/** Named looks: saved copies of the room's lights. Click one to switch; the look you leave keeps its edits. */
+function LooksPanel(p: InspectorProps) {
+  const sid = p.scan?.id;
+  const looks = looksOf(p.location, sid);
+  const on = activeLook(p.location, sid);
+  const save = () => {
+    const name = prompt('Name this look', looks.length ? 'Night' : 'Day');
+    if (name !== null) p.edit(loc => saveLook(loc, name, sid));
+  };
+  if (!looks.length) {
+    return (
+      <Panel title="Looks">
+        <p className="note" style={{ marginTop: 0 }}>Save these lights as a look (Day, Night, a close-up version) and switch between them. Shots can name the look they use.</p>
+        <div className="actions" style={{ marginTop: 8 }}><button className="btn small" onClick={save} disabled={!p.lights.length}>Save as a look…</button></div>
+      </Panel>
+    );
+  }
+  return (
+    <Panel title="Looks">
+      <div className="chips">
+        {looks.map(l => <button key={l.id} className={'chip' + (on?.id === l.id ? ' on' : '')} aria-pressed={on?.id === l.id}
+          onClick={() => p.edit(loc => switchLook(loc, l.id, sid))} title={`${l.lights.length} unit${l.lights.length === 1 ? '' : 's'}`}>{l.name}</button>)}
+        <button className="chip ghost" onClick={save}>Save as new…</button>
+      </div>
+      {on && (
+        <div className="actions" style={{ marginTop: 8 }}>
+          <button className="btn small ghost" onClick={() => { const n = prompt('Rename the look', on.name); if (n?.trim()) p.edit(loc => renameLook(loc, on.id, n.trim())); }}>Rename</button>
+          <button className="btn small ghost danger" onClick={() => { if (confirm(`Delete the look “${on.name}”? The lights in the room stay as they are.`)) p.edit(loc => deleteLook(loc, on.id)); }}>Delete look</button>
+        </div>
+      )}
+      <p className="note">{on ? `Changes you make now belong to ${on.name}; they are kept when you switch.` : 'The lights in the room are not saved as a look yet.'}</p>
+    </Panel>
   );
 }
 

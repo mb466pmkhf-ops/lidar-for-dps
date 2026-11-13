@@ -170,7 +170,7 @@ struct ShotFields: View {
     @State private var pickerItem: PhotosPickerItem?
 
     var body: some View {
-        Section(shot.code) {
+        Section("Shot \(shot.number)") {
             TextField("Title (e.g. Wide master)", text: Binding(get: { shot.title }, set: { v in update { $0.title = v } }))
             TextField("Notes", text: Binding(get: { shot.notes }, set: { v in update { $0.notes = v } }), axis: .vertical)
                 .lineLimit(2...6)
@@ -179,6 +179,14 @@ struct ShotFields: View {
             }
             SliderRow(title: "Subject eye height", value: Binding(get: { shot.subjectHeight }, set: { v in update { $0.subjectHeight = v } }),
                       range: 0.3...2.2, step: 0.05, format: { UnitsFormatter.distance($0) })
+        }
+        if let looks = store.location(ref)?.looks, !looks.isEmpty {
+            Section("Look") {
+                Picker("Lit with", selection: Binding(get: { shot.lookID }, set: { v in update { $0.lookID = v } })) {
+                    Text("No look chosen").tag(UUID?.none)
+                    ForEach(looks) { Text($0.name).tag(UUID?.some($0.id)) }
+                }
+            }
         }
         Section("Reference photo") {
             let photos = store.location(ref)?.photos ?? []
