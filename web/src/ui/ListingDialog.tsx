@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Project } from '../model/types';
 import { ROOM_LIMITS, buildRoomPlan, defaultRoom, normalise, roomArea, roomOutline, type RoomSpec } from '../model/room';
+import { LengthStepper } from './LengthStepper';
+import { area } from './format';
 import { readListing, roomFromListing, sizeNote, type FindingKind } from '../model/listing';
 import { listingPhotos, type ListingPhoto } from '../sync/listingPhotos';
 
@@ -133,9 +135,9 @@ export function ListingDialog({ projects, currentProjectID, onCreate, onClose }:
             {plan.doors.map(w => <line key={w.id} x1={x(w.a.x)} y1={z(w.a.z)} x2={x(w.b.x)} y2={z(w.b.z)} stroke="var(--door)" strokeWidth={4} />)}
           </svg>
           <p className="note" style={{ margin: 0 }}>{sizeNote(reading)}</p>
-          <Stepper label="Length" value={spec.length} step={0.1} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ length: v })} />
-          <Stepper label="Width" value={spec.width} step={0.1} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ width: v })} />
-          <Stepper label="Ceiling height" note={reading.ceiling === undefined ? 'Not in the listing' : 'From the listing'} value={spec.ceiling} step={0.1} min={ROOM_LIMITS.ceilingMin} max={ROOM_LIMITS.ceilingMax} onChange={v => patch({ ceiling: v })} />
+          <LengthStepper label="Length" value={spec.length} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ length: v })} />
+          <LengthStepper label="Width" value={spec.width} min={ROOM_LIMITS.min} max={ROOM_LIMITS.max} onChange={v => patch({ width: v })} />
+          <LengthStepper label="Ceiling height" note={reading.ceiling === undefined ? 'Not in the listing' : 'From the listing'} value={spec.ceiling} min={ROOM_LIMITS.ceilingMin} max={ROOM_LIMITS.ceilingMax} onChange={v => patch({ ceiling: v })} />
           <Stepper label="Windows" note={reading.windows === undefined ? 'Not in the listing' : 'From the listing'} value={spec.windows} step={1} min={0} max={4} onChange={v => patch({ windows: v })} />
           <label className="toggle"><input type="checkbox" checked={spec.door} onChange={e => patch({ door: e.target.checked })} /> Add a door on the left wall</label>
           {projects.length > 0 && (
@@ -147,7 +149,7 @@ export function ListingDialog({ projects, currentProjectID, onCreate, onClose }:
             </label>
           )}
         </div>
-        <p className="note">Floor area {roomArea(s).toFixed(1)} m². Sizes from a listing are saved as entered by hand, not as measurements. Check them on the day if you can.</p>
+        <p className="note">Floor area {area(roomArea(s))}. Sizes from a listing are saved as entered by hand, not as measurements. Check them on the day if you can.</p>
         <div className="actions" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn primary">Build the room</button>

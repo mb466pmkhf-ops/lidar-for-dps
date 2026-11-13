@@ -24,6 +24,7 @@ import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, characterLabel, characterTypes, hairOf, hairStyles, isChild, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
 import { sensorPresets, horizontalFOV } from '../model/camera';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
+import { fromInput, lengthUnitLabel, toInput, useLengthUnits } from './format';
 import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, stopColor, watts } from './format';
 import { Icon } from './icons';
 import { GripFields } from './GripPanel';
@@ -86,21 +87,23 @@ export function Inspector(p: InspectorProps) {
 
 // MARK: Set pieces
 
-/** A size in metres: − and + step by 5 cm (one undo step each), typing is one step per focus. */
+/** A size: − and + step by 5 cm (or 2 inches in feet), one undo step each; typing is one step per focus. */
 function SizeRow({ label, value, min = SIZE_LIMITS.min, max = SIZE_LIMITS.max, step = 0.05, onChange }: { label: string; value: number; min?: number; max?: number; step?: number; onChange(v: number, undo: boolean): void }) {
+  const u = useLengthUnits();
   const [text, setText] = useState<string>();
   const clampV = (v: number) => Math.round(Math.min(max, Math.max(min, v)) * 1000) / 1000;
+  const st = u === 'imperial' ? 0.0508 : step;
   return (
     <div className="field size-row">
       <span>{label}</span>
       <span className="ctl">
-        <button type="button" aria-label={`Less ${label.toLowerCase()}`} onClick={() => onChange(clampV(value - step), true)}>−</button>
-        <input type="text" inputMode="decimal" aria-label={`${label} in metres`} value={text ?? value.toFixed(2)}
-          onChange={e => { setText(e.target.value); const n = parseFloat(e.target.value.replace(',', '.')); if (Number.isFinite(n) && n >= min) onChange(clampV(n), false); }}
+        <button type="button" aria-label={`Less ${label.toLowerCase()}`} onClick={() => onChange(clampV(value - st), true)}>−</button>
+        <input type="text" inputMode="decimal" aria-label={`${label} in ${u === 'imperial' ? 'feet' : 'metres'}`} value={text ?? (u === 'imperial' ? String(toInput(value, u)) : value.toFixed(2))}
+          onChange={e => { setText(e.target.value); const n = fromInput(e.target.value, u); if (n !== undefined && n >= min) onChange(clampV(n), false); }}
           onBlur={() => setText(undefined)} />
-        <button type="button" aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(clampV(value + step), true)}>+</button>
+        <button type="button" aria-label={`More ${label.toLowerCase()}`} onClick={() => onChange(clampV(value + st), true)}>+</button>
       </span>
-      <span className="unit">m</span>
+      <span className="unit">{lengthUnitLabel(u)}</span>
     </div>
   );
 }

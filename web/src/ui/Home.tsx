@@ -2,6 +2,7 @@
 // plain buttons above it (Docs/LOOK.md). No tile grid, no banner.
 import type { FloorPlan, Location, Project } from '../model/types';
 import { Icon } from './icons';
+import { roomSize } from './format';
 
 export interface HomeProps {
   projects: Project[];
@@ -79,7 +80,7 @@ export function Home(p: HomeProps) {
                   <button className="room-row" onClick={() => p.onOpen(pr.id, l.id)}>
                     <Thumb plan={planOf(l, p.plansFor(pr.id))} />
                     <span className="room-name"><span className="t">{l.name}</span><span className="s">{pr.name}{pr.client ? ' · ' + pr.client : ''}</span></span>
-                    <span className="room-fig mono">{s?.stats.width && s.stats.length ? `${s.stats.width.toFixed(1)} × ${s.stats.length.toFixed(1)} m` : '—'}</span>
+                    <span className="room-fig mono">{s?.stats.width && s.stats.length ? roomSize(s.stats.width, s.stats.length) : '—'}</span>
                     <span className="room-fig">{l.shots.length} shot{l.shots.length === 1 ? '' : 's'}</span>
                     <span className="room-fig">{lights} light{lights === 1 ? '' : 's'}</span>
                     <span className="room-fig faint">{edited(pr.modifiedAt)}</span>

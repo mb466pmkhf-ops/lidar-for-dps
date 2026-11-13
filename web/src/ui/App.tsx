@@ -11,6 +11,7 @@ import { RoomDialog } from './RoomDialog';
 import { ListingDialog, ListingPhotosDialog, type ListingFile } from './ListingDialog';
 import { listingPhotos } from '../sync/listingPhotos';
 import { Icon, StopMark } from './icons';
+import { setLengthUnits, useLengthUnits } from './format';
 
 function useWorkspace() {
   return useSyncExternalStore(workspace.subscribe, workspace.getProjects);
@@ -29,6 +30,7 @@ function syncLabel(s: SyncState): { text: string; dot: string } {
 
 export function App() {
   const projects = useWorkspace();
+  const units = useLengthUnits();
   const [projectID, setProjectID] = useState<string>();
   const [locationID, setLocationID] = useState<string>();
   const [syncOpen, setSyncOpen] = useState(false);
@@ -176,6 +178,10 @@ export function App() {
         {view === 'plan' && location && photoCount > 0 && (
           <button className="btn small" onClick={() => setPhotosOpen(true)} title="Photos added with the listing (this browser only)">Photos ({photoCount})</button>
         )}
+        <button className="btn small" onClick={() => setLengthUnits(units === 'imperial' ? 'metric' : 'imperial')}
+          title={units === 'imperial' ? 'Sizes in feet and inches. Switch to metres' : 'Sizes in metres. Switch to feet and inches'} aria-label={units === 'imperial' ? 'Sizes in feet. Switch to metres' : 'Sizes in metres. Switch to feet'}>
+          {units === 'imperial' ? 'ft' : 'm'}
+        </button>
         <button className="btn small" aria-pressed={night} onClick={() => setNight(!night)} title={night ? 'Back to the bright screen' : 'Dim, dark screen for a dark set'}>
           <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
         </button>
