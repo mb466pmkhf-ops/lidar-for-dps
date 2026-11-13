@@ -16,13 +16,14 @@ ROOT = Path(__file__).resolve().parent.parent
 FONT = ROOT / "FrameScout/Resources/Fonts/Poppins-SemiBold.ttf"
 
 # Order = order in the store. (screen name in DemoContent, caption)
+# The 3D view doesn't draw in the CI Simulator (no Metal there), so no screen here shows it.
 SHOTS = [
-    ("plan", "Scan the room on the recce."),
-    ("lighting", "Light it before you arrive."),
-    ("previs", "See it through your lens."),
+    ("location", "Scan the room on the recce."),
+    ("lightpanel", "Light it before you arrive."),
+    ("shots", "Line up every shot."),
     ("sun", "Know where the sun will be."),
     ("measurements", "Every number says where it came from."),
-    ("lighting-night", "Readable on a dark set."),
+    ("plan-night", "Readable on a dark set."),
 ]
 
 # App Store Connect sizes (portrait): 6.9-inch iPhone and 13-inch iPad.
@@ -57,7 +58,8 @@ def compose(raw: Path, caption: str, size: tuple[int, int]) -> Image.Image:
     canvas = Image.new("RGB", size, BACKGROUND)
     draw = ImageDraw.Draw(canvas)
     margin = round(w * 0.07)
-    font = ImageFont.truetype(str(FONT), round(w * 0.068))
+    # Same visual weight on both: the iPad canvas is wider, so its caption is a smaller share of it.
+    font = ImageFont.truetype(str(FONT), round(w * (0.068 if w < 1600 else 0.05)))
     lines = wrap(draw, caption, font, w - 2 * margin)
     line_h = round(font.size * 1.25)
     top = round(h * 0.05)

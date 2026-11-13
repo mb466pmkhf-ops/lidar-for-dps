@@ -60,16 +60,16 @@ jobs:
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
             xcrun simctl install "$UDID" "$APP"
-            for SCREEN in plan lighting previs sun measurements; do
+            for SCREEN in location lightpanel shots sun measurements; do
               xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
               xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen "$SCREEN"
               sleep 12
               xcrun simctl io "$UDID" screenshot "raw/$DEVICE-$SCREEN.png"
             done
             xcrun simctl terminate "$UDID" com.framescout.app 2>/dev/null || true
-            xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen lighting -appearance.night YES
+            xcrun simctl launch "$UDID" com.framescout.app -FSDemo YES -FSScreen plan -appearance.night YES
             sleep 12
-            xcrun simctl io "$UDID" screenshot "raw/$DEVICE-lighting-night.png"
+            xcrun simctl io "$UDID" screenshot "raw/$DEVICE-plan-night.png"
             xcrun simctl shutdown "$UDID"
           done
           ls -la raw
