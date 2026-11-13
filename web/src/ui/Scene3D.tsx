@@ -25,7 +25,7 @@ import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, pho
 import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
-import { boardOptics, buildScene, type MeterPoint } from '../model/calculator';
+import { boardOptics, buildScene, distanceToSegment, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
@@ -135,7 +135,11 @@ interface Api {
   warming?: boolean; warmed?: boolean;
   /** The view has closed: its renderer is gone, so nothing may wait on it any more. */
   closed?: boolean;
+  /** Backdrop pieces, with the walls they stand on: they fade with those walls. */
+  backdropFades: BackdropFade[];
 }
+
+interface BackdropFade { group: THREE.Object3D; walls: number[]; level: number; mats: { m: THREE.Material; base: number }[] }
 
 export function Scene3D(p: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -251,7 +255,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -282,6 +286,15 @@ export function Scene3D(p: Props) {
         for (const { m, base } of w.mats) { m.opacity = base * (0.05 + 0.95 * w.level); m.depthWrite = w.level > 0.6 && base > 0.5; }
         a.wallGroups[i]?.traverse(o => { o.userData.cut = w.level < 0.5; });
       });
+      // A backdrop goes with the wall it stands on, so one on a near wall doesn't hide the set.
+      for (const f of a.backdropFades) {
+        const level = Math.min(1, ...f.walls.map(i => a.walls[i]?.level ?? 1));
+        if (level === f.level) continue;
+        f.level = level;
+        fading = true;
+        for (const { m, base } of f.mats) { m.opacity = base * (0.05 + 0.95 * level); m.depthWrite = level > 0.6 && base > 0.5; }
+        f.group.traverse(o => { o.userData.cut = level < 0.5; });
+      }
       if (fading) invalidate();
       if (a.warming || pending <= 0) { streak = 0; return; }
       pending--;
@@ -459,6 +472,7 @@ export function Scene3D(p: Props) {
 
     // The studio backdrop, on one wall or round several.
     const layout = backdropLayout(loc, p.plan);
+    a.backdropFades = [];
     if (layout) {
       const ledColour = new THREE.Color(...Object.values(kelvinRGB(loc.studio?.kelvin ?? 6500)) as [number, number, number]);
       const holder = keep('stage:backdrop', JSON.stringify([layout, loc.studio?.kelvin]), () => {
@@ -469,6 +483,26 @@ export function Scene3D(p: Props) {
         for (const c of layout.corners) g.add(backdropCorner(c, layout.info.kind, colour, sweep));
         g.userData.builds = builds;
         return g;
+      });
+      // Which walls each piece stands on (a corner: the walls either side), for fading with them.
+      const wallIndex = (q: { x: number; z: number }) => {
+        let best = -1, d = 0.3;
+        (p.plan?.walls ?? []).forEach((w, i) => { const e = distanceToSegment(q, w.a, w.b); if (e < d) { d = e; best = i; } });
+        return best;
+      };
+      const pieceWalls = [
+        ...layout.pieces.map(bd => [(p.plan?.walls ?? []).findIndex(w => w.id === bd.wall.id)]),
+        ...layout.corners.map(c => [wallIndex(c.tangentA), wallIndex(c.tangentB)]),
+      ];
+      a.backdropFades = holder.children.map((g, i) => {
+        const mats = new Map<THREE.Material, number>();
+        g.traverse(o => {
+          const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+          if (!(o as THREE.Mesh).isMesh || !m || mats.has(m)) return;
+          if (m.userData.fadeBase === undefined) { m.userData.fadeBase = m.opacity; m.transparent = true; }
+          mats.set(m, m.userData.fadeBase as number);
+        });
+        return { group: g, walls: (pieceWalls[i] ?? []).filter(w => w >= 0), level: -1, mats: [...mats].map(([m, base]) => ({ m, base })) };
       });
       const nits = env?.ledWalls[0]?.luminance ?? 0;
       for (const b of holder.userData.builds as BackdropBuild[]) {
