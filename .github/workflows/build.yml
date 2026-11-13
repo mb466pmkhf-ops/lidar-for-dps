@@ -114,6 +114,10 @@ jobs:
         run: |
           (cd web/src-tauri && cargo metadata --format-version 1 --locked > /tmp/cargo-metadata.json)
           node scripts/third-party-notices.mjs --cargo-metadata /tmp/cargo-metadata.json --check
+      - name: Known vulnerabilities in desktop app crates
+        run: |
+          cargo install cargo-audit --locked --quiet
+          cd web/src-tauri && cargo audit
       - name: App Store rules (privacy manifest, encryption flag, usage texts)
         run: python3 scripts/check-store-rules.py
 
