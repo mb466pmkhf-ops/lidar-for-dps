@@ -19,6 +19,7 @@ import {
 import { PlanCanvas, type DragTarget, type Selection } from './PlanCanvas';
 import { Inspector } from './Inspector';
 import { Icon } from './icons';
+import { PlanSheet, planSnapshot } from './PlanSheet';
 
 // three.js only loads when someone opens the 3D view.
 const Scene3D = lazy(() => import('./Scene3D').then(m => ({ default: m.Scene3D })));
@@ -342,6 +343,12 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     try { return new Set((localStorage.getItem('framescan.plan.layers') ?? '').split(',').filter(Boolean)); } catch { return new Set(); }
   });
   const [showMenu, setShowMenu] = useState(false);
+  // The hand-off sheet takes a picture of the plan as framed on screen (from the 2D view).
+  const [sheet, setSheet] = useState<{ plan?: ReturnType<typeof planSnapshot> }>();
+  const openSheet = () => {
+    const snap = () => { const svg = document.querySelector<SVGSVGElement>('.plan-wrap svg'); setSheet({ plan: svg ? planSnapshot(svg) : undefined }); };
+    if (view3D) { setView(false); requestAnimationFrame(() => requestAnimationFrame(snap)); } else snap();
+  };
   const [view3D, setView3D] = useState(() => { try { return localStorage.getItem('framescan.plan.view') === '3d'; } catch { return false; } });
   const setView = (on: boolean) => { setView3D(on); try { localStorage.setItem('framescan.plan.view', on ? '3d' : 'plan'); } catch { /* private mode */ } if (on) setTool({ kind: 'select' }); };
   // Menus open below their button, outside the toolbar (which scrolls sideways and would clip them).
@@ -427,6 +434,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
             )}
           </div>
           <span className="spacer" />
+          <button className="tool" onClick={openSheet} title="Plan sheet for the gaffer: plan, units, readings, kit list and power. Print or save as PDF"><Icon name="download" /><span className="txt">Share</span></button>
           <button className="tool" onClick={undo} disabled={!history.current.past.length} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" /></button>
           <button className="tool" onClick={redo} disabled={!history.current.future.length} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" /></button>
         </div>
@@ -449,6 +457,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
           selection={selection} windowTransmission={windowTransmission} environment={env} scan={scan} edit={edit} editPlan={editPlan} select={setSelection}
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })} />
       </aside>
+      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} plan={sheet.plan} onClose={() => setSheet(undefined)} />}
     </>
   );
 }
