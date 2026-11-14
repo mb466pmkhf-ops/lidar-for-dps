@@ -198,7 +198,8 @@ export function App() {
           <input ref={fileInput} type="file" accept=".zip,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />
         </>
       ) : (
-      <div className={'main' + (location ? '' : ' no-inspector')}>
+      <main className={'main' + (location ? '' : ' no-inspector')}>
+        <h1 className="sr-only">{location ? `${location.name}: lighting plan` : 'FrameScan planner'}</h1>
         {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
         <nav className={'sidebar' + (drawer ? ' open' : '')} aria-label="Projects" onKeyDown={e => { if (e.key === 'Escape') setDrawer(false); }}>
           <div className="side-h"><span className="label">Projects</span><button className="btn small" onClick={addProject} title="New project"><Icon name="plus" /></button></div>
@@ -248,7 +249,7 @@ export function App() {
             </div>
           </div>
         )}
-      </div>
+      </main>
       )}
       {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={(n, sp, pid) => { createRoom(n, sp, pid); }} onClose={() => setDrawOpen(false)} />}
       {listingOpen && <ListingDialog projects={projects} currentProjectID={projectID} onCreate={createFromListing} onClose={() => setListingOpen(false)} />}
