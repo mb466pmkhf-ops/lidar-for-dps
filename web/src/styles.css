@@ -91,7 +91,7 @@ html[data-theme=night] .stopmark { opacity: .5; }
 
 /* Panels */
 .panel { padding: 16px; border-bottom: 1px solid var(--hair); }
-.panel h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; color: var(--text3); }
+.panel h2, .panel h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; color: var(--text3); }
 .panel-title { display: flex; align-items: center; gap: 10px; }
 .panel-title input.name { flex: 1; font-size: 20px; font-weight: 500; background: transparent; border: 0; border-bottom: 1px solid transparent; padding: 2px 0; }
 .panel-title input.name:hover, .panel-title input.name:focus { border-bottom-color: var(--hair2); outline: none; }
