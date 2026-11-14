@@ -169,7 +169,7 @@ struct VirtualCameraView: View {
     private var adjustPanel: some View {
         VStack(spacing: 8) {
             if let vp = selected {
-                LensPicker(focalLength: Binding(get: { vp.rig.focalLength }, set: { v in update(vp) { $0.focalLength = v } }))
+                LensPicker(focalLength: Binding(get: { vp.rig.focalLength }, set: { v in update(vp) { $0.focalLength = v } }), sensor: vp.rig.sensor, aspect: vp.rig.aspect)
                 HStack(spacing: 14) {
                     compactSlider("H", value: vp.rig.height, range: 0.1...4, format: { UnitsFormatter.distance($0) }) { v in update(vp) { $0.height = v } }
                     compactSlider("Pan", value: vp.rig.pan, range: 0...360, format: { String(format: "%.0f°", $0) }) { v in update(vp) { $0.pan = v } }

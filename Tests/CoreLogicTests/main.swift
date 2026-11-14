@@ -1251,6 +1251,10 @@ do {
           && ViewfinderMath.steppedFocalLength(from: 290, by: 1, in: zoom.steps) == 290
           && ViewfinderMath.steppedFocalLength(from: 24, by: -1, in: zoom.steps) == 24, "pinching a zoom steps inside its range and stops at the ends")
 
+    // Plan cameras have no squeeze, so only spherical sets are offered there.
+    check(LensLibrary.planSeries.allSatisfy { $0.squeeze == 1 } && LensLibrary.planSeries.contains { $0.id == "cooke-s4i" } && !LensLibrary.planSeries.contains { $0.id == "cooke-anamorphic-i" },
+          "the plan offers every spherical set and no anamorphic one")
+
     // Vignetting is judged on the framed part of the sensor.
     let cp3 = LensLibrary.lens(id: "zeiss-cp3")!
     check(abs(cp3.usedDiagonal(on: lf) - lf.diagonal) < 1e-9, "a spherical lens on the whole sensor uses its diagonal")

@@ -1,19 +1,70 @@
 import SwiftUI
 
-/// Horizontal strip of focal-length chips plus a custom value. Big targets for set use.
+/// Lens set menu plus a horizontal strip of focal-length chips (the set's lenses, or common focal
+/// lengths for "any lens") and a custom value. Big targets for set use. The set is remembered on
+/// this phone only; the camera itself stores just the focal length, so nothing new syncs.
 struct LensPicker: View {
     @Binding var focalLength: Double
+    /// When given, a set made for a smaller format says so (estimate).
+    var sensor: SensorFormat? = nil
+    var aspect: FrameAspect = .sensor
+    @AppStorage("plan.lensSetID") private var lensID = LensLibrary.anyID
     @State private var showCustom = false
     @State private var customText = ""
 
+    private var lens: LensSeries? { LensLibrary.planSeries.first { $0.id == lensID } }
+    private var steps: [Double] { lens?.steps ?? LensLibrary.commonFocalLengths }
+    /// Primes in a set only come in their sizes; zooms and "any lens" take a typed focal length.
+    private var allowsCustom: Bool { lens == nil || lens?.isZoom == true }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Menu {
+                Picker("Lens set", selection: Binding(get: { lens?.id ?? LensLibrary.anyID }, set: choose)) {
+                    Text("Any lens").tag(LensLibrary.anyID)
+                    ForEach(LensLibrary.planSeries) { s in
+                        Text("\(s.displayName) · \(s.rangeLabel)").tag(s.id)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(lens?.displayName ?? "Any lens").font(.fsLabel)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+                .foregroundStyle(Theme.accent)
+                .frame(minHeight: 32)
+            }
+            .accessibilityLabel("Lens set: \(lens?.displayName ?? "any lens")")
+            strip
+            if let lens, let sensor, lens.mayVignette(on: sensor, aspect: aspect) {
+                Text("\(lens.coverage.label) lenses on this camera: dark corners likely (estimate)")
+                    .font(.fsCaption).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .alert(lens.map { "Focal length (\($0.rangeLabel))" } ?? "Custom focal length (mm)", isPresented: $showCustom) {
+            TextField("mm", text: $customText).keyboardType(.decimalPad)
+            Button("Set") {
+                if let v = Double(customText.replacingOccurrences(of: ",", with: ".")), v > 1, v < 2000 {
+                    focalLength = lens?.nearest(to: v) ?? v
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func choose(_ id: String) {
+        lensID = id
+        focalLength = LensLibrary.fit(lensID: id, focalLength: focalLength, squeeze: 1).focalLength
+    }
+
+    private var strip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(LensLibrary.commonFocalLengths, id: \.self) { f in
+                    ForEach(steps, id: \.self) { f in
                         let selected = abs(f - focalLength) < 0.01
                         Button { focalLength = f } label: {
-                            Text("\(Int(f))")
+                            Text(LensLibrary.focalNumber(f))
                                 .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .frame(minWidth: 44, minHeight: 40)
                                 .foregroundStyle(selected ? Theme.onAccent : Theme.textPrimary)
@@ -23,33 +74,27 @@ struct LensPicker: View {
                         .buttonStyle(.plain)
                         .id(f)
                     }
-                    let isCustom = !LensLibrary.commonFocalLengths.contains { abs($0 - focalLength) < 0.01 }
-                    Button {
-                        customText = String(format: "%g", focalLength)
-                        showCustom = true
-                    } label: {
-                        Text(isCustom ? Optics.formatFocal(focalLength) : "Custom")
-                            .font(.fsLabel).tracking(Theme.tracking)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 40)
-                            .foregroundStyle(isCustom ? Theme.onAccent : Theme.textPrimary)
-                            .background(isCustom ? Theme.accent : Theme.surfaceRaised,
-                                        in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                    if allowsCustom {
+                        let isCustom = !steps.contains { abs($0 - focalLength) < 0.01 }
+                        Button {
+                            customText = String(format: "%g", focalLength)
+                            showCustom = true
+                        } label: {
+                            Text(isCustom ? Optics.formatFocal(focalLength) : "Custom")
+                                .font(.fsLabel).tracking(Theme.tracking)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 40)
+                                .foregroundStyle(isCustom ? Theme.onAccent : Theme.textPrimary)
+                                .background(isCustom ? Theme.accent : Theme.surfaceRaised,
+                                            in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 2)
             }
             .onAppear { proxy.scrollTo(focalLength, anchor: .center) }
-        }
-        .alert("Custom focal length (mm)", isPresented: $showCustom) {
-            TextField("mm", text: $customText).keyboardType(.decimalPad)
-            Button("Set") {
-                if let v = Double(customText.replacingOccurrences(of: ",", with: ".")), v > 1, v < 2000 {
-                    focalLength = v
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+            .onChange(of: lensID) { _, _ in proxy.scrollTo(focalLength, anchor: .center) }
         }
     }
 }
@@ -163,7 +208,7 @@ struct CameraRigForm: View {
 
     var body: some View {
         Section("Lens") {
-            LensPicker(focalLength: $rig.focalLength)
+            LensPicker(focalLength: $rig.focalLength, sensor: rig.sensor, aspect: rig.aspect)
                 .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
             SensorPicker(sensorID: $rig.sensorID, customSensor: $rig.customSensor)
             if rig.sensorID == SensorLibrary.customID {

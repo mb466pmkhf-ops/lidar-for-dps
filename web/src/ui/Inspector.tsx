@@ -22,7 +22,8 @@ import { usePresets } from './presetStore';
 import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
 import { kelvinPresets } from '../model/kelvin';
 import { characterDefaults, characterLabel, characterTypes, hairOf, hairStyles, isChild, skinRGB, skinTones, skinStopsFromGrey } from '../model/characters';
-import { sensorPresets, horizontalFOV } from '../model/camera';
+import { sensorPresets, horizontalFOV, sensorFor, aspectRatio } from '../model/camera';
+import { PLAN_LENS_SERIES, COVERAGE, focalNumber, lensName, mayVignette, nearestFocal, rangeLabel } from '../model/lenses';
 import { quirksForFixture, quirksForSensor, type UnitQuirk } from '../model/quirks';
 import { fromInput, lengthUnitLabel, toInput, useLengthUnits } from './format';
 import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, readingText, signedDeg, stopColor, watts } from './format';
@@ -38,6 +39,47 @@ export function Slider({ label, value, min, max, step, format, onChange }: { lab
       <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} aria-label={label} />
       <span className="val">{format(value)}</span>
     </label>
+  );
+}
+
+const LENS_SET_KEY = 'framescan.lensSet';
+
+/** Lens set plus focal length. A set lists its own lenses (a zoom its range); the set is kept in
+ *  this browser only and the camera stores just the focal length, so nothing new syncs. Plan
+ *  cameras have no squeeze, so anamorphic sets are left out (the iPhone viewfinder has them). */
+function FocalControl({ rig, onChange }: { rig: CameraRig; onChange(v: number): void }) {
+  const [setID, setSetID] = useState(() => { try { return localStorage.getItem(LENS_SET_KEY) ?? 'any'; } catch { return 'any'; } });
+  const lens = PLAN_LENS_SERIES.find(x => x.id === setID);
+  const choose = (id: string) => {
+    setSetID(id);
+    try { localStorage.setItem(LENS_SET_KEY, id); } catch { /* private window: just not remembered */ }
+    const next = PLAN_LENS_SERIES.find(x => x.id === id);
+    if (next) onChange(nearestFocal(next, rig.focalLength));
+  };
+  const f = rig.focalLength;
+  const lo = lens?.focalLengths[0] ?? 10, hi = lens?.focalLengths[lens.focalLengths.length - 1] ?? 200;
+  return (
+    <>
+      <label className="field"><span>Lens set</span>
+        <select value={lens?.id ?? 'any'} aria-label="Lens set" onChange={e => choose(e.target.value)}>
+          <option value="any">Any lens</option>
+          {PLAN_LENS_SERIES.map(x => <option key={x.id} value={x.id}>{lensName(x)} · {rangeLabel(x)}</option>)}
+        </select><span />
+      </label>
+      {lens && !lens.isZoom ? (
+        <label className="field"><span>Focal length</span>
+          <select value={String(f)} aria-label="Focal length" onChange={e => onChange(Number(e.target.value))}>
+            {!lens.focalLengths.includes(f) && <option value={String(f)}>{focalNumber(f)}mm (not in this set)</option>}
+            {lens.focalLengths.map(x => <option key={x} value={String(x)}>{focalNumber(x)}mm</option>)}
+          </select><span />
+        </label>
+      ) : (
+        <Slider label="Focal length" value={Math.min(Math.max(f, lo), hi)} min={lo} max={hi} step={lens ? 0.5 : 1} format={v => `${focalNumber(v)}mm`} onChange={onChange} />
+      )}
+      {lens && mayVignette(lens, sensorFor(rig), aspectRatio[rig.aspect]) && (
+        <p className="note">{COVERAGE[lens.coverage].label} lenses on this camera: dark corners likely (estimate).</p>
+      )}
+    </>
   );
 }
 
@@ -597,7 +639,7 @@ function CameraInspector(p: InspectorProps) {
           ? <div className="panel-title"><input className="name" value={cam.name} aria-label="Name"
               onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, name: e.target.value } : x)) }), false)} /></div>
           : <div style={{ fontSize: 18, fontWeight: 400 }}>{title}</div>}
-        <p className="mono muted">{Math.round(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
+        <p className="mono muted">{focalNumber(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
         {cam && <div className="actions" style={{ marginTop: 12 }}><button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button></div>}
       </section>
       {shot && looksOf(p.location, p.scan?.id).length > 0 && (() => {
@@ -617,7 +659,7 @@ function CameraInspector(p: InspectorProps) {
         );
       })()}
       <Panel title="Camera">
-        <Slider label="Focal length" value={rig.focalLength} min={10} max={200} step={1} format={v => `${Math.round(v)}mm`} onChange={v => setRig({ focalLength: v }, false)} />
+        <FocalControl rig={rig} onChange={v => setRig({ focalLength: v }, false)} />
         <Slider label="Lens height" value={rig.height} min={0.1} max={4} step={0.05} format={metres} onChange={v => setRig({ height: v }, false)} />
         <Slider label="Pan" value={((rig.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => setRig({ pan: v }, false)} />
         <Slider label="Tilt" value={rig.tilt} min={-60} max={60} step={1} format={signedDeg} onChange={v => setRig({ tilt: v }, false)} />
