@@ -12,6 +12,7 @@ import { ListingDialog, ListingPhotosDialog, type ListingFile } from './ListingD
 import { listingPhotos } from '../sync/listingPhotos';
 import { Icon, StopMark } from './icons';
 import { setLengthUnits, useLengthUnits } from './format';
+import { useModal } from './useModal';
 
 function useWorkspace() {
   return useSyncExternalStore(workspace.subscribe, workspace.getProjects);
@@ -185,8 +186,8 @@ export function App() {
         <button className="btn small" aria-pressed={night} onClick={() => setNight(!night)} title={night ? 'Back to the bright screen' : 'Dim, dark screen for a dark set'}>
           <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
         </button>
-        <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings'}>
-          <span className={'dot ' + sync.dot} /> {sync.text}
+        <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings'} aria-label={sync.text}>
+          <span className={'dot ' + sync.dot} /> <span className="sync-txt">{sync.text}</span>
         </button>
       </header>
       {view === 'home' ? (
@@ -197,7 +198,8 @@ export function App() {
           <input ref={fileInput} type="file" accept=".zip,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />
         </>
       ) : (
-      <div className={'main' + (location ? '' : ' no-inspector')}>
+      <main className={'main' + (location ? '' : ' no-inspector')}>
+        <h1 className="sr-only">{location ? `${location.name}: lighting plan` : 'FrameScan planner'}</h1>
         {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
         <nav className={'sidebar' + (drawer ? ' open' : '')} aria-label="Projects" onKeyDown={e => { if (e.key === 'Escape') setDrawer(false); }}>
           <div className="side-h"><span className="label">Projects</span><button className="btn small" onClick={addProject} title="New project"><Icon name="plus" /></button></div>
@@ -247,7 +249,7 @@ export function App() {
             </div>
           </div>
         )}
-      </div>
+      </main>
       )}
       {drawOpen && <RoomDialog projects={projects} currentProjectID={projectID} onCreate={(n, sp, pid) => { createRoom(n, sp, pid); }} onClose={() => setDrawOpen(false)} />}
       {listingOpen && <ListingDialog projects={projects} currentProjectID={projectID} onCreate={createFromListing} onClose={() => setListingOpen(false)} />}
@@ -296,9 +298,10 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
   const switchMode = (m: 'signIn' | 'create') => { setMode(m); setConfirm(''); setError(undefined); };
 
   const session = workspace.client?.session;
+  const dialogRef = useModal<HTMLDivElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="Account and sync" onClick={e => e.stopPropagation()}>
+      <div className="dialog" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Account and sync" onClick={e => e.stopPropagation()}>
         <h2>Account &amp; sync</h2>
         <p>Keeps the lighting plan the same on your iPhone, this browser and the desktop app. Scan meshes and photos stay on the phone; only the plan, lights, people, meters and the 2D floor plan sync.</p>
         <p className="muted" style={{ fontSize: 12 }}>© 2026 FrameScout. <a href={`${import.meta.env.BASE_URL}third-party-notices.txt`} target="_blank" rel="noreferrer">Open-source notices</a></p>

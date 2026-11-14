@@ -5,6 +5,7 @@ import type { Project } from '../model/types';
 import { LengthStepper } from './LengthStepper';
 import { area, useLengthUnits } from './format';
 import { ROOM_LIMITS, defaultRoom, normalise, roomArea, roomOutline, buildRoomPlan, type RoomSpec } from '../model/room';
+import { useModal } from './useModal';
 
 function Stepper({ label, note, value, step, min, max, unit, onChange }: { label: string; note?: string; value: number; step: number; min: number; max: number; unit: string; onChange(v: number): void }) {
   const set = (v: number) => onChange(Math.round(Math.min(max, Math.max(min, v)) * 100) / 100);
@@ -35,9 +36,10 @@ export function RoomDialog({ projects, currentProjectID, onCreate, onClose }: {
   const k = Math.min(300 / s.length, 140 / s.width);
   const x = (v: number) => 180 + v * k, z = (v: number) => 90 + v * k;
   const patch = (p: Partial<RoomSpec>) => setSpec({ ...spec, ...p });
+  const dialogRef = useModal<HTMLFormElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <form className="dialog" role="dialog" aria-modal="true" aria-label="Draw a room" onClick={e => e.stopPropagation()}
+      <form className="dialog" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Draw a room" onClick={e => e.stopPropagation()}
         onSubmit={e => { e.preventDefault(); onCreate(name, s, projectID || undefined); }}>
         <h2>Draw a room</h2>
         <p>Pick a starting shape and type the sizes. You get a floor plan and a 3D room to light.</p>

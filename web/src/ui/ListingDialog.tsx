@@ -8,6 +8,7 @@ import { LengthStepper } from './LengthStepper';
 import { area } from './format';
 import { readListing, roomFromListing, sizeNote, type FindingKind } from '../model/listing';
 import { listingPhotos, type ListingPhoto } from '../sync/listingPhotos';
+import { useModal } from './useModal';
 
 export interface ListingFile { name: string; blob: Blob }
 
@@ -62,9 +63,10 @@ export function ListingDialog({ projects, currentProjectID, onCreate, onClose }:
     setFiles(prev => [...prev, ...next].slice(0, 20));
   };
 
+  const dialogRef = useModal<HTMLFormElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <form className="dialog listing" role="dialog" aria-modal="true" aria-label="Build from a listing" onClick={e => e.stopPropagation()}
+      <form className="dialog listing" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Build from a listing" onClick={e => e.stopPropagation()}
         onSubmit={e => { e.preventDefault(); onCreate(name, s, projectID || undefined, text.trim(), files); }}>
         <h2>Build from a listing</h2>
         <p>Can't get to the place? Add the photos and paste the sizes from the studio's website. Check what was found, adjust it, and build the room.</p>
@@ -170,9 +172,10 @@ export function ListingPhotosDialog({ locationID, onClose, onChange }: { locatio
     const next = photos.filter(p => p.id !== id);
     setPhotos(next); setOpen(o => Math.min(o, Math.max(0, next.length - 1))); onChange(next.length);
   };
+  const dialogRef = useModal<HTMLDivElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="dialog listing wide" role="dialog" aria-modal="true" aria-label="Reference photos" onClick={e => e.stopPropagation()}>
+      <div className="dialog listing wide" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Reference photos" onClick={e => e.stopPropagation()}>
         <h2>Reference photos</h2>
         <p>Kept in this browser with the room. They don't sync to the phone.</p>
         {photos.length === 0 ? <p className="note">No photos.</p> : <>

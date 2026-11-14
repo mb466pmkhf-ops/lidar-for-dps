@@ -11,6 +11,7 @@ import { amps, kitList, kitText, type KitLine } from '../model/kit';
 import { metres, pct, reading as fmtReading, watts } from './format';
 import { Icon } from './icons';
 import { activeLook } from '../model/looks';
+import { useModal } from './useModal';
 
 /** The on-screen plan as a standalone SVG, with the day-theme colours written in so it prints light. */
 export function planSnapshot(svg: SVGSVGElement): { url: string; w: number; h: number } {
@@ -73,9 +74,10 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
     img.src = plan.url;
   };
   const copy = () => { void navigator.clipboard?.writeText(kitText(kit, title)).then(() => setCopied(true)).catch(() => setCopied(false)); };
+  const dialogRef = useModal<HTMLElement>(onClose);
   return (
     <div className="scrim sheet-scrim" onClick={onClose}>
-      <article className="sheet" role="dialog" aria-modal="true" aria-label="Lighting plan sheet" onClick={ev => ev.stopPropagation()}>
+      <article className="sheet" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Lighting plan sheet" onClick={ev => ev.stopPropagation()}>
         <div className="sheet-actions">
           <button className="btn primary small" onClick={() => window.print()}><Icon name="download" /> Print or save PDF</button>
           <button className="btn small" onClick={savePNG} disabled={!plan}>Plan as PNG</button>
