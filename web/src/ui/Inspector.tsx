@@ -47,7 +47,7 @@ export function Panel({ title, children, collapsible, open: initial = true }: { 
     <section className="panel">
       {collapsible
         ? <button className="btn ghost small" style={{ padding: 0, marginBottom: open ? 8 : 0 }} onClick={() => setOpen(!open)} aria-expanded={open}><span className="label">{open ? '▾' : '▸'} {title}</span></button>
-        : <h3>{title}</h3>}
+        : <h2>{title}</h2>}
       {(!collapsible || open) && children}
     </section>
   );

@@ -7,6 +7,7 @@ import { ANCHOR_LABEL, capturePersonPreset, captureWindowPreset, decodePresets, 
 import { planDist } from '../model/calculator';
 import { KIND_INFO, fixtureProfile } from '../model/photometrics';
 import { addPreset, removePreset, savePresets, updatePreset, usePresets } from './presetStore';
+import { useModal } from './useModal';
 
 function Step({ label, value, step, min, max, unit, onChange }: { label: string; value: number; step: number; min: number; max: number; unit: string; onChange(v: number): void }) {
   const set = (v: number) => onChange(Math.round(Math.min(max, Math.max(min, v)) * 100) / 100);
@@ -47,9 +48,10 @@ export function SavePresetDialog({ person, lights, camera, exposure, plan, windo
     addPreset(p);
     onClose(p);
   };
+  const dialogRef = useModal<HTMLFormElement>(() => onClose());
   return (
     <div className="scrim" onClick={() => onClose()}>
-      <form className="dialog" role="dialog" aria-modal="true" aria-label="Save as my preset" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); save(); }}>
+      <form className="dialog" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Save as my preset" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); save(); }}>
         <h2>Save as my preset</h2>
         <p>Keeps the units you tick, where they stand and how bright they are, so you can drop the same setup round anyone with one click.</p>
         <div className="stack">
@@ -132,9 +134,10 @@ export function ManagePresetsDialog({ onClose }: { onClose(): void }) {
     savePresets([...presets.filter(p => !got.some(g => g.id === p.id)), ...got]);
     setMessage(`Added ${got.filter(g => !ids.has(g.id)).length}, updated ${got.filter(g => ids.has(g.id)).length}.`);
   };
+  const dialogRef = useModal<HTMLDivElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="My presets" onClick={e => e.stopPropagation()} style={{ width: 'min(600px, 100%)' }}>
+      <div className="dialog" role="dialog" aria-modal="true" ref={dialogRef} aria-label="My presets" onClick={e => e.stopPropagation()} style={{ width: 'min(600px, 100%)' }}>
         <h2>My presets</h2>
         <p>Tune where each unit goes and how bright it is. Levels are set again for the stop each time you use a preset.</p>
         {presets.length ? presets.map(p => (

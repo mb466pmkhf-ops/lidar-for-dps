@@ -247,7 +247,7 @@ export function PlanCanvas(props: Props) {
       <g>
         <line x1={sx(p.x)} y1={sy(p.z)} x2={sx(h.x)} y2={sy(h.z)} stroke="var(--accent)" strokeWidth={1} strokeDasharray="3 3" pointerEvents="none" />
         <circle cx={sx(h.x)} cy={sy(h.z)} r={9} fill="var(--accent)" stroke="var(--paper)" strokeWidth={2} style={{ cursor: 'grab' }}
-          onPointerDown={e => down(e, { ...s, part: 'rotate' })} aria-label="Rotate" />
+          onPointerDown={e => down(e, { ...s, part: 'rotate' })} />
       </g>
     );
   };
