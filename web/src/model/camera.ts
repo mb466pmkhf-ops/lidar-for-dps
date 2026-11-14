@@ -43,7 +43,7 @@ export const sensorPresets: SensorFormat[] = [
   { id: 'generic-16', manufacturer: '', name: 'Standard 16', width: 10.26, height: 7.49 },
 ];
 
-const aspectRatio: Record<FrameAspect, number | undefined> = { sensor: undefined, r239: 2.39, r200: 2.0, r185: 1.85, r178: 16 / 9, r143: 1.43 };
+export const aspectRatio: Record<FrameAspect, number | undefined> = { sensor: undefined, r239: 2.39, r200: 2.0, r185: 1.85, r178: 16 / 9, r143: 1.43 };
 
 export function sensorFor(rig: CameraRig): SensorFormat {
   if (rig.sensorID === 'custom' && rig.customSensor) return rig.customSensor;
