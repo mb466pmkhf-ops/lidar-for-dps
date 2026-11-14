@@ -1217,6 +1217,54 @@ do {
     check(LensLibrary.lens(id: LensLibrary.anyID) == nil && LensLibrary.lens(id: nil) == nil, "any lens has no set")
     check(LensLibrary.series.filter { $0.squeeze > 1 }.allSatisfy { $0.squeeze == 2 }, "anamorphic sets carry their squeeze")
     check(SensorLibrary.presets.allSatisfy { $0.width > $0.height && $0.width < 80 }, "camera formats are landscape and in millimetres")
+
+    // Real-world shape of the data: cine focal lengths sit between 8 and 300 mm, zooms run short
+    // to long, and no set lists a focal length twice.
+    check(LensLibrary.series.allSatisfy { s in s.focalLengths.allSatisfy { $0 >= 8 && $0 <= 300 } }, "focal lengths are cine-sized")
+    check(LensLibrary.series.allSatisfy { s in Set(s.focalLengths).count == s.focalLengths.count }, "no set lists a lens twice")
+    check(LensLibrary.series.filter(\.isZoom).allSatisfy { $0.focalLengths[0] < $0.focalLengths[1] }, "zooms run short to long")
+    check(LensLibrary.series.allSatisfy { !$0.maker.isEmpty && !$0.name.isEmpty }, "every lens set names its maker")
+    check(LensLibrary.series.allSatisfy { $0.isZoom == $0.name.contains("zoom") }, "zoom sets say so in their name")
+    check(LensLibrary.series.allSatisfy { ($0.squeeze > 1) == $0.name.lowercased().contains("anamorphic") },
+          "anamorphic sets say so in their name")
+    check(LensSeries.Coverage.super35.maxDiagonal < LensSeries.Coverage.fullFrame.maxDiagonal
+          && LensSeries.Coverage.fullFrame.maxDiagonal < LensSeries.Coverage.largeFormat.maxDiagonal, "coverage classes grow")
+    check(LensSeries.Coverage.fullFrame.maxDiagonal >= SensorLibrary.format(id: "generic-ff").diagonal,
+          "full-frame lenses cover a 36 × 24 mm sensor")
+
+    // Labels keep half millimetres (the Canon 15.5–47).
+    let canonZoom = LensLibrary.lens(id: "canon-cne-15-47")!
+    check(canonZoom.rangeLabel == "15.5–47 mm" && LensLibrary.focalNumber(15.5) == "15.5" && LensLibrary.focalNumber(50) == "50",
+          "focal labels keep half millimetres")
+    check(cooke.rangeLabel == "18 lenses, 12–300 mm", "a prime set's label counts its lenses")
+
+    // Choosing a lens: a set brings its squeeze and a focal length it has; "any lens" keeps both.
+    let toAna = LensLibrary.fit(lensID: "cooke-anamorphic-i", focalLength: 30, squeeze: 1)
+    check(toAna.squeeze == 2 && toAna.focalLength == 32, "an anamorphic set brings 2× and snaps to its 32")
+    let toSpherical = LensLibrary.fit(lensID: "zeiss-cp3", focalLength: 32, squeeze: 2)
+    check(toSpherical.squeeze == 1 && toSpherical.focalLength == 35, "a spherical set clears the squeeze")
+    let toAny = LensLibrary.fit(lensID: nil, focalLength: 47, squeeze: 1.5)
+    check(toAny.squeeze == 1.5 && toAny.focalLength == 47, "any lens keeps the focal length and squeeze")
+    let toZoom = LensLibrary.fit(lensID: "angenieux-24-290", focalLength: 61, squeeze: 2)
+    check(toZoom.focalLength == 61 && toZoom.squeeze == 1, "a zoom keeps a focal length inside its range")
+    check(ViewfinderMath.steppedFocalLength(from: 61, by: 1, in: zoom.steps) == 65
+          && ViewfinderMath.steppedFocalLength(from: 290, by: 1, in: zoom.steps) == 290
+          && ViewfinderMath.steppedFocalLength(from: 24, by: -1, in: zoom.steps) == 24, "pinching a zoom steps inside its range and stops at the ends")
+
+    // Vignetting is judged on the framed part of the sensor.
+    let cp3 = LensLibrary.lens(id: "zeiss-cp3")!
+    check(abs(cp3.usedDiagonal(on: lf) - lf.diagonal) < 1e-9, "a spherical lens on the whole sensor uses its diagonal")
+    check(cp3.mayVignette(on: lf, aspect: .sensor) && !cp3.mayVignette(on: lf, aspect: .r239),
+          "a full-frame set may vignette on Mini LF open gate but not inside 2.39 frame lines")
+    check(!cp3.mayVignette(on: SensorLibrary.format(id: "generic-ff")), "a full-frame set covers full frame")
+    let anaCooke = LensLibrary.lens(id: "cooke-anamorphic-i")!
+    let a35 = SensorLibrary.format(id: "arri-35-65")
+    check(anaCooke.usedDiagonal(on: a35, aspect: .r239) <= a35.diagonal + 1e-9
+          && anaCooke.usedDiagonal(on: a35, aspect: .sensor) == a35.diagonal, "anamorphic frame lines stay on the sensor")
+    check(!anaCooke.mayVignette(on: a35, aspect: .r239) && anaCooke.mayVignette(on: lf),
+          "a Super 35 anamorphic covers Alexa 35 6:5 but not Mini LF open gate")
+    check(LensLibrary.lens(id: "arri-signature")!.mayVignette(on: SensorLibrary.format(id: "arri-65-og")),
+          "even large-format primes may vignette on the Alexa 65")
 }
 
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
