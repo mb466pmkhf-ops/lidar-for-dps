@@ -183,7 +183,7 @@ struct HomeView: View {
         }
         rows.append(StartRow(title: "Draw a plan", subtitle: "Pick a shape and type the sizes", image: "pencil.and.ruler") { showDrawRoom = true })
         rows.append(StartRow(title: "From a listing", subtitle: "The studio's photos and sizes", image: "photo.on.rectangle.angled") { showListing = true })
-        rows.append(StartRow(title: "Try the sample room", subtitle: "A lit living room to explore", image: "sofa") {
+        rows.append(StartRow(title: "Open the sample room", subtitle: "A lit living room to explore", image: "sofa") {
             let sample = SampleProject.addOrFind(in: store)
             var routes: [Route] = [.project(sample.id)]
             if let room = sample.locations.first { routes.append(.location(LocationRef(projectID: sample.id, locationID: room.id))) }

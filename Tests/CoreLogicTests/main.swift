@@ -1219,7 +1219,7 @@ do {
     check(SensorLibrary.presets.allSatisfy { $0.width > $0.height && $0.width < 80 }, "camera formats are landscape and in millimetres")
 }
 
-// MARK: Sample room (Home → Try the sample room; also the Simulator screenshots)
+// MARK: Sample room (Home → Open the sample room; also the Simulator screenshots)
 do {
     let scanID = UUID()
     let sample = SampleProject.project(scanID: scanID)

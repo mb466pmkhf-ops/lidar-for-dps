@@ -2,7 +2,7 @@
 import Foundation
 
 /// Sample project for Simulator screenshots (CI and local). Debug builds only; the data itself is
-/// `SampleProject`, which Release builds offer as "Try the sample room".
+/// `SampleProject`, which Release builds offer as "Open the sample room".
 ///
 /// Launch with `-FSDemo YES` to replace the projects folder with one sample location, and
 /// `-FSScreen <name>` to open a screen (see `Screen`). Never shipped in Release builds.

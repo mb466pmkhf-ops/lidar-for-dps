@@ -44,7 +44,7 @@ steps once, then each release is: push a tag, test the TestFlight build, press S
 
 Paste into App Store Connect → the version → App Review Information → Notes:
 
-> No account is needed. On the Home screen, tap **Try the sample room** to open a lit living room
+> No account is needed. On the Home screen, tap **Open the sample room** to open a lit living room
 > with lights, two people and two shots: the plan, light readings, 3D view, sun path and kit list
 > all work on it. Scanning a room needs an iPhone or iPad with LiDAR (Pro models); on other devices
 > rooms can be drawn by hand (**Draw a plan**) or built from a studio listing. Sign-in is optional
