@@ -186,8 +186,8 @@ export function App() {
         <button className="btn small" aria-pressed={night} onClick={() => setNight(!night)} title={night ? 'Back to the bright screen' : 'Dim, dark screen for a dark set'}>
           <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
         </button>
-        <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings'}>
-          <span className={'dot ' + sync.dot} /> {sync.text}
+        <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings'} aria-label={sync.text}>
+          <span className={'dot ' + sync.dot} /> <span className="sync-txt">{sync.text}</span>
         </button>
       </header>
       {view === 'home' ? (

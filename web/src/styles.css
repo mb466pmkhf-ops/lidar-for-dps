@@ -226,6 +226,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .stepper .ctl input { width: 76px; text-align: center; font-size: 18px; font-weight: 500; border: 0; background: transparent; }
 .room-preview { display: block; width: 100%; height: 180px; border: 1px solid var(--hair); border-radius: var(--radius-lg); background: var(--paper); }
 .btn .txt{} @media (max-width: 900px){ .btn .txt { display: none; } }
+/* Phone width: the sync button keeps its status dot, so the top bar fits without scrolling sideways. */
+@media (max-width: 560px) { .topbar { gap: 8px; padding: 0 12px; } .sync .sync-txt { display: none; } .sync { padding: 0 10px; } }
 button.meter-row, .meter-row.row { width: 100%; margin: 0; border-radius: 0; }
 .stepper .unit { color: var(--text2); font-size: 14px; margin-left: -6px; min-width: 16px; }
 
