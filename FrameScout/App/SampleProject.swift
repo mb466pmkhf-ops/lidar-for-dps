@@ -1,7 +1,7 @@
 import Foundation
 
 /// A lit sample room to try the app on: a 6.2 × 4.8 m living room with one door and two windows,
-/// six lights, two people on the sofa and two shots. Release builds offer it on Home ("Try the
+/// six lights, two people on the sofa and two shots. Release builds offer it on Home ("Open the
 /// sample room") so someone without a LiDAR phone, or App Review, can see the planner working;
 /// Debug builds also use it for Simulator screenshots (`DemoContent`). Its name says "sample" and
 /// its address says "Sample location", so it is never mistaken for a real scan.
