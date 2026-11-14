@@ -353,6 +353,29 @@ final class ProjectStore: ObservableObject {
         updateProject(projectID) { $0.objects.removeAll { $0.id == objectID } }
     }
 
+    /// Adds a ready-made project (the sample room) with its scans' plans, written to disk at once.
+    @discardableResult
+    func addProject(_ project: Project, plans: [UUID: FloorPlan]) -> Project {
+        var project = project
+        project.modifiedAt = Date()
+        for location in project.locations {
+            let ref = LocationRef(projectID: project.id, locationID: location.id)
+            for scan in location.scans {
+                guard let plan = plans[scan.id] else { continue }
+                let url = StoragePaths.scanFile(ref, scanID: scan.id, .plan)
+                StoragePaths.ensureDirectory(url.deletingLastPathComponent())
+                do {
+                    try JSONCoding.encoder.encode(plan).write(to: url, options: .atomic)
+                } catch {
+                    lastError = "Couldn't save the plan: \(error.localizedDescription)"
+                }
+            }
+        }
+        projects.insert(project, at: 0)
+        writeNow(project)
+        return project
+    }
+
     // MARK: Import
 
     /// Imports a project backup ZIP produced by "Export Project Backup".
