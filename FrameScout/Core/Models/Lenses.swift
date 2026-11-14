@@ -147,6 +147,11 @@ enum LensLibrary {
         return series.first { $0.id == id }
     }
 
+    /// Sets offered where a camera is planned (plan, shots, 3D). Plan cameras are spherical (a
+    /// `CameraRig` has no squeeze), so anamorphic sets stay in the viewfinder, where the squeeze is
+    /// modelled, rather than drawing a frame twice too narrow.
+    static var planSeries: [LensSeries] { series.filter { $0.squeeze == 1 } }
+
     /// Focal length as a bare number: "50", "15.5".
     static func focalNumber(_ f: Double) -> String { String(format: "%g", (f * 10).rounded() / 10) }
 

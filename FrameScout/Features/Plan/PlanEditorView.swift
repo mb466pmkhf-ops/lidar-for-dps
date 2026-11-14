@@ -2101,7 +2101,7 @@ struct PlanEditorView: View {
                 Spacer()
                 Text(rig.lensSummary).font(.fsCaption).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
-            LensPicker(focalLength: rigBinding.focalLength)
+            LensPicker(focalLength: rigBinding.focalLength, sensor: rig.sensor, aspect: rig.aspect)
             ExposureQuickBar(exposure: exposureBinding) { showExposure = true }
             HStack {
                 StatView(label: "H-FOV", value: Optics.formatAngle(rig.horizontalFOV))
