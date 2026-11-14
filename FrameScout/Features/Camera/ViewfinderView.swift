@@ -90,7 +90,12 @@ final class ViewfinderModel: NSObject, ObservableObject {
 
     override init() {
         if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
-           let saved = try? JSONDecoder().decode(Settings.self, from: data) {
+           var saved = try? JSONDecoder().decode(Settings.self, from: data) {
+            // A lens set fixes the squeeze and the focal lengths on offer; settings saved by an
+            // older build (or before a set's figures changed) are brought back in line.
+            let fitted = LensLibrary.fit(lensID: saved.lensID, focalLength: saved.rig.focalLength, squeeze: saved.squeeze)
+            saved.rig.focalLength = fitted.focalLength
+            saved.squeeze = fitted.squeeze
             settings = saved
         } else {
             settings = Settings()
@@ -115,14 +120,14 @@ final class ViewfinderModel: NSObject, ObservableObject {
 
     /// Picks a lens set: carries its squeeze and snaps the focal length to a lens it has.
     func chooseLens(_ id: String?) {
+        let fitted = LensLibrary.fit(lensID: id, focalLength: settings.rig.focalLength, squeeze: settings.squeeze)
         settings.lensID = id
-        guard let lens = LensLibrary.lens(id: id) else { return }
-        settings.squeeze = lens.squeeze
-        settings.rig.focalLength = lens.nearest(to: settings.rig.focalLength)
+        settings.squeeze = fitted.squeeze
+        settings.rig.focalLength = fitted.focalLength
     }
 
-    /// Estimated: the lens set is made for a smaller format than this sensor.
-    var mayVignette: Bool { lens?.mayVignette(on: rig.sensor) ?? false }
+    /// Estimated: the framed part of the sensor is bigger than the lens set is made for.
+    var mayVignette: Bool { lens?.mayVignette(on: rig.sensor, aspect: rig.aspect) ?? false }
 
     var target: ViewfinderMath.Size {
         ViewfinderMath.targetFOV(focalLength: settings.rig.focalLength, sensor: settings.rig.sensor,
@@ -699,7 +704,7 @@ struct ViewfinderView: View {
             ViewfinderCameraSheet(sensorID: $model.settings.rig.sensorID)
         }
         .sheet(isPresented: $showLenses) {
-            ViewfinderLensSheet(lensID: model.settings.lensID, sensor: model.rig.sensor) { model.chooseLens($0) }
+            ViewfinderLensSheet(lensID: model.settings.lensID, sensor: model.rig.sensor, aspect: model.rig.aspect) { model.chooseLens($0) }
         }
         .sheet(isPresented: $showFrames) {
             if let ref = lastFrame?.ref {
@@ -875,6 +880,10 @@ struct ViewfinderView: View {
         .shadow(color: .black.opacity(0.9), radius: 2)
     }
 
+    private var squeezeLabel: String {
+        model.settings.squeeze == 1 ? "Spherical" : String(format: "%g× ana", model.settings.squeeze)
+    }
+
     private var controls: some View {
         VStack(alignment: .leading, spacing: 10) {
             ViewfinderLensStrip(focalLength: $model.settings.rig.focalLength, steps: model.focalSteps,
@@ -897,14 +906,21 @@ struct ViewfinderView: View {
                 } label: {
                     menuLabel(model.rig.aspect.label)
                 }
-                Menu {
-                    Picker("Squeeze", selection: $model.settings.squeeze) {
-                        ForEach(ViewfinderModel.squeezes, id: \.self) { s in
-                            Text(s == 1 ? "Spherical" : String(format: "%g× anamorphic", s)).tag(s)
+                if model.lens == nil {
+                    Menu {
+                        Picker("Squeeze", selection: $model.settings.squeeze) {
+                            ForEach(ViewfinderModel.squeezes, id: \.self) { s in
+                                Text(s == 1 ? "Spherical" : String(format: "%g× anamorphic", s)).tag(s)
+                            }
                         }
+                    } label: {
+                        menuLabel(squeezeLabel)
                     }
-                } label: {
-                    menuLabel(model.settings.squeeze == 1 ? "Spherical" : String(format: "%g× ana", model.settings.squeeze))
+                } else {
+                    // A lens set has one squeeze; changing it here would describe a lens that doesn't exist.
+                    menuLabel(squeezeLabel)
+                        .opacity(0.6)
+                        .accessibilityLabel("Squeeze \(squeezeLabel), set by the lens")
                 }
                 Spacer(minLength: 0)
                 if let last = lastFrame {
@@ -1022,7 +1038,7 @@ struct ViewfinderLensStrip: View {
                     ForEach(steps, id: \.self) { f in
                         let selected = abs(f - focalLength) < 0.01
                         Button { focalLength = f } label: {
-                            Text("\(Int(f))")
+                            Text(LensLibrary.focalNumber(f))
                                 .font(.system(size: 16, weight: selected ? .regular : .light, design: .monospaced))
                                 .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
                                 .frame(minWidth: 40, minHeight: 34)
@@ -1052,7 +1068,7 @@ struct ViewfinderLensStrip: View {
             .onAppear { proxy.scrollTo(focalLength, anchor: .center) }
             .onChange(of: focalLength) { _, f in withAnimation { proxy.scrollTo(f, anchor: .center) } }
         }
-        .alert(lens.map { "Focal length (\(Int($0.focalLengths.first ?? 0))–\(Int($0.focalLengths.last ?? 0)) mm)" } ?? "Focal length (mm)",
+        .alert(lens.map { "Focal length (\($0.rangeLabel))" } ?? "Focal length (mm)",
                isPresented: $showCustom) {
             TextField("mm", text: $customText).keyboardType(.decimalPad)
             Button("Set") {
@@ -1115,6 +1131,7 @@ struct ViewfinderCameraSheet: View {
 struct ViewfinderLensSheet: View {
     let lensID: String?
     let sensor: SensorFormat
+    var aspect: FrameAspect = .sensor
     var onPick: (String?) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1142,12 +1159,9 @@ struct ViewfinderLensSheet: View {
     }
 
     private func detail(_ lens: LensSeries) -> String {
-        let range = lens.isZoom
-            ? "\(Int(lens.focalLengths[0]))–\(Int(lens.focalLengths[1])) mm"
-            : "\(lens.focalLengths.count) lenses, \(Int(lens.focalLengths.first ?? 0))–\(Int(lens.focalLengths.last ?? 0)) mm"
-        var parts = [range, lens.coverage.label]
+        var parts = [lens.rangeLabel, lens.coverage.label]
         if lens.squeeze > 1 { parts.append(String(format: "%g× anamorphic", lens.squeeze)) }
-        if lens.mayVignette(on: sensor) { parts.append("may vignette on this camera") }
+        if lens.mayVignette(on: sensor, aspect: aspect) { parts.append("may vignette on this camera (estimate)") }
         return parts.joined(separator: " · ")
     }
 
