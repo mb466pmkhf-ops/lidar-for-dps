@@ -116,21 +116,11 @@ enum SampleProject {
         var exposure = ExposureSettings()
         exposure.iso = 800; exposure.tStop = 5.6
         location.exposureSettings = exposure
-        var display = SceneDisplay()
-        location.displaySettings = display
+        location.displaySettings = SceneDisplay()
         var project = Project(name: Self.name)
         project.id = projectID
         project.client = "Sample job"
         project.locations = [location]
         return project
-    }
-
-    /// Opens the sample if it is already on this phone, otherwise adds a fresh copy (new IDs, so
-    /// it syncs like any other project). Returns the project to open.
-    @MainActor
-    static func addOrFind(in store: ProjectStore) -> Project {
-        if let existing = store.projects.first(where: { $0.name == name }) { return existing }
-        let scanID = UUID()
-        return store.addProject(project(scanID: scanID), plans: [scanID: plan])
     }
 }
