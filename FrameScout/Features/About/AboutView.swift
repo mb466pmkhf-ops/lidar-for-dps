@@ -27,6 +27,13 @@ struct AboutView: View {
                     Text("Privacy")
                 }
                 Section {
+                    Text("Light readings, sizes, the sun's path and lens coverage are estimates for planning. Check them with a meter, a tape and the rental house before you rely on them.")
+                        .font(.fsCaption)
+                } header: {
+                    Text("Estimates")
+                }
+                Section {
+                    NavigationLink("Terms of use") { TermsView() }
                     NavigationLink("Open-source notices") { NoticesView() }
                 }
             }
@@ -35,6 +42,51 @@ struct AboutView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+/// The terms bundled with the app (`Resources/Terms.md`, also pasted into App Store Connect as
+/// the licence agreement). A small reader for the headings, bullets and bold the file uses.
+private struct TermsView: View {
+    private var lines: [String] {
+        guard let url = Bundle.main.url(forResource: "Terms", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return ["The terms of use could not be loaded. Contact us for a copy."]
+        }
+        return text.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    private func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(s)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    if line.hasPrefix("# ") {
+                        EmptyView() // the screen title says it
+                    } else if line.hasPrefix("## ") {
+                        Text(String(line.dropFirst(3))).font(.fsHeadline).padding(.top, 8)
+                    } else if line.hasPrefix("- ") {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("•")
+                            Text(inline(String(line.dropFirst(2))))
+                        }
+                        .font(.fsCaption)
+                    } else {
+                        Text(inline(line)).font(.fsCaption)
+                    }
+                }
+            }
+            .textSelection(.enabled)
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fsScreen()
+        .navigationTitle("Terms of use")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

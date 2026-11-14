@@ -28,6 +28,10 @@ steps once, then each release is: push a tag, test the TestFlight build, press S
    `delete_my_account()`), and turn on Authentication → Settings → Leaked password protection.
 9. **Privacy policy**: fill in the brackets in `Docs/PRIVACY.md`, publish it at a public address
    (e.g. GitHub Pages), and paste the address into App Store Connect → App Privacy and the app record.
+10. **Terms of use (EULA)**: fill in the brackets in `FrameScout/Resources/Terms.md` (the app shows
+   it under About → Terms of use) and have it checked. In App Store Connect → App Information →
+   License Agreement, choose a custom licence and paste the same text. It already includes the
+   terms Apple requires of a custom licence (section 8).
 
 ## Each release
 
