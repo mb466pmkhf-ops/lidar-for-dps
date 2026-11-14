@@ -230,7 +230,7 @@ export function buildRoom(plan: FloorPlan | undefined, opts: RoomOptions = {}): 
   if (opts.floor) {
     const map = opts.floor.concrete ? cached('concrete', concreteTexture) : undefined;
     map?.repeat.set(1 / 4, 1 / 4);
-    floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(opts.floor.colour), map, roughness: opts.floor.roughness, metalness: 0 });
+    floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(opts.floor.colour), map: map ?? null, roughness: opts.floor.roughness, metalness: 0 });
   } else {
     floorMat = new THREE.MeshStandardMaterial({ map: ft.map, bumpMap: ft.bump, bumpScale: 1.2, roughness: 0.5, metalness: 0 });
     // Shape coordinates are metres, so one texture tile covers `tile` metres.
