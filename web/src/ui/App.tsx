@@ -12,6 +12,7 @@ import { ListingDialog, ListingPhotosDialog, type ListingFile } from './ListingD
 import { listingPhotos } from '../sync/listingPhotos';
 import { Icon, StopMark } from './icons';
 import { setLengthUnits, useLengthUnits } from './format';
+import { useModal } from './useModal';
 
 function useWorkspace() {
   return useSyncExternalStore(workspace.subscribe, workspace.getProjects);
@@ -296,9 +297,10 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
   const switchMode = (m: 'signIn' | 'create') => { setMode(m); setConfirm(''); setError(undefined); };
 
   const session = workspace.client?.session;
+  const dialogRef = useModal<HTMLDivElement>(onClose);
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="Account and sync" onClick={e => e.stopPropagation()}>
+      <div className="dialog" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Account and sync" onClick={e => e.stopPropagation()}>
         <h2>Account &amp; sync</h2>
         <p>Keeps the lighting plan the same on your iPhone, this browser and the desktop app. Scan meshes and photos stay on the phone; only the plan, lights, people, meters and the 2D floor plan sync.</p>
         <p className="muted" style={{ fontSize: 12 }}>© 2026 FrameScout. <a href={`${import.meta.env.BASE_URL}third-party-notices.txt`} target="_blank" rel="noreferrer">Open-source notices</a></p>
