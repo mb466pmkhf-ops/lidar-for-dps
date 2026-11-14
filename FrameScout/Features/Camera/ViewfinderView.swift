@@ -168,7 +168,10 @@ final class ViewfinderModel: NSObject, ObservableObject {
     var lensDescription: String {
         let focal = Optics.formatFocal(settings.rig.focalLength)
         var parts = [lens.map { "\($0.displayName) \(focal)" } ?? focal, settings.rig.sensor.displayName]
-        if settings.squeeze > 1 { parts.append(String(format: "%g× anamorphic", settings.squeeze)) }
+        // A set's name already says "2× anamorphic"; don't say it twice.
+        if settings.squeeze > 1, lens?.squeeze != settings.squeeze {
+            parts.append(String(format: "%g× anamorphic", settings.squeeze))
+        }
         if settings.rig.aspect != .sensor { parts.append(settings.rig.aspect.label) }
         return parts.joined(separator: " · ")
     }
@@ -997,7 +1000,9 @@ struct ViewfinderView: View {
     /// Camera report for the saved frame: what was chosen, then where and when.
     private func burnInLines(locationName: String?) -> [String] {
         let rig = model.rig
-        var optics = [rig.sensor.displayName, Optics.formatFocal(rig.focalLength)]
+        // The lens set goes on the frame too: "Cooke S4/i 32mm" is what the camera team will ask for.
+        var optics = [rig.sensor.displayName,
+                      model.lens.map { "\($0.displayName) \(Optics.formatFocal(rig.focalLength))" } ?? Optics.formatFocal(rig.focalLength)]
         optics.append(model.settings.squeeze > 1 ? String(format: "%g× anamorphic", model.settings.squeeze) : "spherical")
         if rig.aspect != .sensor { optics.append(rig.aspect.label) }
         optics.append("H \(Optics.formatAngle(model.target.width)) V \(Optics.formatAngle(model.target.height))")
