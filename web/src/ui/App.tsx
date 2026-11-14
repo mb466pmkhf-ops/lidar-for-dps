@@ -239,7 +239,7 @@ export function App() {
                   <p>Continue a lighting plan from the FrameScan app on your iPhone, or start here.</p>
                   <div className="actions" style={{ justifyContent: 'center' }}>
                     <button className="btn primary" onClick={() => setSyncOpen(true)}><Icon name="cloud" /> Sync with my iPhone</button>
-                    <button className="btn" onClick={addDemo}>Try the sample room</button>
+                    <button className="btn" onClick={addDemo}>Open the sample room</button>
                     <button className="btn" onClick={() => fileInput.current?.click()}>Open a backup</button>
                   </div>
                 </>
