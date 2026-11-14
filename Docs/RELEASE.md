@@ -40,6 +40,17 @@ steps once, then each release is: push a tag, test the TestFlight build, press S
 4. In App Store Connect, attach the build to the version, fill in What's New, and press
    **Add for Review** → **Submit**.
 
+## App Review notes
+
+Paste into App Store Connect → the version → App Review Information → Notes:
+
+> No account is needed. On the Home screen, tap **Open the sample room** to open a lit living room
+> with lights, two people and two shots: the plan, light readings, 3D view, sun path and kit list
+> all work on it. Scanning a room needs an iPhone or iPad with LiDAR (Pro models); on other devices
+> rooms can be drawn by hand (**Draw a plan**) or built from a studio listing. Sign-in is optional
+> and only used to sync projects with the web and desktop apps; you can create an account with any
+> email address, and delete it under Account & sync.
+
 ## What the checks cover
 
 | Gate | Where |

@@ -1219,5 +1219,33 @@ do {
     check(SensorLibrary.presets.allSatisfy { $0.width > $0.height && $0.width < 80 }, "camera formats are landscape and in millimetres")
 }
 
+// MARK: Sample room (Home → Open the sample room; also the Simulator screenshots)
+do {
+    let scanID = UUID()
+    let sample = SampleProject.project(scanID: scanID)
+    let other = SampleProject.project()
+    check(sample.id != other.id && sample.locations[0].id != other.locations[0].id, "each sample copy gets new IDs")
+    let room = sample.locations[0]
+    check(room.primaryScanID == scanID && room.scans.map(\.id) == [scanID], "the sample room's scan is its primary scan")
+    check(room.lightFixtures.allSatisfy { $0.scanID == scanID } && room.previsCharacters.allSatisfy { $0.scanID == scanID }
+          && room.shots.allSatisfy { $0.scanID == scanID }, "everything in the sample belongs to its scan")
+    check(sample.name.contains("sample") && room.address == "Sample location", "the sample says it is a sample")
+    let plan = SampleProject.plan, b = plan.bounds
+    check(room.lightFixtures.allSatisfy { $0.position.x > b.minX && $0.position.x < b.maxX && $0.position.z > b.minZ && $0.position.z < b.maxZ },
+          "every sample light stands inside the room")
+    let data = try? JSONCoding.encoder.encode(sample)
+    let back = data.flatMap { try? JSONCoding.decoder.decode(Project.self, from: $0) }
+    check(back?.locations.first?.lightFixtures.count == 6 && back?.locations.first?.previsCharacters.count == 2, "the sample saves and loads")
+    // Balanced on the stop (DOP review): Maya's face, seen from her single, reads near T5.6.
+    if let maya = room.previsCharacters.first(where: { $0.name == "Maya" }),
+       let cam = room.shots.first(where: { $0.title.contains("Maya") })?.rig.position {
+        let exp = room.exposureSettings
+        let face = LightingCalculator.Point(maya.position, height: maya.eyeHeight - 0.03)
+        let toCam = LightingCalculator.direction(bearing: PlanGeometry.bearing(from: maya.position, to: cam), tilt: 0)
+        let lux = LightingCalculator.reading(at: face, normal: toCam, scene: LightingCalculator.Scene(lights: room.lightFixtures, plan: plan)).lux
+        check(abs(exp.stops(forLux: lux)) < 0.5, "Maya reads within half a stop of T\(exp.tStop) on the sample (\(exp.stops(forLux: lux)) stops)")
+    } else { check(false, "sample has Maya and her single") }
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

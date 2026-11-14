@@ -9,5 +9,6 @@ swiftc -swift-version 5 -O -o "$OUT" \
   $CORE/Models/*.swift \
   $CORE/Services/Optics.swift $CORE/Services/ViewfinderMath.swift $CORE/Services/SolarCalculator.swift $CORE/Services/UnitsFormatter.swift \
   $CORE/Geometry/SceneGeometry.swift $CORE/Geometry/WallBuilder.swift $CORE/Geometry/MeshScanData.swift $CORE/Geometry/PlanGeometry.swift $CORE/Geometry/PlanSceneBuilder.swift \
-  $CORE/Export/ZipArchive.swift $CORE/Export/GLBWriter.swift $CORE/Export/USDAWriter.swift $CORE/Export/OBJWriter.swift $CORE/Export/TexturedModel.swift $CORE/Persistence/StoragePaths.swift $CORE/Sync/SyncMerge.swift
+  $CORE/Export/ZipArchive.swift $CORE/Export/GLBWriter.swift $CORE/Export/USDAWriter.swift $CORE/Export/OBJWriter.swift $CORE/Export/TexturedModel.swift $CORE/Persistence/StoragePaths.swift $CORE/Sync/SyncMerge.swift \
+  FrameScout/App/SampleProject.swift
 "$OUT"
