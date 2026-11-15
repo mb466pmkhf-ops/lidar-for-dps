@@ -14,7 +14,7 @@ import { newCamera, newCharacter, newLight, newMeter } from '../model/factory';
 import { GRIP_PRESETS, applyDrape, applyGripSize, drapeByID, gripLabel, gripSizeByID } from '../model/grip';
 import {
   FURNITURE_PRESETS, OPENING_PRESETS, addObject, addSegment, findSegment, furniturePreset, openingPreset, placeFurniture, placeOpening,
-  removeObject, removeSegment, replaceObject, replaceSegment, slideOpening, turnObject,
+  mountOnWall, removeObject, removeSegment, replaceObject, replaceSegment, slideOpening, turnObject,
 } from '../model/setPieces';
 import { PlanCanvas, type DragTarget, type Selection } from './PlanCanvas';
 import { Inspector } from './Inspector';
@@ -167,7 +167,8 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const scan = location.scans.find(s => s.id === scanID);
   // Sun, sky and an LED wall, when the location has them (stage.ts).
   const env = useMemo(() => environment(location, calcPlan, scan), [location.daylight, location.studio, location.coordinate, location.shots, location.cameraPositions, calcPlan, scan]); // eslint-disable-line react-hooks/exhaustive-deps
-  const scene = useMemo(() => buildScene(lights, calcPlan, windowTransmission, env), [lights, calcPlan, windowTransmission, env]);
+  const roomSurfaces = location.display?.roomSurfaces ?? 'typical';
+  const scene = useMemo(() => buildScene(lights, calcPlan, windowTransmission, env, roomSurfaces), [lights, calcPlan, windowTransmission, env, roomSurfaces]);
   const meters = useMemo(() => meterPoints(location, scanID), [location, scanID]);
   const readings = useMemo(() => new Map(meters.map(m => [m.key, reading(m.point, m.normal, scene).lux])), [meters, scene]);
 
@@ -261,7 +262,8 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         const next = t.part === 'rotate'
           ? { ...o, rotation: Math.round(Math.atan2(raw.z - o.center.z, raw.x - o.center.x) / step) * step, byHand: true }
           : { ...o, center: p, byHand: true };
-        return replaceObject(pl, next);
+        // A TV on the wall slides along the walls rather than coming off them.
+        return replaceObject(pl, next.wallMounted && t.part !== 'rotate' ? mountOnWall(pl, next) ?? next : next);
       }, false);
       return;
     }
@@ -350,6 +352,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     if (view3D) { setView(false); requestAnimationFrame(() => requestAnimationFrame(snap)); } else snap();
   };
   const [view3D, setView3D] = useState(() => { try { return localStorage.getItem('framescan.plan.view') === '3d'; } catch { return false; } });
+  const [lookThrough, setLookThrough] = useState<{ key: string; n: number }>();
   const setView = (on: boolean) => { setView3D(on); try { localStorage.setItem('framescan.plan.view', on ? '3d' : 'plan'); } catch { /* private mode */ } if (on) setTool({ kind: 'select' }); };
   // Menus open below their button, outside the toolbar (which scrolls sideways and would clip them).
   const [anchor, setAnchor] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -440,7 +443,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         </div>
         {view3D ? (
           <Suspense fallback={<div className="scene3d"><div className="scene3d-hint">Loading 3D…</div></div>}>
-            <Scene3D location={location} plan={plan} scanID={scanID} lights={lights} selection={selection} beams={layers.has('beams')} meters={meters} readings={readings} showReadings={layers.has('readings')} exposure={exposure} onSelect={s => setSelection(s)} />
+            <Scene3D location={location} plan={plan} scanID={scanID} lights={lights} selection={selection} beams={layers.has('beams')} meters={meters} readings={readings} showReadings={layers.has('readings')} exposure={exposure} onSelect={s => setSelection(s)} lookThrough={lookThrough} />
           </Suspense>
         ) : (
           <PlanCanvas
@@ -455,7 +458,8 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         <CameraSettingsBar exposure={exposure} onChange={patch => edit(loc => ({ ...loc, exposure: { ...withDefaults(loc.exposure), ...patch } }))} />
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}
           selection={selection} windowTransmission={windowTransmission} environment={env} scan={scan} edit={edit} editPlan={editPlan} select={setSelection}
-          aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })} />
+          aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })}
+          lookThrough={s => { setView(true); setLookThrough(l => ({ key: `${s.kind}:${s.id}`, n: (l?.n ?? 0) + 1 })); }} />
       </aside>
       {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} plan={sheet.plan} onClose={() => setSheet(undefined)} />}
     </>

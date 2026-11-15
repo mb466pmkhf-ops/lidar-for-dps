@@ -108,3 +108,43 @@ describe('changing a grip kind', () => {
     expect(renamedForKind('Window cutter', 'flag', 'negative')).toBe('Window cutter');
   });
 });
+
+describe('egg-crate grid', () => {
+  it('has a soft edge, 50 % at half its rating, nothing past the cut-off', async () => {
+    const { relativeIntensity } = await import('../src/model/photometrics');
+    expect(relativeIntensity('grid', 20, 40)).toBeCloseTo(0.5, 9);
+    expect(relativeIntensity('grid', 30, 40)).toBeGreaterThan(0.15);
+    expect(relativeIntensity('grid', 40, 40)).toBe(0);
+  });
+  it('never makes the centre hotter than the bare panel', () => {
+    const bare = { ...newLight('ledPanel', { x: 0, z: 0 }), profileID: 'panel-1x1-bi' };
+    const gridded = { ...bare, modifierID: 'panel-grid-40' };
+    const pm = photometrics(gridded);
+    expect(pm.distribution).toBe('grid');
+    expect(pm.peakIntensity / photometrics(bare).peakIntensity).toBeCloseTo(0.8, 9);
+    expect(pm.flux / (photometrics(bare).peakIntensity * Math.PI)).toBeLessThan(0.2);
+  });
+});
+
+describe('light off the room', async () => {
+  const { buildRoomPlan } = await import('../src/model/room');
+  // Same case as "Light off the room" in Tests/CoreLogicTests/main.swift.
+  const plan = buildRoomPlan({ shape: 'box', length: 5, width: 4, ceiling: 2.6, windows: 0, door: false });
+  const up = { ...newLight('ledPanel', { x: 0, z: 0 }), profileID: 'panel-1x1-bi', height: 1.2, tilt: 90 };
+  const point = vec(1.5, 1.2, 0), normal = vec(-1, 0, 0);
+  const lux = (s: 'off' | 'dark' | 'typical' | 'light') => reading(point, normal, buildScene([up], plan, 0.78, undefined, s));
+  it('a unit bounced off the ceiling lights a face it can\'t see', () => {
+    expect(lux('off').lux).toBe(0);
+    expect(lux('typical').lux).toBeGreaterThan(5);
+    expect(lux('dark').lux).toBeLessThan(lux('typical').lux);
+    expect(lux('light').lux).toBeGreaterThan(lux('typical').lux);
+    const c = lux('typical').contributions;
+    expect(c.length).toBe(1);
+    expect(c[0].lightID).toBe(up.id);
+    expect(c[0].viaBounce).toBe('5A11D000-0000-4000-8000-000000000004');
+  });
+  it('is the default, and needs walls', () => {
+    expect(reading(point, normal, buildScene([up], plan)).lux).toBeCloseTo(lux('typical').lux, 9);
+    expect(reading(point, normal, buildScene([up])).lux).toBe(0);
+  });
+});

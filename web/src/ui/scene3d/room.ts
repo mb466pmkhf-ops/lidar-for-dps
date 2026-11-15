@@ -6,6 +6,7 @@ import type { FloorPlan, PlanObject, PlanPoint, PlanSegment } from '../../model/
 import { CHROME, DARK, STEEL, WOOD_LEG, cached, fabricBump, floorTextures, mat, mesh, plasterBump, rbox, v, bar } from './kit';
 import { concreteTexture, curtain } from './stage';
 import { backSide, bedBase, chairSeat, distToWalls, sofaShape } from '../../model/placement';
+import { isScreen } from '../../model/setPieces';
 
 const T = 0.1; // wall thickness, m
 
@@ -94,7 +95,7 @@ function doorParts(f: Frame, u0: number, u1: number, s: PlanSegment, rec: WallRe
 /** Stand-in furniture from a scanned box: local X is its width, Z its depth, the floor is y = 0. */
 function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
   const g = new THREE.Group();
-  g.position.set(o.center.x, 0, o.center.z);
+  g.position.set(o.center.x, Math.max(0, o.elevation ?? 0), o.center.z);
   g.rotation.y = -o.rotation;
   const { width: w, depth: d, height: h } = o;
   const kind = o.category.toLowerCase();
@@ -138,9 +139,22 @@ function furniture(o: PlanObject, plan: FloorPlan): THREE.Group {
     const head = end(1) <= end(-1) ? 1 : -1;
     mesh(rbox(0.06, Math.max(h, base + 0.6), d, 0.02), wood, g, v(head * (w / 2 - 0.03), Math.max(h, base + 0.6) / 2, 0));
     for (const sz of d > 1.2 ? [-1, 1] : [0]) mesh(rbox(0.42, 0.13, Math.min(0.68, d * 0.44), 0.06, 4), paint, g, v(head * (w / 2 - 0.34), base + 0.26, sz * d * 0.24));
-  } else if (kind.includes('tele') || kind === 'tv' || kind.includes('screen')) {
+  } else if (isScreen(o.category)) {
     const screen = new THREE.MeshPhysicalMaterial({ color: 0x050607, roughness: 0.12, metalness: 0.3, clearcoat: 1 });
-    mesh(rbox(w, h, Math.min(d, 0.05), 0.008, 1), screen, g, v(0, h / 2, 0));
+    const t = Math.min(d, 0.05);
+    if (o.wallMounted) {
+      // Flat to the wall on a bracket: the panel against the back of its box, a plate behind it.
+      mesh(rbox(w, h, t, 0.008, 1), screen, g, v(0, h / 2, back * (d / 2 - t / 2)));
+      mesh(new THREE.BoxGeometry(Math.min(w * 0.4, 0.4), Math.min(h * 0.5, 0.3), 0.03), DARK, g, v(0, h / 2, back * (d / 2 + 0.005)));
+    } else {
+      // On its own feet: the panel lifted on two short legs, the feet resting at the underside.
+      const foot = Math.min(0.08, h * 0.12), panel = h - foot;
+      mesh(rbox(w, panel, t, 0.008, 1), screen, g, v(0, foot + panel / 2, 0));
+      for (const sx of [-1, 1]) {
+        bar(v(sx * w * 0.36, 0.01, 0), v(sx * w * 0.36, foot + 0.04, 0), 0.012, DARK, g);
+        mesh(new THREE.BoxGeometry(0.05, 0.012, Math.max(d, 0.22)), DARK, g, v(sx * w * 0.36, 0.006, 0));
+      }
+    }
   } else if (kind.includes('storage') || kind.includes('cabinet') || kind.includes('shelf') || kind.includes('refrigerator') || kind.includes('wardrobe')) {
     mesh(rbox(w, h - 0.06, d, 0.006, 1), paint, g, v(0, 0.06 + (h - 0.06) / 2, 0));
     mesh(new THREE.BoxGeometry(w - 0.04, 0.06, d - 0.04), mat(0x3a3a3a, { roughness: 0.8 }), g, v(0, 0.03, 0));

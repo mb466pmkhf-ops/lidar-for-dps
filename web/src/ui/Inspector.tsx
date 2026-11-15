@@ -2,11 +2,11 @@
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, ScanRecord } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, RoomSurfaces, ScanRecord } from '../model/types';
 import { StudioPanel, DaylightPanel, CurtainField } from './StagePanels';
 import { ambientName, type Environment } from '../model/stage';
 import {
-  FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, openingLabel, removeObject, removeSegment,
+  FURNITURE_PRESETS, SIZE_LIMITS, addObject, addSegment, backOntoWall, clampSize, findSegment, isScreen, mountOnWall, openingLabel, removeObject, removeSegment, setElevation, standOnFeet,
   replaceObject, replaceSegment, resizeOpening, setOpeningHeight, setPieceName, turnObject,
 } from '../model/setPieces';
 import { renamedForKind, uuid } from '../model/factory';
@@ -115,7 +115,11 @@ export interface InspectorProps {
   editPlan(fn: (plan: FloorPlan) => FloorPlan, undo?: boolean): void;
   select(s?: Selection): void;
   aimMode(on: boolean): void;
+  /** Opens the 3D view looking through this camera or shot. */
+  lookThrough?(s: Selection): void;
 }
+
+const ROOM_SURFACE_LABEL: Record<RoomSurfaces, string> = { typical: 'Typical room', light: 'White room', dark: 'Dark or blacked out', off: 'Off' };
 
 export function Inspector(p: InspectorProps) {
   const s = p.selection;
@@ -186,6 +190,20 @@ function SetPieceInspector(p: InspectorProps & { object: PlanObject }) {
         <SizeRow label="Width" value={o.width} onChange={(v, u) => set({ width: clampSize(v) }, u)} />
         <SizeRow label="Depth" value={o.depth} onChange={(v, u) => set({ depth: clampSize(v) }, u)} />
         <SizeRow label="Height" value={o.height} max={SIZE_LIMITS.heightMax} onChange={(v, u) => set({ height: clampSize(v, SIZE_LIMITS.heightMax) }, u)} />
+        {isScreen(o.category) && (
+          <>
+            <div className="field"><span>Mounted</span>
+              <div className="chips">
+                <button className={'chip' + (!o.wallMounted ? ' on' : '')} aria-pressed={!o.wallMounted} onClick={() => p.editPlan(pl => replaceObject(pl, standOnFeet(o)))}>On its feet</button>
+                <button className={'chip' + (o.wallMounted ? ' on' : '')} aria-pressed={!!o.wallMounted} disabled={!mountOnWall(p.plan, o)}
+                  title={mountOnWall(p.plan, o) ? 'Hang it flat on the nearest wall' : 'Draw or scan the walls first'}
+                  onClick={() => { const m = mountOnWall(p.plan, o); if (m) p.editPlan(pl => replaceObject(pl, m)); }}>On the wall</button>
+              </div><span />
+            </div>
+            <SizeRow label="Off the floor" value={o.elevation ?? 0} min={0} max={Math.max(0, 4 - o.height)} onChange={(v, u) => p.editPlan(pl => replaceObject(pl, setElevation(o, v)), u)} />
+            <p className="note">{o.wallMounted ? 'Hung on the wall; the bottom edge is this high.' : 'Standing on its feet; raise it to put it on a unit or a table.'}</p>
+          </>
+        )}
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="btn small" onClick={() => p.editPlan(pl => replaceObject(pl, turnObject(o, -Math.PI / 2)))} title="Turn a quarter left ([ turns 15°)"><Icon name="turnLeft" /> Turn</button>
           <button className="btn small" onClick={() => p.editPlan(pl => replaceObject(pl, turnObject(o, Math.PI / 2)))} title="Turn a quarter right (] turns 15°)"><Icon name="turnRight" /> Turn</button>
@@ -319,7 +337,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
 
   const setToKey = (m: MeterPoint) => {
     const target = m.targetLux ?? keyLux(p.exposure);
-    const sol = solveOutput(l, target, m.point, m.normal, p.lights, p.plan, p.windowTransmission, p.environment);
+    const sol = solveOutput(l, target, m.point, m.normal, p.lights, p.plan, p.windowTransmission, p.environment, p.location.display?.roomSurfaces);
     if (sol.kind === 'output') set({ dimmer: Math.round(sol.output * 100) / 100, isOn: true });
     else alert(sol.kind === 'tooDim' ? `Even at full this unit gives about ${fmtLux(sol.maxLux)} there.${sol.suggestedDistance ? ` Move it to about ${metres(sol.suggestedDistance)} away.` : ''}`
       : sol.kind === 'atMinimum' ? `At its lowest (${Math.round(sol.output * 100)} %) this unit still gives about ${fmtLux(sol.lux)} there. Move it back, or add ND or diffusion.`
@@ -360,6 +378,13 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         ) : <p className="note">{profile.color.minKelvin} K fixed{filterIDs.length ? ` · gelled to ${Math.round(pm.kelvin)} K` : ''}</p>}
       </Panel>
 
+      <Panel title="Placement">
+        <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
+        <Slider label="Pan" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
+        <Slider label="Tilt" value={l.tilt} min={-90} max={45} step={1} format={signedDeg} onChange={v => set({ tilt: v }, false)} />
+        <StandField light={l} replace={replace} />
+      </Panel>
+
       <Panel title="At meters and faces">
         {atMeters.length ? atMeters.map(({ m, own, total }) => (
           <div key={m.key} className="meter-row">
@@ -368,14 +393,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
             <button className="btn small" onClick={() => setToKey(m)} title={`Set output so ${m.name} reads ${m.targetLux ? fmtLux(m.targetLux) : 'key'}`}>Set to {m.targetLux ? 'target' : 'key'}</button>
           </div>
         )) : <p className="note">Doesn't reach any meter or person. Aim it, or add a meter where you want a reading.</p>}
-        <p className="note"><Badge /> Direct light and one bounce off boards. Room reflections aren't included, so real interiors read brighter.</p>
-      </Panel>
-
-      <Panel title="Placement">
-        <Slider label="Height" value={l.height} min={0.2} max={6} step={0.05} format={metres} onChange={v => set({ height: v }, false)} />
-        <Slider label="Pan" value={((l.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => set({ pan: v }, false)} />
-        <Slider label="Tilt" value={l.tilt} min={-90} max={45} step={1} format={signedDeg} onChange={v => set({ tilt: v }, false)} />
-        <StandField light={l} replace={replace} />
+        <p className="note"><Badge /> Direct light, one bounce off boards and one off the room's walls, floor and ceiling (see Light off the room). Light bouncing round more than once isn't included.</p>
       </Panel>
 
       <Panel title="More · modifier, gels, barn doors, throw" collapsible open={false}>
@@ -394,7 +412,7 @@ function LightInspector(p: InspectorProps & { light: LightFixture }) {
         {pm.beamIsAdjustable && pm.beamRange && (
           <Slider label="Beam" value={Math.min(Math.max(l.beamAngle, pm.beamRange[0]), pm.beamRange[1])} min={pm.beamRange[0]} max={pm.beamRange[1]} step={1} format={v => `${Math.round(v)}°`} onChange={v => set({ beamAngle: v }, false)} />
         )}
-        {!pm.beamIsAdjustable && <p className="note">Beam {pm.distribution === 'beam' ? `${Math.round(pm.beamAngle)}°` : pm.distribution === 'lambertian' ? 'soft (≈120°)' : 'all round'}.</p>}
+        {!pm.beamIsAdjustable && <p className="note">Beam {pm.distribution === 'beam' ? `${Math.round(pm.beamAngle)}°` : pm.distribution === 'grid' ? `${Math.round(pm.beamAngle)}° through the grid, with a soft edge (estimate)` : pm.distribution === 'lambertian' ? 'soft (≈120°)' : 'all round'}.</p>}
         <div className="label" style={{ margin: '12px 0 6px' }}>Gels, ND and diffusion</div>
         <div className="chips">
           {filters.map(f => {
@@ -605,8 +623,8 @@ function MeterInspector(p: InspectorProps & { meter: LightMeter }) {
         <Panel title="Where the light comes from">
           {breakdown.sort((a, b) => b.lux - a.lux).map((c, i) => {
             const l = p.lights.find(x => x.id === c.lightID);
-            const via = c.viaBounce ? p.lights.find(x => x.id === c.viaBounce) : undefined;
-            return <div key={i} className="meter-row"><span>{l?.name ?? ambientName(c.lightID) ?? 'Unit'}{via ? ` via ${via.name}` : ''}</span><span className="mono">≈ {fmtLux(c.lux)}</span><span /></div>;
+            const via = c.viaBounce ? p.lights.find(x => x.id === c.viaBounce)?.name ?? ambientName(c.viaBounce) : undefined;
+            return <div key={i} className="meter-row"><span>{l?.name ?? ambientName(c.lightID) ?? 'Unit'}{via ? ` off ${via}` : ''}</span><span className="mono">≈ {fmtLux(c.lux)}</span><span /></div>;
           })}
         </Panel>
       )}
@@ -640,7 +658,10 @@ function CameraInspector(p: InspectorProps) {
               onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, name: e.target.value } : x)) }), false)} /></div>
           : <div style={{ fontSize: 18, fontWeight: 400 }}>{title}</div>}
         <p className="mono muted">{focalNumber(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
-        {cam && <div className="actions" style={{ marginTop: 12 }}><button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button></div>}
+        <div className="actions" style={{ marginTop: 12 }}>
+          {p.lookThrough && <button className="btn small primary" onClick={() => p.lookThrough!(s)} title="Open the 3D view through this camera's lens, with its frame lines"><Icon name="camera" /> Look through it</button>}
+          {cam && <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>}
+        </div>
       </section>
       {shot && looksOf(p.location, p.scan?.id).length > 0 && (() => {
         const looks = looksOf(p.location, p.scan?.id);
@@ -724,7 +745,7 @@ function Overview(p: InspectorProps) {
         {p.meters.length > 0 && (
           <details className="note what">
             <summary><Badge /> What this means</summary>
-            <p>The stop a light meter would show at the camera settings above{extraText(1) ? ', then the light level' : ''}. Direct light plus one bounce{p.environment ? ', with the daylight and LED wall set below' : ''}; no room reflections.</p>
+            <p>The stop a light meter would show at the camera settings above{extraText(1) ? ', then the light level' : ''}. Direct light, one bounce off boards and one off the room{p.environment ? ', with the daylight and LED wall set below' : ''}.</p>
             <p>At {stopLabel(e.tStop)} the lens is about f/{fStop(e).toFixed(1)} ({Math.round(e.lensTransmission * 100)} % transmission); exposure time {speedLabel(exposureTime(e))}. A T-stop is a camera setting, not a measure of how bright the scene is.</p>
           </details>
         )}
@@ -742,6 +763,16 @@ function Overview(p: InspectorProps) {
       <WindowPresetsPanel {...p} />
       <DaylightPanel {...p} />
       <StudioPanel {...p} />
+      <Panel title={`Light off the room · ${ROOM_SURFACE_LABEL[p.location.display?.roomSurfaces ?? 'typical']}`} collapsible open={false}>
+        <div className="chips">
+          {(Object.keys(ROOM_SURFACE_LABEL) as RoomSurfaces[]).map(k => {
+            const on = (p.location.display?.roomSurfaces ?? 'typical') === k;
+            return <button key={k} className={'chip' + (on ? ' on' : '')} aria-pressed={on}
+              onClick={() => p.edit(loc => { const d = { ...(loc.display ?? {}) }; if (k === 'typical') delete d.roomSurfaces; else d.roomSurfaces = k; return { ...loc, display: d }; })}>{ROOM_SURFACE_LABEL[k]}</button>;
+          })}
+        </div>
+        <p className="note"><Badge /> One bounce of every unit, the sun and the sky off the walls, floor and ceiling. Typical: painted walls (about 50 %), a white ceiling, a mid-toned floor. Use Dark for a blacked-out room or a black studio.</p>
+      </Panel>
       <Panel title="Light through windows" collapsible open={false}>
         <Slider label="Glass passes" value={p.windowTransmission} min={0} max={1} step={0.01} format={pct}
           onChange={v => p.edit(loc => ({ ...loc, display: { ...(loc.display ?? {}), windowTransmission: v } }), false)} />

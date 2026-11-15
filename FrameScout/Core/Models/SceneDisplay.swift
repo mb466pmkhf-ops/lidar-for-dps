@@ -17,6 +17,9 @@ struct SceneDisplay: Codable, Hashable {
     var wallOpacity: Double? = nil
     /// False-colour exposure map on the plan.
     var showLuxMap: Bool? = nil
+    /// How much light the room's own surfaces throw back in the calculation (`RoomSurfaces` raw
+    /// value; kept as text so an unknown value from a newer app doesn't stop the location loading). nil = typical.
+    var roomSurfaces: String? = nil
 
     static let defaultWindowOpacity = 0.25
     /// Typical visible-light transmission of clear double glazing.
@@ -26,6 +29,7 @@ struct SceneDisplay: Codable, Hashable {
     var windowTransmissionValue: Double { windowTransmission ?? Self.defaultWindowTransmission }
     var wallOpacityValue: Double { wallOpacity ?? 1 }
     var luxMapOn: Bool { showLuxMap ?? false }
+    var roomSurfacesValue: RoomSurfaces { roomSurfaces.flatMap(RoomSurfaces.init(rawValue:)) ?? .typical }
 
     func isHidden(item key: String) -> Bool { hiddenItems?.contains(key) ?? false }
     func isHidden(group: SceneGroup) -> Bool { hiddenGroups?.contains(group.rawValue) ?? false }

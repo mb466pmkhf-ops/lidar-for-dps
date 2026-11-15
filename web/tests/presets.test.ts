@@ -38,7 +38,8 @@ describe('lighting presets', () => {
   it('follows the person, the camera and the stop', () => {
     const preset = capturePersonPreset('Mine', buildSetup('keyAndEdge', person, camera, exposure, plan).lights, person, camera, exposure, plan);
     const leo = { ...newCharacter('man', { x: 1.5, z: 0 }, 'Leo'), facing: 270 };
-    const brighter = { ...exposure, tStop: 4 };
+    // A stop darker: the key follows the stop down (going a stop up can need a bigger unit than the setup picked).
+    const brighter = { ...exposure, tStop: 2 };
     const built = buildPreset(preset, leo, { x: -1.5, z: 0 }, brighter, plan);
     expect(built.lights.map(l => l.name)).toEqual(['Key · Leo', 'Edge · Leo']);
     for (const l of built.lights) { expect(Math.abs(l.position.x)).toBeLessThan(3); expect(Math.abs(l.position.z)).toBeLessThan(2); }

@@ -20,6 +20,10 @@ export const skinStopsFromGrey = (tone: number) => Math.log2(reflectance[Math.mi
 
 /** Seat height of a sitting person: the sofa, chair or bed they sit on (placement.ts), else a usual chair. */
 export const seatHeightOf = (c: PrevisCharacter) => c.seatHeight ?? Math.min(0.45, c.height * 0.52 * 0.5);
+/** How far a seated person's hip joints sit above the seat: the thigh's half thickness, less a
+ *  centimetre of give in the cushion. Without it the thighs and seat were drawn inside the cushion.
+ *  FigureProportions.sitLift in Swift. */
+export const sitLift = (c: PrevisCharacter) => Math.max(0, c.height * (0.052 + 0.016 * Math.min(Math.max(c.build, 0), 1)) - 0.01);
 
 export function eyeHeight(c: PrevisCharacter): number {
   const h = c.height;
@@ -27,6 +31,6 @@ export function eyeHeight(c: PrevisCharacter): number {
   const head = h / (child ? 6 : 7.5);
   const standingHip = h * 0.52;
   const sitting = c.posture === 'sitting';
-  const drop = sitting ? standingHip - seatHeightOf(c) : 0;
+  const drop = sitting ? standingHip - seatHeightOf(c) - sitLift(c) : 0;
   return h - head * 0.48 - drop;
 }

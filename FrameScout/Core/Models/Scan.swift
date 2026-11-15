@@ -166,6 +166,13 @@ struct PlanObject: Codable, Hashable, Identifiable {
     var rotation: Double
     /// Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items.
     var byHand: Bool? = nil
+    /// Height of its underside above the floor (m): a TV on the wall or up on a unit. nil = on the floor.
+    var elevation: Double? = nil
+    /// Hung on the wall it backs onto (TVs and screens).
+    var wallMounted: Bool? = nil
+
+    /// Underside above the floor, 0 when it stands on it.
+    var base: Double { max(0, elevation ?? 0) }
 }
 
 struct FloorPlan: Codable, Hashable {

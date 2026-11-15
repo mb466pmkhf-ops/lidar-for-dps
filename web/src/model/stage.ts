@@ -453,12 +453,15 @@ export const AMBIENT_IDS = {
   sun: '5A11D000-0000-4000-8000-000000000001',
   sky: '5A11D000-0000-4000-8000-000000000002',
   ledWall: '5A11D000-0000-4000-8000-000000000003',
+  /** Light thrown back off the room's walls, floor and ceiling (a `viaBounce` id, not a source). */
+  room: '5A11D000-0000-4000-8000-000000000004',
 };
 export function ambientName(id: string): string | undefined {
   const k = id.toUpperCase();
   if (k === AMBIENT_IDS.sun) return 'Sun through the window';
   if (k === AMBIENT_IDS.sky) return 'Daylight through the windows';
   if (k === AMBIENT_IDS.ledWall) return 'LED wall';
+  if (k === AMBIENT_IDS.room) return 'the walls, floor and ceiling';
   return undefined;
 }
 

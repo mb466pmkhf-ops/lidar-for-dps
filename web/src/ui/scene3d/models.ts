@@ -7,7 +7,7 @@ import { fixtureProfile, type ResolvedPhotometrics } from '../../model/photometr
 import { cameraSupport, gripStandCount, type LightSupport } from '../../model/rigging';
 import { drape, drapeOptics, frameGels, gripSize } from '../../model/grip';
 import { boardOptics } from '../../model/calculator';
-import { hairOf, isChild, seatHeightOf, shapeBlend, skinRGB } from '../../model/characters';
+import { hairOf, isChild, seatHeightOf, shapeBlend, sitLift, skinRGB } from '../../model/characters';
 import {
   ALONG, BLACK, CHROME, DARK, FABRIC_BLACK, GLASS_LENS, RUBBER, SAND, SATIN, SILVER_LINING, STEEL, WOOD_LEG,
   bar, cached, fabricBump, fresnelTexture, gridTexture, ledTexture, limb, mat, mesh, rbox, v,
@@ -520,7 +520,7 @@ export function person(c: PrevisCharacter): THREE.Group {
   const h = c.height, sitting = c.posture === 'sitting';
   const child = isChild(c.type), fem = shapeBlend[c.type] ?? 0.5, bust = !child && fem > 0.75;
   const headH = h / (child ? 6 : 7.5), r = headH / 2;
-  const hip0 = h * 0.52, drop = sitting ? hip0 - seatHeightOf(c) : 0;
+  const hip0 = h * 0.52, drop = sitting ? hip0 - seatHeightOf(c) - sitLift(c) : 0;
   const hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop;
   const build = Math.min(Math.max(c.build, 0), 1);
   const sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem);

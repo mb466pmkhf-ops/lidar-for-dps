@@ -99,7 +99,7 @@ enum PlanSceneBuilder {
                 ?? SceneMesh.box(center: Vec3(0, Float(object.height) / 2, 0), axes: (ux, up, uz),
                                  size: Vec3(Float(object.width), Float(object.height), Float(object.depth)), material: .object)
             let node = SceneNode(name: "\(name)_\(String(format: "%02d", counters[name] ?? 1))", mesh: mesh,
-                                 translation: Vec3(Float(object.center.x), floorY, Float(object.center.z)))
+                                 translation: Vec3(Float(object.center.x), floorY + Float(object.base), Float(object.center.z)))
             node.info = ["category": object.category.lowercased(), "id": object.id.uuidString]
             objectsNode.addChild(node)
         }

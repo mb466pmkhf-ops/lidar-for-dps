@@ -246,6 +246,16 @@ let omega55 = BeamDistribution.beam.solidAngleFactor(beamAngle: 55)
 check(omega55 > 0.6 && omega55 < 0.85, "55° beam solid angle ≈ 0.77 sr (\(omega55))")
 check(abs(BeamDistribution.beam.relativeIntensity(offAxis: 27.5, beamAngle: 55) - 0.5) < 1e-9, "beam angle is the 50 % point")
 check(abs(BeamDistribution.lambertian.relativeIntensity(offAxis: 60, beamAngle: 120) - 0.5) < 1e-9, "lambertian 50 % at 60° off axis")
+// Egg-crate grid: 50 % at the rated half angle, a soft edge out to nothing, never hotter than the bare face.
+check(abs(BeamDistribution.grid.relativeIntensity(offAxis: 20, beamAngle: 40) - 0.5) < 1e-9, "grid 50 % at half its rated angle")
+check(BeamDistribution.grid.relativeIntensity(offAxis: 30, beamAngle: 40) > 0.15, "grid edge is soft (\(BeamDistribution.grid.relativeIntensity(offAxis: 30, beamAngle: 40)) at 30°)")
+check(BeamDistribution.grid.relativeIntensity(offAxis: 40, beamAngle: 40) == 0, "grid cuts off past its cut-off angle")
+var gridPanel = LightFixture(name: "P", kind: .ledPanel, position: P(0, 0)); gridPanel.profileID = "panel-1x1-bi"
+let barePanelPeak = gridPanel.photometrics.peakIntensity
+gridPanel.modifierID = "panel-grid-40"
+let gridPM = gridPanel.photometrics
+check(gridPM.distribution == .grid && abs(gridPM.peakIntensity / barePanelPeak - 0.8) < 1e-9, "grid passes 80 % of the bare panel's centre (\(gridPM.peakIntensity / barePanelPeak))")
+check(gridPM.flux < gridPanel.photometrics.flux + 1 && gridPM.flux / (barePanelPeak * .pi) < 0.2, "grid throws away most of the off-axis light")
 
 var cob = LightFixture(name: "Key", kind: .fresnel, position: P(0, 0), pan: 0)
 cob.profileID = "cob-300-d"
@@ -341,12 +351,12 @@ var room = FloorPlan()
 room.walls = [PlanSegment(kind: .wall, a: P(-5, -2), b: P(5, -2), height: 2.7, bottom: 0)]
 room.windows = [PlanSegment(kind: .window, a: P(-1, -2), b: P(1, -2), height: 1.5, bottom: 0.8)]
 let outside = LightingCalculator.Point(x: 0, y: 1.5, z: -4)
-let throughGlass = C.reading(at: outside, normal: facingKey, scene: C.Scene(lights: [cob], plan: room, windowTransmission: 0.78)).lux
+let throughGlass = C.reading(at: outside, normal: facingKey, scene: C.Scene(lights: [cob], plan: room, windowTransmission: 0.78, surfaces: .off)).lux
 let open4 = C.reading(at: outside, normal: facingKey, scene: C.Scene(lights: [cob])).lux
 check(abs(throughGlass / open4 - 0.78) < 1e-6, "window passes its transmission")
 var lowLight = cob; lowLight.height = 0.3
 let lowOutside = LightingCalculator.Point(x: 0, y: 0.3, z: -4)
-check(C.reading(at: lowOutside, normal: facingKey, scene: C.Scene(lights: [lowLight], plan: room)).lux == 0, "wall below the sill blocks")
+check(C.reading(at: lowOutside, normal: facingKey, scene: C.Scene(lights: [lowLight], plan: room, surfaces: .off)).lux == 0, "wall below the sill blocks")
 // A flag in the beam blocks; a bounce board sends light back.
 var flag = LightFixture(name: "Flag", kind: .flag, position: P(0, -1.5)); flag.height = 1.5; flag.width = 0.6
 check(C.reading(at: at3, normal: facingKey, scene: C.Scene(lights: [cob, flag])).lux == 0, "flag in the beam blocks it")
@@ -483,7 +493,7 @@ var maya = PrevisCharacter(name: "Maya", type: .woman, position: P(0, 1))
 check(abs(maya.eyeHeight / maya.height - 0.936) < 0.01, "adult eye height ≈ 94 % of height")
 let standingEye = maya.eyeHeight
 maya.posture = .sitting
-check(maya.eyeHeight < standingEye - 0.4 && maya.eyeHeight > 1.0, "sitting lowers the eyes")
+check(maya.eyeHeight < standingEye - 0.3 && maya.eyeHeight > 1.0, "sitting lowers the eyes (to about 1.2 m on a chair)")
 let kid = PrevisCharacter(name: "Sam", type: .boy, position: P(0, 0))
 check(kid.proportions.headHeight / kid.height > maya.proportions.headHeight / maya.height, "children have bigger heads for their height")
 var broad = maya; broad.build = 1
@@ -615,7 +625,7 @@ do {
                                       person: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
     var leo = PrevisCharacter(name: "Leo", type: .man, position: P(1.5, 0), facing: 270)
     leo.scanID = nil
-    var brighter = exp; brighter.tStop = 4
+    var brighter = exp; brighter.tStop = 2 // a stop darker: going up can need a bigger unit than the setup picked
     let moved = mine.build(for: leo, camera: P(-1.5, 0), exposure: brighter, plan: demoPlan)
     check(moved.lights.map(\.name) == ["Key · Leo", "Edge · Leo"], "preset names units after the new person")
     check(moved.lights.allSatisfy { l in abs(l.position.x) < 3 && abs(l.position.z) < 2 }, "preset units stay inside the room")
@@ -736,7 +746,8 @@ do {
     func lux(_ l: Location, _ plan: FloorPlan, _ p: LightingCalculator.Point, _ n: LightingCalculator.Point, _ id: UUID? = nil) -> Double {
         let r = LightingCalculator.reading(at: p, normal: n, scene: .init(lights: l.lightFixtures, plan: plan, windowTransmission: 0.78,
                                                                            environment: l.environment(plan: plan, scan: nil)))
-        return id.map { id in r.contributions.filter { $0.lightID == id }.reduce(0) { $0 + $1.lux } } ?? r.lux
+        // A source's own light, not what the room throws back (tested under "Light off the room").
+        return id.map { id in r.contributions.filter { $0.lightID == id && $0.viaBounce == nil }.reduce(0) { $0 + $1.lux } } ?? r.lux
     }
     let near = LightingCalculator.Point(x: 0, y: 1.2, z: -1.2), toWindow = LightingCalculator.Point(x: 0, y: 0, z: -1)
     let sun = lux(lit, room, near, toWindow, Stage.sunID)
@@ -1001,6 +1012,26 @@ do {
     check(ExposureSettings.steppedStop(1, thirds: -1) == 1 && ExposureSettings.steppedISO(800, by: 1) == 1000 && ExposureSettings.steppedISO(12800, by: 1) == 12800, "steps stop at the ends")
 }
 
+// MARK: Light off the room (same case as "light off the room" in web/tests/lighting.test.ts)
+do {
+    var spec = DrawnRoom()
+    spec.length = 5; spec.width = 4; spec.ceiling = 2.6; spec.windows = 0; spec.door = false
+    let room = spec.plan
+    var up = LightFixture(name: "Up", kind: .ledPanel, position: P(0, 0)); up.profileID = "panel-1x1-bi"; up.height = 1.2; up.tilt = 90
+    let point = LightingCalculator.Point(x: 1.5, y: 1.2, z: 0), normal = LightingCalculator.Point(x: -1, y: 0, z: 0)
+    func lux(_ s: RoomSurfaces) -> LightingCalculator.Reading {
+        LightingCalculator.reading(at: point, normal: normal, scene: LightingCalculator.Scene(lights: [up], plan: room, surfaces: s))
+    }
+    check(lux(.off).lux == 0, "no room bounce: a face the unit can't see gets nothing")
+    check(lux(.typical).lux > 5, "a unit bounced off the ceiling lights a face it can't see (\(lux(.typical).lux) lx)")
+    check(lux(.dark).lux < lux(.typical).lux && lux(.light).lux > lux(.typical).lux, "lighter rooms bounce more")
+    let c = lux(.typical).contributions
+    check(c.count == 1 && c[0].lightID == up.id && c[0].viaBounce == Stage.roomID, "room bounce is credited to the unit, off the room")
+    check(abs(LightingCalculator.reading(at: point, normal: normal, scene: LightingCalculator.Scene(lights: [up], plan: room)).lux - lux(.typical).lux) < 1e-9, "typical room is the default")
+    check(LightingCalculator.reading(at: point, normal: normal, scene: LightingCalculator.Scene(lights: [up])).lux == 0, "no walls, no room bounce")
+    print("room bounce typical \(lux(.typical).lux) lx")
+}
+
 // MARK: Set pieces by hand (same cases as web/tests/setPieces.test.ts)
 do {
     var spec = DrawnRoom()
@@ -1014,6 +1045,15 @@ do {
     var low = spec; low.ceiling = 2.0
     let tall = SetPieces.placeOpening(low.plan, at: P(0, -2), preset: SetPieces.opening("tall-window")!)!
     check(tall.bottom + tall.height <= 1.95 + 1e-9, "openings stay under the top of the wall")
+    // A TV hung on the wall (same cases as "TV on the wall" in setPieces.test.ts).
+    let tv = SetPieces.placeFurniture(room, at: P(1, 0.5), preset: SetPieces.furniturePreset("tv")!)
+    check(SetPieces.isScreen(tv.category) && !SetPieces.isScreen("Sofa"), "a TV is a screen, a sofa isn't")
+    let hung = SetPieces.mountedOnWall(room, tv)!
+    check(hung.wallMounted == true && hung.elevation == SetPieces.wallTVElevation && close(abs(hung.center.z), 2 - 0.04 - 0.02), "TV hangs on the nearest wall at the usual height")
+    check(SetPieces.mountedOnWall(room, SetPieces.withElevation(tv, 1.3))!.elevation == 1.3, "a TV keeps the height it already has")
+    check(SetPieces.standingOnFeet(hung).wallMounted == nil && SetPieces.standingOnFeet(hung).elevation == SetPieces.wallTVElevation, "off the wall it keeps its height")
+    check(abs(SetPieces.withElevation(tv, 9).elevation! - (4 - 0.71)) < 1e-9 && SetPieces.withElevation(tv, 0).elevation == nil, "TV height stays in the room; 0 clears it")
+    check(SetPieces.mountedOnWall(nil, tv) == nil, "no wall, no wall mount")
     let slid = SetPieces.slide(w, to: P(-2, -2.2), in: room)
     check(close(slid.midpoint.x, -2) && slid.a.z == -2 && slid.id == w.id, "openings slide along the wall")
     let other = SetPieces.slide(w, to: P(2.9, 0.5), in: room)
@@ -1037,7 +1077,7 @@ do {
     plan.removeSegment(door.id)
     check(plan.openings.isEmpty, "segments delete by id")
     check(SetPieces.openings.map(\.id) == ["door", "double-door", "window", "tall-window", "opening"]
-          && SetPieces.furniture.map(\.id) == ["sofa", "armchair", "chair", "dining-table", "coffee-table", "desk", "bed", "wardrobe", "sideboard", "shelves", "fridge", "cooker", "sink", "bath", "toilet", "fireplace", "box"],
+          && SetPieces.furniture.map(\.id) == ["sofa", "armchair", "chair", "dining-table", "coffee-table", "desk", "bed", "wardrobe", "sideboard", "shelves", "fridge", "cooker", "sink", "bath", "toilet", "fireplace", "tv", "box"],
           "same presets as the web planner")
     // Older plans load: byHand is optional.
     let old = try JSONEncoder().encode(PlanObject(category: "Sofa", center: P(0, 0), width: 2, depth: 1, height: 1, rotation: 0))

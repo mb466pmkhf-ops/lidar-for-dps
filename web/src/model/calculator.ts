@@ -4,8 +4,10 @@
 // overhead frame flown flat cuts what passes through it), and grip as a second source: bounce
 // boards, flags and negs send back what they reflect, diffusion frames re-emit what they pass. Curtains,
 // and (with an Environment from stage.ts) sun and sky through the windows and an LED wall.
-// Not modelled: room inter-reflections, furniture shadows. Every figure is an estimate.
-import type { FloorPlan, LightFixture, LightKind, LightMeter, Location, PlanPoint, PlanSegment, UUID, PlanRect, MeterFacing } from './types';
+// The room's walls, floor and ceiling send back one bounce of everything that lands on them (D-019),
+// at reflectances picked in the display settings. Not modelled: light bouncing more than once,
+// furniture shadows, the colour of the walls. Every figure is an estimate.
+import type { FloorPlan, LightFixture, LightKind, LightMeter, Location, PlanPoint, PlanSegment, UUID, PlanRect, MeterFacing, RoomSurfaces } from './types';
 import { barnDoorTransmission, barnDoorsOpen, distanceFactor, fixtureProfile, openBarnDoors, photometrics, relativeIntensity, type ResolvedPhotometrics } from './photometrics';
 import type { BarnDoors } from './types';
 import { horizontalFOV } from './camera';
@@ -66,8 +68,26 @@ export const DEFAULT_WINDOW_TRANSMISSION = 0.78;
 /** Each board is split into this many patches a side, so a frame only half in the beam glows only where it is lit. */
 const PATCHES = 3;
 
+/** A piece of the room's walls, floor or ceiling, re-emitting one bounce of what lands on it like a
+ *  matte surface. `shares` splits its intensity by the source that lit it (a unit, sun, sky, LED wall). */
+export interface RoomPatch { centre: Vec; normal: Vec; intensity: number; radius: number; shares: { lightID: UUID; intensity: number }[] }
+
+/** Reflectance of walls, ceiling and floor for each setting. Typical: emulsion walls, a white
+ *  ceiling, a mid-toned wooden or carpeted floor. Dark: a blacked-out room or studio. */
+export const ROOM_SURFACES: Record<RoomSurfaces, { wall: number; ceiling: number; floor: number }> = {
+  off: { wall: 0, ceiling: 0, floor: 0 },
+  dark: { wall: 0.08, ceiling: 0.1, floor: 0.06 },
+  typical: { wall: 0.5, ceiling: 0.7, floor: 0.2 },
+  light: { wall: 0.75, ceiling: 0.8, floor: 0.35 },
+};
+/** Smallest piece of room surface (m); bigger rooms use bigger pieces so there are never many more than ROOM_PATCHES. */
+export const ROOM_CELL = 1;
+export const ROOM_PATCHES = 160;
+
 export interface Scene {
   emitters: Emitter[]; boards: Board[]; walls: PlanSegment[]; apertures: PlanSegment[]; windowTransmission: number; patches: Patch[];
+  /** One bounce off the room's walls, floor and ceiling. */
+  room: RoomPatch[];
   /** Diffuse rectangles: the windows' daylight and the LED wall. */
   areas: AreaSource[];
   /** Direction towards the sun and its level square-on, when it is up. */
@@ -75,8 +95,8 @@ export interface Scene {
   plan?: FloorPlan;
 }
 
-export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment): Scene {
-  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission, patches: [], areas: [], plan };
+export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment, surfaces: RoomSurfaces = 'typical'): Scene {
+  const scene: Scene = { emitters: [], boards: [], walls: plan?.walls ?? [], apertures: plan ? [...plan.windows, ...plan.doors, ...plan.openings] : [], windowTransmission, patches: [], room: [], areas: [], plan };
   if (env) addEnvironment(scene, env, plan);
   for (const l of lights) {
     const axis = direction(l.pan, l.tilt);
@@ -94,7 +114,67 @@ export function buildScene(lights: LightFixture[], plan?: FloorPlan, windowTrans
     }
   }
   scene.patches = secondarySources(scene);
+  scene.room = roomSources(scene, ROOM_SURFACES[surfaces] ?? ROOM_SURFACES.typical);
   return scene;
+}
+
+/** One bounce off the room: the walls (less their windows, doors and openings), the floor and the
+ *  ceiling are cut into pieces; each takes what every unit, the sun, the sky and an LED wall put on
+ *  it (with everything in the way) and sends back its reflectance of it like a matte surface. Light
+ *  off grip doesn't bounce again, and the room doesn't light itself twice. */
+function roomSources(scene: Scene, r: { wall: number; ceiling: number; floor: number }): RoomPatch[] {
+  const plan = scene.plan;
+  if (!plan || !scene.walls.length || !(r.wall > 0 || r.ceiling > 0 || r.floor > 0)) return [];
+  if (!scene.emitters.length && !scene.sun && !scene.areas.length) return [];
+  const top = Math.max(0, ...scene.walls.map(w => w.bottom + w.height));
+  if (!(top > 0.3)) return [];
+  const b = plan.bounds, bw = b.maxX - b.minX, bd = b.maxZ - b.minZ;
+  const wallArea = scene.walls.reduce((s, w) => s + planDist(w.a, w.b) * w.height, 0);
+  const cell = Math.max(ROOM_CELL, Math.sqrt((wallArea + 2 * bw * bd) / ROOM_PATCHES));
+  const cells: { centre: Vec; normal: Vec; area: number; reflectance: number }[] = [];
+  if (r.wall > 0) for (const w of scene.walls) {
+    const L = planDist(w.a, w.b);
+    if (!(L > 0.05) || !(w.height > 0.05)) continue;
+    const n = inwardNormal(w, plan);
+    const nu = Math.max(1, Math.round(L / cell)), nv = Math.max(1, Math.round(w.height / cell));
+    for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+      const u = (i + 0.5) / nu, y = w.bottom + (j + 0.5) / nv * w.height;
+      const q = { x: w.a.x + (w.b.x - w.a.x) * u, z: w.a.z + (w.b.z - w.a.z) * u };
+      if (scene.apertures.some(o => distanceToSegment(q, o.a, o.b) < 0.15 && y >= o.bottom && y <= o.bottom + o.height)) continue;
+      cells.push({ centre: vec(q.x + n.x * 0.03, y, q.z + n.z * 0.03), normal: vec(n.x, 0, n.z), area: (L / nu) * (w.height / nv), reflectance: r.wall });
+    }
+  }
+  const nx = Math.max(1, Math.round(bw / cell)), nz = Math.max(1, Math.round(bd / cell)), cw = bw / nx, ch = bd / nz;
+  for (const [y, ny, refl] of [[0.03, 1, r.floor], [top - 0.03, -1, r.ceiling]] as const) {
+    if (!(refl > 0)) continue;
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      const p = { x: b.minX + (i + 0.5) * cw, z: b.minZ + (k + 0.5) * ch };
+      if (!insideRoom(p, plan)) continue;
+      cells.push({ centre: vec(p.x, y, p.z), normal: vec(0, ny, 0), area: cw * ch, reflectance: refl });
+    }
+  }
+  const out: RoomPatch[] = [];
+  for (const c of cells) {
+    const shares: { lightID: UUID; intensity: number }[] = [];
+    const k = c.reflectance * c.area / Math.PI; // a matte surface's intensity: exitance × area ÷ π
+    for (const e of scene.emitters) {
+      const lux = illuminanceFrom(e, c.centre, c.normal, scene);
+      if (lux > 0) shares.push({ lightID: e.id, intensity: lux * k });
+    }
+    if (scene.sun) {
+      const lux = sunlight(c.centre, c.normal, scene);
+      if (lux > 0) shares.push({ lightID: AMBIENT_IDS.sun, intensity: lux * k });
+    }
+    for (const area of scene.areas) {
+      const lux = areaIlluminance(area, c.centre, c.normal, scene);
+      if (!(lux > 0)) continue;
+      const had = shares.find(s => s.lightID === area.id);
+      if (had) had.intensity += lux * k; else shares.push({ lightID: area.id, intensity: lux * k });
+    }
+    const intensity = shares.reduce((s, x) => s + x.intensity, 0);
+    if (intensity > 1e-6) out.push({ centre: c.centre, normal: c.normal, intensity, radius: Math.sqrt(c.area / Math.PI), shares });
+  }
+  return out;
 }
 
 /** What every board re-emits, worked out once per scene: for each unit, the light landing on each
@@ -225,6 +305,19 @@ function fromPatch(patch: Patch, point: Vec, normal: Vec, scene: Scene): number 
   return lux * transmission(patch.centre, point, scene, [patch.board]);
 }
 
+/** Light one piece of the room sends to `point`, like `fromPatch`. */
+function fromSurface(patch: RoomPatch, point: Vec, normal: Vec, scene: Scene): number {
+  const toPoint = sub(point, patch.centre);
+  const d = len(toPoint);
+  if (!(d > 0.05)) return 0;
+  const v = scale(toPoint, 1 / d);
+  const out = dot(v, patch.normal), incidence = -dot(v, normal);
+  if (!(out > 0 && incidence > 0)) return 0;
+  const lux = patch.intensity * out * incidence / (d * d + patch.radius * patch.radius);
+  if (!(lux > 1e-6)) return 0;
+  return lux * transmission(patch.centre, point, scene);
+}
+
 export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
   const contributions: Contribution[] = [];
   let total = 0;
@@ -250,6 +343,17 @@ export function reading(point: Vec, normal: Vec, scene: Scene): Reading {
     if (lux > 0) byArea.set(area.id, (byArea.get(area.id) ?? 0) + lux);
   }
   for (const [lightID, lux] of byArea) { contributions.push({ lightID, lux }); total += lux; }
+  // The room's bounce: one contribution per source, marked as coming off the room.
+  for (const patch of scene.room) {
+    const lux = fromSurface(patch, point, normal, scene);
+    if (!(lux > 0)) continue;
+    for (const s of patch.shares) {
+      const part = lux * s.intensity / patch.intensity;
+      const had = contributions.find(c => c.lightID === s.lightID && c.viaBounce === AMBIENT_IDS.room);
+      if (had) had.lux += part; else contributions.push({ lightID: s.lightID, lux: part, viaBounce: AMBIENT_IDS.room });
+    }
+    total += lux;
+  }
   return { lux: total, contributions };
 }
 
@@ -392,10 +496,10 @@ export type IntensitySolution =
   | { kind: 'othersTooBright'; othersLux: number }
   | { kind: 'noContribution' };
 
-export function solveOutput(light: LightFixture, target: number, point: Vec, normal: Vec, allLights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment): IntensitySolution {
+export function solveOutput(light: LightFixture, target: number, point: Vec, normal: Vec, allLights: LightFixture[], plan?: FloorPlan, windowTransmission = DEFAULT_WINDOW_TRANSMISSION, env?: Environment, surfaces: RoomSurfaces = 'typical'): IntensitySolution {
   const others = allLights.filter(l => l.id !== light.id);
   const full = { ...light, dimmer: 1, isOn: true };
-  const fullReading = reading(point, normal, buildScene([...others, full], plan, windowTransmission, env));
+  const fullReading = reading(point, normal, buildScene([...others, full], plan, windowTransmission, env, surfaces));
   const mine = fullReading.contributions.filter(c => c.lightID === light.id).reduce((s, c) => s + c.lux, 0);
   const othersLux = fullReading.lux - mine;
   if (!(mine > 1e-6)) return { kind: 'noContribution' };

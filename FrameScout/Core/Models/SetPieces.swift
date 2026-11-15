@@ -53,6 +53,7 @@ enum SetPieces {
         FurniturePreset(id: "bath", label: "Bath", category: "Bathtub", width: 1.7, depth: 0.75, height: 0.55),
         FurniturePreset(id: "toilet", label: "Toilet", category: "Toilet", width: 0.4, depth: 0.65, height: 0.8),
         FurniturePreset(id: "fireplace", label: "Fireplace", category: "Fireplace", width: 1.4, depth: 0.4, height: 1.1),
+        FurniturePreset(id: "tv", label: "TV (55 in)", category: "Television", width: 1.23, depth: 0.08, height: 0.71),
         FurniturePreset(id: "box", label: "Box", category: "Box", width: 0.6, depth: 0.6, height: 0.6),
     ]
 
@@ -165,6 +166,43 @@ enum SetPieces {
         if (c.x - hit.point.x) * nx + (c.z - hit.point.z) * nz < 0 { nx = -nx; nz = -nz }
         let off = depth / 2 + 0.02
         return (P(hit.point.x + nx * off, hit.point.z + nz * off), r6(atan2(uz, ux)))
+    }
+
+    /// TVs, monitors and screens: they can hang on a wall and be raised (isScreen in setPieces.ts).
+    static func isScreen(_ category: String) -> Bool {
+        let k = category.trimmingCharacters(in: .whitespaces).lowercased()
+        return k.contains("tele") || k == "tv" || k.contains("screen") || k.contains("monitor")
+    }
+    /// Usual underside height (m) of a TV hung on a wall: its middle near seated eye level.
+    static let wallTVElevation = 0.95
+
+    /// Hangs a piece on the nearest wall, keeping its height off the floor or, the first time,
+    /// putting it at the usual height. nil with no wall.
+    static func mountedOnWall(_ plan: FloorPlan?, _ o: PlanObject) -> PlanObject? {
+        guard let wall = backOntoWall(plan, center: o.center, depth: o.depth, snap: 50) else { return nil }
+        var n = o
+        n.center = wall.center; n.rotation = wall.rotation
+        n.wallMounted = true
+        n.elevation = r3(o.elevation ?? wallTVElevation)
+        n.byHand = true
+        return n
+    }
+
+    /// Takes a piece off the wall: it stands on its own feet at the same height.
+    static func standingOnFeet(_ o: PlanObject) -> PlanObject {
+        var n = o
+        n.wallMounted = nil
+        n.byHand = true
+        return n
+    }
+
+    /// Sets how high a piece's underside is, 0…(4 m less its own height); 0 clears it.
+    static func withElevation(_ o: PlanObject, _ elevation: Double) -> PlanObject {
+        let e = r3(min(max(0, elevation.isFinite ? elevation : 0), max(0, 4 - o.height)))
+        var n = o
+        n.elevation = e > 0 ? e : nil
+        n.byHand = true
+        return n
     }
 
     /// A piece of furniture at `p`; near a wall it turns to back onto it.

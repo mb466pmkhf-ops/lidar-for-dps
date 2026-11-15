@@ -16,6 +16,8 @@ struct VirtualCameraView: View {
     @State private var sunMinutes: Double = 16 * 60
     @State private var sunDate = Date()
     @State private var rigLightsOn = true
+    /// Same picture choice as the plan's 3D view: "stop" as shot at the camera settings, "fit" fitted.
+    @AppStorage("framescan.3d.look") private var look3D = "stop"
 
     private var location: Location? { store.location(ref) }
 
@@ -73,7 +75,9 @@ struct VirtualCameraView: View {
         }
         .onChange(of: orbit) { _, _ in updateMarkers(); updateRigLights(); updatePeople() }
         .onChange(of: location?.characters) { _, _ in updatePeople() }
-        .onChange(of: location?.display) { _, _ in applyDisplay() }
+        .onChange(of: location?.display) { _, _ in applyDisplay(); updateRigLights() }
+        .onChange(of: location?.exposureSettings) { _, _ in look3D = "stop"; updateRigLights() }
+        .onChange(of: look3D) { _, _ in updateRigLights() }
         .onChange(of: sunOn) { _, _ in updateSun() }
         .onChange(of: location?.lightFixtures) { _, _ in updateRigLights() }
         .onChange(of: rigLightsOn) { _, _ in updateRigLights() }
@@ -119,7 +123,10 @@ struct VirtualCameraView: View {
         let lights = rigLightsOn && !display.isHidden(group: .lights)
             ? (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid } : []
         // Looking through the camera: no beam volumes or labels in the frame.
-        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit, hideGrip: display.isHidden(group: .grip))
+        let key = (location?.exposureSettings ?? ExposureSettings()).keyLux
+        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit, hideGrip: display.isHidden(group: .grip),
+                        plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) },
+                        referenceLux: look3D == "fit" ? nil : key, surfaces: display.roomSurfacesValue)
     }
 
     private var sunAvailable: Bool {
@@ -153,6 +160,9 @@ struct VirtualCameraView: View {
                 }
             }
             if !(location?.lightFixtures.isEmpty ?? true) {
+                TagChip(text: look3D == "fit" ? "Fitted" : "As shot · \(ExposureSettings.stopLabel((location?.exposureSettings ?? ExposureSettings()).tStop))",
+                        selected: look3D != "fit") { look3D = look3D == "fit" ? "stop" : "fit" }
+                    .accessibilityHint("Switches between the picture as the camera exposes it and one fitted to the screen. A preview, not a reading.")
                 OverlayButton(systemImage: rigLightsOn ? "lightbulb.fill" : "lightbulb", tint: rigLightsOn ? Theme.sun : .white, size: 44) {
                     rigLightsOn.toggle()
                 }

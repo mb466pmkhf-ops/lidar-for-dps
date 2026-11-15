@@ -175,8 +175,9 @@ enum SceneKitBuilder {
     /// light's own space, or nil. Drawing only; lux comes from `LightingCalculator`.
     static func clippedBeam(pm: ResolvedPhotometrics, doors: BarnDoors, color: UIColor, rays: Int = 28,
                             hit: (SIMD3<Float>) -> Float?) -> SCNNode? {
-        guard pm.distribution == .beam || pm.distribution == .lambertian else { return nil }
-        let half = min(pm.distribution == .beam ? pm.beamAngle * 0.68 : 60, 75)
+        guard pm.distribution == .beam || pm.distribution == .lambertian || pm.distribution == .grid else { return nil }
+        let gridHalf = atan(Photometry.gridCutoffTan(beamAngle: pm.beamAngle)) * 180 / .pi * 0.75
+        let half = min(pm.distribution == .beam ? pm.beamAngle * 0.68 : pm.distribution == .grid ? gridHalf : 60, 75)
         let th = Float(tan(half * .pi / 180))
         func t(_ limit: Double) -> Float { Float(tan(min(half, pm.barnDoorsAvailable ? limit : 90) * .pi / 180)) }
         let l = t(doors.left), r = t(doors.right), u = t(doors.top), d = t(doors.bottom)
@@ -236,7 +237,23 @@ enum SceneKitBuilder {
     /// unit in the scene (from the photometric model), so units keep their true ratio to each other
     /// while the picture as a whole is fitted to the screen. Never used for lux.
     static func viewportIntensity(share: Double) -> CGFloat {
-        CGFloat(800 * min(max(share, 0.004), 1))
+        // `atThree` keeps a card 3 m from the brightest unit as bright as the simulator shots of
+        // PR #15 were tuned to; past the reference a unit can be up to three stops over (as shot).
+        CGFloat(800 * 0.645 / atThree * min(max(share, 0.004), 8))
+    }
+
+    /// SceneKit has no inverse-square falloff, only a curve from full to nothing between two
+    /// distances. This one follows 1/d² to within about two thirds of a stop from 1.5 m to 6 m (the
+    /// old 0.3–14 m curve lost over two stops close to a unit and made far walls too bright, which
+    /// is much of why the phone and the desktop looked different). Picture only; lux never uses it.
+    static let falloffEnd = 12.0
+    static let falloffExponent = 4.0
+    /// The curve's value at 3 m, where `viewportIntensity` is set.
+    static let atThree = pow((falloffEnd - 3) / falloffEnd, falloffExponent)
+    static func falloff(_ light: SCNLight) {
+        light.attenuationStartDistance = 0
+        light.attenuationEndDistance = CGFloat(falloffEnd)
+        light.attenuationFalloffExponent = CGFloat(falloffExponent)
     }
 
     /// A small top-to-bottom gradient, for the backdrop and for reflections in metal and glass.
@@ -433,6 +450,9 @@ final class VirtualSceneModel: ObservableObject {
     private var viewportLights: [UUID: (light: SCNLight, onAxis: Double, full: Double, on: Bool)] = [:]
     /// Soft sources standing in for light thrown back off grip and passed through diffusion (D-013).
     private let gripGlow = SCNNode()
+    /// Soft lights standing in for the walls, floor and ceiling handing light back (`setRoomGlow`).
+    private let roomGlow = SCNNode()
+    private static let roomGlowCount = 3
     /// Flags, frames and boards a beam's haze stops at.
     private var beamBlockers: [LightFixture] = []
     /// True while the sun has been placed from a real date and time (the viewfinder's sun study).
@@ -483,7 +503,7 @@ final class VirtualSceneModel: ObservableObject {
 
         scene.rootNode.addChildNode(grid)
         scene.rootNode.addChildNode(world)
-        for n in [scanHolder, markers, subjectMarks, lightRig, gripGlow, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
+        for n in [scanHolder, markers, subjectMarks, lightRig, gripGlow, roomGlow, people, meterNodes, panNode, selectionRing] { world.addChildNode(n) }
         let ring = SCNTorus(ringRadius: 0.4, pipeRadius: 0.012)
         ring.firstMaterial = SceneKitBuilder.material(.white, constant: true)
         selectionRing.geometry = ring
@@ -876,7 +896,12 @@ final class VirtualSceneModel: ObservableObject {
     /// a projected mask, and beam rays that stop at the room. Viewport brightness is a visual guide
     /// only (D-011); lux comes from `LightingCalculator`. Units that haven't changed keep their nodes, so dragging one light
     /// doesn't rebuild (and re-shadow) the whole rig every frame.
-    func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false, plan: FloorPlan? = nil) {
+    ///
+    /// `referenceLux` is the incident level that puts a mid-grey card at mid-grey: the camera's key
+    /// (`ExposureSettings.keyLux`) to see the scene as shot, or nil to fit the picture to the brightest
+    /// unit (same two looks as the desktop 3D view). `surfaces` is how much light the room hands back.
+    func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false, plan: FloorPlan? = nil,
+                   referenceLux: Double? = nil, surfaces: RoomSurfaces = .typical) {
         var anyOn = false
         var shadowCount = 0
         var keep = Set<UUID>()
@@ -918,25 +943,84 @@ final class VirtualSceneModel: ObservableObject {
         // Fit the picture to the brightest unit at full output; every unit keeps its true ratio to it.
         // It depends on the units alone, so moving a person or a flag, dimming a unit or switching one
         // off never changes how bright the other units look (same rule as the desktop 3D view).
-        let brightest = viewportLights.values.map(\.full).max() ?? 0
+        // As shot, the camera's key level stands in for the brightest unit: a unit giving the key at
+        // 3 m looks like the brightest unit does when fitted (1.25 × mid-grey, as on the desktop).
+        let fitted = viewportLights.values.map(\.full).max() ?? 0
+        let brightest = referenceLux.map { $0 * 1.25 } ?? fitted
         for entry in viewportLights.values {
             // A unit that is off keeps its light at zero rather than losing it (see `wantsShadow`).
             entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1) : 0
         }
-        setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest)
-        // With units on, the room keeps only a trace of work light so their shadows read; the
-        // stand-in sun is for an unlit room (or the viewfinder's sun study).
-        ambientNode.light?.intensity = anyOn ? 60 : 450
-        scene.lightingEnvironment.intensity = anyOn ? 0.25 : 0.6
+        setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest, surfaces: surfaces)
+        // With units on, the room keeps only a trace of work light so their shadows read (about the
+        // desktop's trace; the light off the walls now comes from `roomGlow`); the stand-in sun is for
+        // an unlit room (or the viewfinder's sun study).
+        ambientNode.light?.intensity = anyOn ? 25 : 450
+        scene.lightingEnvironment.intensity = anyOn ? 0.1 : 0.6
         if !sunIsSet { sunNode.light?.intensity = anyOn ? 0 : 900 }
+    }
+
+    /// The bounce off the room, as the calculator has it (D-019): each wall, the floor and the ceiling
+    /// sum their pieces, and the brightest few become soft lights at their middle facing into the room.
+    /// Always `roomGlowCount` lights, dark when there is nothing, so switching a unit never changes
+    /// the number of lights (see `wantsShadow`).
+    private func setRoomGlow(_ optical: LightingCalculator.Scene, lights: [LightFixture], brightest: Double) {
+        if roomGlow.childNodes.isEmpty {
+            for _ in 0..<Self.roomGlowCount {
+                let light = SCNLight()
+                light.type = .spot
+                light.spotInnerAngle = 20
+                light.spotOuterAngle = 172
+                light.intensity = 0
+                SceneKitBuilder.falloff(light)
+                let node = SCNNode()
+                node.light = light
+                roomGlow.addChildNode(node)
+            }
+        }
+        struct Group { var sum = 0.0; var at = LightingCalculator.Point(x: 0, y: 0, z: 0); var normal: LightingCalculator.Point; var r = 0.0, g = 0.0, b = 0.0 }
+        var groups: [String: Group] = [:]
+        let colours = Dictionary(lights.filter(\.kind.emits).map { ($0.id, $0.photometrics.color) }, uniquingKeysWith: { a, _ in a })
+        for q in optical.room {
+            let plane = q.centre.dot(q.normal)
+            let key = String(format: "%.2f,%.2f,%.2f|%.1f", q.normal.x, q.normal.y, q.normal.z, plane)
+            var g = groups[key] ?? Group(normal: q.normal)
+            g.sum += q.intensity
+            g.at = g.at + q.centre * q.intensity
+            for share in q.shares {
+                // The colour of what lit it: each unit's own colour, daylight a cool white.
+                let c = colours[share.lightID]
+                g.r += (c?.r ?? 0.95) * share.intensity
+                g.g += (c?.g ?? 0.97) * share.intensity
+                g.b += (c?.b ?? 1) * share.intensity
+            }
+            groups[key] = g
+        }
+        let top = groups.values.sorted { $0.sum > $1.sum }.prefix(Self.roomGlowCount)
+        for (i, node) in roomGlow.childNodes.enumerated() {
+            guard let light = node.light else { continue }
+            guard i < top.count, brightest > 0 else { light.intensity = 0; continue }
+            let g = top[top.index(top.startIndex, offsetBy: i)]
+            // Same scale as the units: candela against the brightest unit's lux at 3 m.
+            let share = g.sum / 9 / brightest
+            guard share > 1e-4 else { light.intensity = 0; continue }
+            let c = g.at * (1 / g.sum)
+            let from = c + g.normal * 0.05, to = c + g.normal
+            node.simdPosition = SIMD3(Float(from.x), Float(floorY + from.y), Float(from.z))
+            node.look(at: SCNVector3(Float(to.x), Float(floorY + to.y), Float(to.z)))
+            let m = max(g.r, g.g, g.b, 1e-9)
+            light.color = UIColor(red: CGFloat(g.r / m), green: CGFloat(g.g / m), blue: CGFloat(g.b / m), alpha: 1)
+            light.intensity = SceneKitBuilder.viewportIntensity(share: share)
+        }
     }
 
     /// Grip as a second source, from the calculator's own patches (D-013): each lit face of a board
     /// gets a soft spot facing out of it, and the far face of a diffusion glows where it is lit.
-    private func setGripGlow(_ lights: [LightFixture], plan: FloorPlan?, brightest: Double) {
+    private func setGripGlow(_ lights: [LightFixture], plan: FloorPlan?, brightest: Double, surfaces: RoomSurfaces) {
         gripGlow.childNodes.forEach { $0.removeFromParentNode() }
         let n = LightingCalculator.Scene.patchesPerSide
-        let optical = LightingCalculator.Scene(lights: lights.filter { !$0.kind.emits || $0.isOn }, plan: plan)
+        let optical = LightingCalculator.Scene(lights: lights.filter { !$0.kind.emits || $0.isOn }, plan: plan, surfaces: surfaces)
+        setRoomGlow(optical, lights: lights, brightest: brightest)
         for b in optical.boards {
             var glow: [Int: [Double]] = [1: Array(repeating: 0, count: n * n), -1: Array(repeating: 0, count: n * n)]
             let patchArea = b.area / Double(n * n)
@@ -964,10 +1048,8 @@ final class VirtualSceneModel: ObservableObject {
                 light.spotInnerAngle = 30
                 light.spotOuterAngle = 170
                 light.color = UIColor.white
-                light.intensity = lit ? CGFloat(800 * min(share, 1)) : 0
-                light.attenuationStartDistance = 0.3
-                light.attenuationEndDistance = 14
-                light.attenuationFalloffExponent = 2
+                light.intensity = lit ? SceneKitBuilder.viewportIntensity(share: share) : 0
+                SceneKitBuilder.falloff(light)
                 let node = SCNNode()
                 node.light = light
                 let from = centre + normal * 0.03, to = centre + normal
@@ -1041,6 +1123,11 @@ final class VirtualSceneModel: ObservableObject {
                     light.type = .spot
                     light.spotInnerAngle = CGFloat(min(pm.beamAngle * 0.6, 170))
                     light.spotOuterAngle = CGFloat(min(pm.beamAngle * 1.35, 175))
+                case .grid:
+                    // A grid has no flat top: it fades from the centre to nothing at its cut-off.
+                    light.type = .spot
+                    light.spotInnerAngle = CGFloat(min(pm.beamAngle * 0.3, 170))
+                    light.spotOuterAngle = CGFloat(min(2 * atan(Photometry.gridCutoffTan(beamAngle: pm.beamAngle)) * 180 / .pi, 175))
                 }
                 if l.usesRGB {
                     light.color = color
@@ -1049,9 +1136,7 @@ final class VirtualSceneModel: ObservableObject {
                     light.temperature = CGFloat(pm.kelvin)
                 }
                 viewportLights[l.id] = (light, on ? pm.illuminanceOnAxis(at: 3) : 0, full.illuminanceOnAxis(at: 3), on)
-                light.attenuationStartDistance = 0.3
-                light.attenuationEndDistance = 14
-                light.attenuationFalloffExponent = 2
+                SceneKitBuilder.falloff(light)
                 if light.type == .spot {
                     if pm.barnDoorsAvailable && !l.barnDoorSettings.isOpen {
                         light.gobo?.contents = SceneKitBuilder.barnDoorGobo(l.barnDoorSettings, outerAngle: Double(light.spotOuterAngle))

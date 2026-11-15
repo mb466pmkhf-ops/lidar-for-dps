@@ -92,7 +92,7 @@ describe('set pieces by hand', () => {
   it('has the same presets as the phone', () => {
     // FrameScout/Core/Models/SetPieces.swift lists these ids in this order.
     expect(OPENING_PRESETS.map(p => p.id)).toEqual(['door', 'double-door', 'window', 'tall-window', 'opening']);
-    expect(FURNITURE_PRESETS.map(p => p.id)).toEqual(['sofa', 'armchair', 'chair', 'dining-table', 'coffee-table', 'desk', 'bed', 'wardrobe', 'sideboard', 'shelves', 'fridge', 'cooker', 'sink', 'bath', 'toilet', 'fireplace', 'box']);
+    expect(FURNITURE_PRESETS.map(p => p.id)).toEqual(['sofa', 'armchair', 'chair', 'dining-table', 'coffee-table', 'desk', 'bed', 'wardrobe', 'sideboard', 'shelves', 'fridge', 'cooker', 'sink', 'bath', 'toilet', 'fireplace', 'tv', 'box']);
   });
 });
 
@@ -113,5 +113,27 @@ describe('plan sync', () => {
     const here = { K: { ...base.K, objects: [] } };
     const merged = mergeDocuments(base, here, base);
     expect(merged.K.objects).toHaveLength(0);
+  });
+});
+
+describe('TV on the wall', async () => {
+  const { isScreen, mountOnWall, setElevation, standOnFeet, WALL_TV_ELEVATION } = await import('../src/model/setPieces');
+  it('hangs a TV flat on the nearest wall at the usual height, and keeps a height it already has', () => {
+    const tv = placeFurniture(room(), { x: 1, z: 0.5 }, furniturePreset('tv')!);
+    expect(isScreen(tv.category)).toBe(true);
+    const hung = mountOnWall(room(), tv)!;
+    expect(hung.wallMounted).toBe(true);
+    expect(hung.elevation).toBe(WALL_TV_ELEVATION);
+    expect(Math.abs(Math.abs(hung.center.z) - (2 - 0.04 - 0.02))).toBeLessThan(1e-6); // back on the z = ±2 wall
+    expect(mountOnWall(room(), setElevation(tv, 1.3))!.elevation).toBe(1.3);
+    expect(standOnFeet(hung).wallMounted).toBeUndefined();
+    expect(standOnFeet(hung).elevation).toBe(WALL_TV_ELEVATION);
+  });
+  it('keeps the height inside the room and drops the field at 0', () => {
+    const tv = placeFurniture(room(), { x: 0, z: 0 }, furniturePreset('tv')!);
+    expect(setElevation(tv, 9).elevation).toBeCloseTo(4 - 0.71);
+    expect('elevation' in setElevation(tv, 0)).toBe(false);
+    expect(mountOnWall(undefined, tv)).toBeUndefined();
+    expect(isScreen('Sofa')).toBe(false);
   });
 });
