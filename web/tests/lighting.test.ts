@@ -126,6 +126,29 @@ describe('egg-crate grid', () => {
   });
 });
 
+describe('daylight and grip light the room and bounce off grip', async () => {
+  const { buildRoomPlan } = await import('../src/model/room');
+  // Same cases as "Grip bounces daylight and lights the room" in Tests/CoreLogicTests/main.swift.
+  const board = (kind: 'flag' | 'bounce', z = 1.5) => { const b = newLight(kind, { x: 0, z }); b.pan = 180; b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b; };
+  it('the sun bounces off a bounce board onto a face in its shade', () => {
+    const env = { sun: { bearing: 180, elevation: 10, directNormal: 50000 }, windowLuminance: 0, ledWalls: [] };
+    const front = vec(0.8, 1.5, 2.2), facingBoard = direction(311, 0);
+    const flag = reading(front, facingBoard, buildScene([board('flag')], undefined, 0.78, env));
+    const b = board('bounce');
+    const bounce = reading(front, facingBoard, buildScene([b], undefined, 0.78, env));
+    expect(bounce.lux).toBeGreaterThan(100);
+    expect(bounce.contributions.every(c => c.lightID === '5A11D000-0000-4000-8000-000000000001' && c.viaBounce === b.id)).toBe(true);
+    expect(flag.lux / bounce.lux).toBeCloseTo(0.04 / 0.8, 6);
+  });
+  it('light off a bounce board reaches the walls, floor and ceiling', () => {
+    const plan = buildRoomPlan({ shape: 'box', length: 5, width: 4, ceiling: 2.6, windows: 0, door: false });
+    const spot = newLight('fresnel', { x: 0, z: 1.8 }); spot.pan = 0; spot.tilt = 0; spot.height = 1.5; spot.beamAngle = 12;
+    const fromSpot = (kind: 'flag' | 'bounce') => buildScene([spot, board(kind, 0.5)], plan).room
+      .reduce((s, q) => s + q.shares.filter(x => x.lightID === spot.id).reduce((t, x) => t + x.intensity, 0), 0);
+    expect(fromSpot('bounce')).toBeGreaterThan(5 * fromSpot('flag'));
+  });
+});
+
 describe('light off the room', async () => {
   const { buildRoomPlan } = await import('../src/model/room');
   // Same case as "Light off the room" in Tests/CoreLogicTests/main.swift.

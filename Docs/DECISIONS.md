@@ -276,6 +276,9 @@ bounced light didn't seem to reach people, and the phone and desktop looked diff
   as a soft (Lambertian) source, stopped by walls like any other. Windows, doors and openings send
   nothing back. One bounce only: light that bounces twice is left out, so a bright white room still
   reads a little low. The breakdown names it "the walls, floor and ceiling".
+- **Grip in the bounce.** Light off grip (a bounce board, an Ultrabounce, a silk) also lights the room's
+  pieces, and grip now catches the sun, the sky through each window and LED walls as well as the units
+  (before, only units bounced off grip). The room's own bounce does not bounce off grip again.
 - **Reflectance is a choice, not a measurement.** "Light off the room" in the display settings: Off,
   Dark (walls 8 %, ceiling 10 %, floor 6 %), Typical (50 / 70 / 20 %, the default) or Light
   (75 / 80 / 35 %). The scan knows shapes, not paint, so the readings with bounce are estimates.

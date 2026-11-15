@@ -1012,6 +1012,26 @@ do {
     check(ExposureSettings.steppedStop(1, thirds: -1) == 1 && ExposureSettings.steppedISO(800, by: 1) == 1000 && ExposureSettings.steppedISO(12800, by: 1) == 12800, "steps stop at the ends")
 }
 
+// MARK: Grip bounces daylight and lights the room (same cases as "daylight and grip light the room and bounce off grip" in web/tests/lighting.test.ts)
+do {
+    let C = LightingCalculator.self
+    func board(_ kind: LightKind, z: Double = 1.5) -> LightFixture { var b = LightFixture(name: "B", kind: kind, position: P(0, z), pan: 180); b.height = 1.5; b.width = 1.2; b.boardHeight = 1.2; return b }
+    let env = Stage.Environment(sun: .init(bearing: 180, elevation: 10, directNormal: 50000))
+    let front = LightingCalculator.Point(x: 0.8, y: 1.5, z: 2.2), facingBoard = C.direction(bearing: 311, tilt: 0)
+    let flag = C.reading(at: front, normal: facingBoard, scene: C.Scene(lights: [board(.flag)], environment: env))
+    let b = board(.bounce)
+    let bounce = C.reading(at: front, normal: facingBoard, scene: C.Scene(lights: [b], environment: env))
+    check(bounce.lux > 100 && bounce.contributions.allSatisfy { $0.lightID == Stage.sunID && $0.viaBounce == b.id }
+          && abs(flag.lux / bounce.lux - 0.04 / 0.8) < 1e-6, "the sun bounces off a bounce board onto a face in its shade (\(Int(bounce.lux)) lx)")
+    var spec = DrawnRoom()
+    spec.length = 5; spec.width = 4; spec.ceiling = 2.6; spec.windows = 0; spec.door = false
+    var spot = LightFixture(name: "Spot", kind: .fresnel, position: P(0, 1.8)); spot.pan = 0; spot.tilt = 0; spot.height = 1.5; spot.beamAngle = 12
+    func fromSpot(_ kind: LightKind) -> Double {
+        C.Scene(lights: [spot, board(kind, z: 0.5)], plan: spec.plan).room.reduce(0) { $0 + $1.shares.filter { $0.lightID == spot.id }.reduce(0) { $0 + $1.intensity } }
+    }
+    check(fromSpot(.bounce) > 5 * fromSpot(.flag), "light off a bounce board reaches the walls, floor and ceiling")
+}
+
 // MARK: Light off the room (same case as "light off the room" in web/tests/lighting.test.ts)
 do {
     var spec = DrawnRoom()

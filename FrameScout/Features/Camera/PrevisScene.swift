@@ -1028,8 +1028,8 @@ final class VirtualSceneModel: ObservableObject {
                 let mine = optical.patches.filter { $0.board == b.id && ($0.normal.dot(b.normal) > 0 ? 1 : -1) == side }
                 let total = mine.reduce(0) { $0 + $1.intensity }
                 for q in total > 0 ? mine : [] {
-                    // A patch facing away from its unit is light that came through the frame.
-                    guard let e = optical.emitters.first(where: { $0.id == q.lightID }), (e.position - q.centre).dot(q.normal) < 0 else { continue }
+                    // Only light that came through the frame glows on its far face.
+                    guard q.through else { continue }
                     let d = q.centre - b.centre
                     let i = min(n - 1, Int((d.dot(b.right) + b.halfWidth) / max(1e-6, 2 * b.halfWidth) * Double(n)))
                     let j = min(n - 1, Int((d.dot(b.up) - b.lo) / max(1e-6, b.hi - b.lo) * Double(n)))

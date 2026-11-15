@@ -747,10 +747,9 @@ export function Scene3D(p: Props) {
           const mine = optical.patches.filter(q => q.board === b.id && Math.sign(q.normal.x * b.normal.x + q.normal.y * b.normal.y + q.normal.z * b.normal.z) === side);
           const total = mine.reduce((s, q) => s + q.intensity, 0);
           for (const q of total > 0 ? mine : []) {
-            // A patch facing away from its unit is light that came through the frame; what is
+            // A patch marked `through` is light that came through the frame; what is
             // reflected shows through the face's own albedo instead.
-            const e = optical.emitters.find(x => x.id === q.lightID);
-            if (!e || (e.position.x - q.centre.x) * q.normal.x + (e.position.y - q.centre.y) * q.normal.y + (e.position.z - q.centre.z) * q.normal.z >= 0) continue;
+            if (!q.through) continue;
             const d = { x: q.centre.x - b.centre.x, y: q.centre.y - b.centre.y, z: q.centre.z - b.centre.z };
             const along = d.x * b.right.x + d.y * b.right.y + d.z * b.right.z, up = d.x * b.up.x + d.y * b.up.y + d.z * b.up.z;
             const i = Math.max(0, Math.min(PATCHES - 1, Math.floor((along + b.halfWidth) / Math.max(1e-6, 2 * b.halfWidth) * PATCHES)));
