@@ -27,7 +27,7 @@ import { KIND_INFO, barnDoorTransmission, fixtureProfile, gridCutoffTan, illumin
 import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
-import { boardOptics, buildScene, distanceToSegment, type MeterPoint } from '../model/calculator';
+import { at, boardOptics, buildScene, direction, distanceToSegment, throughGlass, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
@@ -518,6 +518,7 @@ export function Scene3D(p: Props) {
     // Daylight: the sun as a beam (walls, the lid and curtains shadow it), the sky as soft light from
     // each window, at the readings' levels on the same scale.
     const glass = loc.display?.windowTransmission ?? DEFAULT_WINDOW_TRANSMISSION;
+    const walls = buildScene([], p.plan, glass, undefined, 'off'); // walls and windows only, for `throughGlass`
     if (env?.sun) {
       const toward = v(Math.sin(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)), Math.sin(rad(env.sun.elevation)), -Math.cos(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)));
       a.sun.visible = true;
@@ -700,7 +701,8 @@ export function Scene3D(p: Props) {
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
         relight(pan, color, l.isOn, glowLevel(pm), pan.userData.level);
         pan.userData.color = color;
-        if (lamp) { lamp.color.copy(color); lamp.intensity = pm.peakIntensity * scale; }
+        // A unit outside aimed in through a window loses what the glass takes, as in the readings.
+        if (lamp) { lamp.color.copy(color); lamp.intensity = pm.peakIntensity * scale * throughGlass(at(l.position, l.height), direction(l.pan, l.tilt), walls); }
       }
     }
 

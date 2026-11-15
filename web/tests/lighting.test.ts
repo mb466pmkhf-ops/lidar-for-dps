@@ -147,6 +147,25 @@ describe('daylight and grip light the room and bounce off grip', async () => {
       .reduce((s, q) => s + q.shares.filter(x => x.lightID === spot.id).reduce((t, x) => t + x.intensity, 0), 0);
     expect(fromSpot('bounce')).toBeGreaterThan(5 * fromSpot('flag'));
   });
+  it('goes through windows: a unit outside, and a board outside bouncing the sun in', async () => {
+    const { throughGlass, at } = await import('../src/model/calculator');
+    // 6 × 4 m room, one window in the wall at z = -2 (x from -0.7 to 0.7, sill 0.8 m, 1.5 m tall).
+    const plan = buildRoomPlan({ shape: 'box', length: 6, width: 4, ceiling: 2.7, windows: 1, door: false });
+    const unit = newLight('fresnel', { x: 0, z: -4 }); unit.pan = 180; unit.height = 1.55; unit.beamAngle = 30;
+    const inside = vec(0, 1.55, -0.5), facingWindow = direction(0, 0);
+    const lux = reading(inside, facingWindow, buildScene([unit], plan, 0.78, undefined, 'off'));
+    const open = reading(inside, facingWindow, buildScene([unit], undefined, 0.78, undefined, 'off'));
+    expect(lux.lux / open.lux).toBeCloseTo(0.78, 6);
+    const walls = buildScene([], plan, 0.78, undefined, 'off');
+    expect(throughGlass(at(unit.position, unit.height), direction(180, 0), walls)).toBeCloseTo(0.78, 9);
+    expect(throughGlass(at({ x: 2, z: -4 }, 1.55), direction(180, 0), walls)).toBe(1); // meets the wall: its shadow shows it
+    expect(throughGlass(at({ x: 0, z: 0 }, 1.55), direction(0, 0), walls)).toBe(1); // inside the room
+    const b = newLight('bounce', { x: 0, z: -3.5 }); b.pan = 135; b.height = 1.5; b.width = 1.8; b.boardHeight = 1.8;
+    const env = { sun: { bearing: 90, elevation: 40, directNormal: 60000 }, windowLuminance: 0, ledWalls: [] };
+    const sunIn = reading(inside, facingWindow, buildScene([b], plan, 0.78, env, 'off'));
+    expect(sunIn.lux).toBeGreaterThan(200);
+    expect(sunIn.contributions.every(c => c.viaBounce === b.id)).toBe(true);
+  });
 });
 
 describe('light off the room', async () => {

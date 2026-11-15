@@ -419,6 +419,24 @@ enum LightingCalculator {
         return t * boardsPass(a, b, scene: scene, ignoring: ignoring)
     }
 
+    /// For the 3D picture only: a unit outside the room aimed in through a window loses what the glass
+    /// and curtain take (the readings get this from `transmission`). 1 for a unit inside the room, or
+    /// one whose axis meets a wall, a door or nothing first: shadows show those. Same as calculator.ts.
+    static func throughGlass(position: Point, axis: Point, scene: Scene) -> Double {
+        guard let plan = scene.plan, !Stage.insideRoom(position.plan, plan: plan) else { return 1 }
+        let far = position + axis * 40
+        var best: (s: Double, t: Double)?
+        for w in scene.walls {
+            guard let hit = intersect(position.plan, far.plan, w.a, w.b) else { continue }
+            let (s, q) = hit
+            let y = position.y + s * (far.y - position.y)
+            guard y >= w.bottom - 0.01, y <= w.bottom + w.height + 0.01, best.map({ s < $0.s }) ?? true else { continue }
+            let opening = scene.apertures.first { distance(q, toSegment: $0.a, $0.b) < 0.15 && y >= $0.bottom - 0.01 && y <= $0.bottom + $0.height + 0.01 }
+            best = (s, opening?.kind == .window ? scene.windowTransmission * Stage.curtainPass(opening?.curtain) : 1)
+        }
+        return best?.t ?? 1
+    }
+
     private static func boardsPass(_ a: Point, _ b: Point, scene: Scene, ignoring: [UUID]) -> Double {
         var t = 1.0
         let ab = b - a

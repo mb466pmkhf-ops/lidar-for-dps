@@ -259,6 +259,25 @@ export function transmission(a: Vec, b: Vec, scene: Scene, ignoring: UUID[] = []
   return t * boardsPass(a, b, scene, ignoring);
 }
 
+/** For the 3D picture only: a unit outside the room aimed in through a window loses what the glass
+ *  and curtain take (the readings get this from `transmission`). 1 for a unit inside the room, or
+ *  one whose axis meets a wall, a door or nothing first: shadows show those. */
+export function throughGlass(position: Vec, axis: Vec, scene: Scene): number {
+  if (!scene.plan || insideRoom({ x: position.x, z: position.z }, scene.plan)) return 1;
+  const far = add(position, scale(axis, 40));
+  let best: { s: number; t: number } | undefined;
+  for (const w of scene.walls) {
+    const hit = intersect({ x: position.x, z: position.z }, { x: far.x, z: far.z }, w.a, w.b);
+    if (!hit) continue;
+    const [s, q] = hit;
+    const y = position.y + s * (far.y - position.y);
+    if (!(y >= w.bottom - 0.01 && y <= w.bottom + w.height + 0.01) || (best && best.s <= s)) continue;
+    const opening = scene.apertures.find(o => distanceToSegment(q, o.a, o.b) < 0.15 && y >= o.bottom - 0.01 && y <= o.bottom + o.height + 0.01);
+    best = { s, t: opening?.kind === 'window' ? scene.windowTransmission * curtainPass(opening.curtain) : 1 };
+  }
+  return best?.t ?? 1;
+}
+
 function boardsPass(a: Vec, b: Vec, scene: Scene, ignoring: UUID[]): number {
   let t = 1;
   const ab = sub(b, a);

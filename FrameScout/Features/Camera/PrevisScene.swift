@@ -947,9 +947,15 @@ final class VirtualSceneModel: ObservableObject {
         // 3 m looks like the brightest unit does when fitted (1.25 × mid-grey, as on the desktop).
         let fitted = viewportLights.values.map(\.full).max() ?? 0
         let brightest = referenceLux.map { $0 * 1.25 } ?? fitted
-        for entry in viewportLights.values {
+        // A unit outside aimed in through a window loses what the glass takes, as in the readings.
+        let walls = LightingCalculator.Scene(lights: [], plan: plan, surfaces: .off)
+        let glass = Dictionary(lights.filter(\.kind.emits).map { l in
+            (l.id, LightingCalculator.throughGlass(position: LightingCalculator.Point(l.position, height: l.height),
+                                                   axis: LightingCalculator.direction(bearing: l.pan, tilt: l.tilt), scene: walls))
+        }, uniquingKeysWith: { a, _ in a })
+        for (id, entry) in viewportLights {
             // A unit that is off keeps its light at zero rather than losing it (see `wantsShadow`).
-            entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: brightest > 0 ? entry.onAxis / brightest : 1) : 0
+            entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: (brightest > 0 ? entry.onAxis / brightest : 1) * (glass[id] ?? 1)) : 0
         }
         setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest, surfaces: surfaces)
         // With units on, the room keeps only a trace of work light so their shadows read (about the

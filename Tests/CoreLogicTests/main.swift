@@ -1030,6 +1030,24 @@ do {
         C.Scene(lights: [spot, board(kind, z: 0.5)], plan: spec.plan).room.reduce(0) { $0 + $1.shares.filter { $0.lightID == spot.id }.reduce(0) { $0 + $1.intensity } }
     }
     check(fromSpot(.bounce) > 5 * fromSpot(.flag), "light off a bounce board reaches the walls, floor and ceiling")
+    // Through windows: a unit outside, and a board outside bouncing the sun in.
+    var winSpec = DrawnRoom()
+    winSpec.length = 6; winSpec.width = 4; winSpec.ceiling = 2.7; winSpec.windows = 1; winSpec.door = false
+    let winRoom = winSpec.plan
+    var outsideUnit = LightFixture(name: "Out", kind: .fresnel, position: P(0, -4)); outsideUnit.pan = 180; outsideUnit.height = 1.55; outsideUnit.beamAngle = 30
+    let inside = LightingCalculator.Point(x: 0, y: 1.55, z: -0.5), facingWindow = C.direction(bearing: 0, tilt: 0)
+    let viaGlass = C.reading(at: inside, normal: facingWindow, scene: C.Scene(lights: [outsideUnit], plan: winRoom, surfaces: .off)).lux
+    let noRoom = C.reading(at: inside, normal: facingWindow, scene: C.Scene(lights: [outsideUnit], surfaces: .off)).lux
+    check(abs(viaGlass / noRoom - 0.78) < 1e-6, "a unit outside lights the room through the window")
+    let walls = C.Scene(lights: [], plan: winRoom, surfaces: .off)
+    check(abs(C.throughGlass(position: LightingCalculator.Point(outsideUnit.position, height: 1.55), axis: C.direction(bearing: 180, tilt: 0), scene: walls) - 0.78) < 1e-9
+          && C.throughGlass(position: LightingCalculator.Point(x: 2, y: 1.55, z: -4), axis: C.direction(bearing: 180, tilt: 0), scene: walls) == 1
+          && C.throughGlass(position: LightingCalculator.Point(x: 0, y: 1.55, z: 0), axis: C.direction(bearing: 0, tilt: 0), scene: walls) == 1,
+          "the 3D picture dims a unit outside by the glass it shines through")
+    var outBoard = LightFixture(name: "B", kind: .bounce, position: P(0, -3.5), pan: 135); outBoard.height = 1.5; outBoard.width = 1.8; outBoard.boardHeight = 1.8
+    let sunIn = C.reading(at: inside, normal: facingWindow, scene: C.Scene(lights: [outBoard], plan: winRoom,
+        environment: Stage.Environment(sun: .init(bearing: 90, elevation: 40, directNormal: 60000)), surfaces: .off))
+    check(sunIn.lux > 200 && sunIn.contributions.allSatisfy { $0.viaBounce == outBoard.id }, "a board outside bounces the sun in through the window (\(Int(sunIn.lux)) lx)")
 }
 
 // MARK: Light off the room (same case as "light off the room" in web/tests/lighting.test.ts)
