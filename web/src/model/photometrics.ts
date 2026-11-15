@@ -3,7 +3,7 @@
 import type { BarnDoors, LightFixture, LightKind, PhotometricReference, Provenance } from './types';
 import { kelvinRGB } from './kelvin';
 
-export type BeamDistribution = 'beam' | 'lambertian' | 'omni' | 'tube';
+export type BeamDistribution = 'beam' | 'lambertian' | 'omni' | 'tube' | 'grid';
 export type FixtureCategory = 'cob' | 'fresnel' | 'panel' | 'tube' | 'soft' | 'hmi' | 'tungsten' | 'spaceLight' | 'practical';
 export type LampTechnology = 'led' | 'hmi' | 'tungsten';
 type Range = [number, number];
@@ -24,7 +24,21 @@ export function relativeIntensity(d: BeamDistribution, theta: number, beamAngle:
     case 'lambertian': return Math.max(0, Math.cos(theta * Math.PI / 180));
     case 'omni': return 1;
     case 'tube': return Math.abs(Math.sin(theta * Math.PI / 180));
+    case 'grid': {
+      if (!(theta < 90)) return 0;
+      const r = theta * Math.PI / 180;
+      return Math.max(0, Math.cos(r) * (1 - Math.tan(r) / gridCutoffTan(beamAngle)));
+    }
   }
+}
+
+/** An egg-crate grid in front of a diffuse face: each cell passes cos θ · (1 − tan θ ÷ tan C) of the
+ *  face's light, falling off gently to nothing at the cut-off C. C is set so the light is at 50 % at
+ *  half the grid's rated angle (the same beam-angle convention as a lens). Half angles past 55° are
+ *  treated as 55°: a grid that wide is no grid. Photometry.gridCutoffTan in Swift. */
+export function gridCutoffTan(beamAngle: number): number {
+  const h = Math.min(Math.max(beamAngle, 2) / 2, 55) * Math.PI / 180;
+  return Math.tan(h) / (1 - 0.5 / Math.cos(h));
 }
 
 const solidAngleCache = new Map<number, number>();
@@ -33,19 +47,20 @@ export function solidAngleFactor(d: BeamDistribution, beamAngle: number): number
     case 'lambertian': return Math.PI;
     case 'omni': return 4 * Math.PI;
     case 'tube': return Math.PI * Math.PI;
-    case 'beam': {
-      const cached = solidAngleCache.get(beamAngle);
+    case 'beam': case 'grid': {
+      const cacheKey = d === 'grid' ? -beamAngle - 1 : beamAngle;
+      const cached = solidAngleCache.get(cacheKey);
       if (cached !== undefined) return cached;
       const n = 720;
       const h = Math.PI / n;
       let sum = 0;
       for (let i = 0; i <= n; i++) {
         const t = i * h;
-        const f = relativeIntensity('beam', t * 180 / Math.PI, beamAngle) * Math.sin(t);
+        const f = relativeIntensity(d, t * 180 / Math.PI, beamAngle) * Math.sin(t);
         sum += f * (i === 0 || i === n ? 1 : (i % 2 === 1 ? 4 : 2));
       }
       const v = 2 * Math.PI * sum * h / 3;
-      solidAngleCache.set(beamAngle, v);
+      solidAngleCache.set(cacheKey, v);
       return v;
     }
   }
@@ -53,7 +68,7 @@ export function solidAngleFactor(d: BeamDistribution, beamAngle: number): number
 
 export function nominalBeam(d: BeamDistribution): number | undefined {
   switch (d) {
-    case 'beam': return undefined;
+    case 'beam': case 'grid': return undefined;
     case 'lambertian': return 120;
     case 'omni': case 'tube': return 360;
   }
@@ -149,10 +164,10 @@ export const modifiers: LightModifier[] = [
   mod({ id: 'fresnel-attachment', name: 'Fresnel attachment (12–45°)', appliesTo: ['cob'], transmission: 0.55, distribution: 'beam', beam: 45, beamRange: [12, 45], allowsBarnDoors: true, focusesLikeFresnel: true }),
   mod({ id: 'projector', name: 'Spot projector (19–36°)', appliesTo: ['cob'], transmission: 0.25, distribution: 'beam', beam: 26, beamRange: [19, 36] }),
   mod({ id: 'softbox-90', name: 'Softbox 90 cm', appliesTo: ['cob', 'fresnel', 'hmi', 'tungsten'], transmission: 0.5, distribution: 'lambertian', size: 0.9 }),
-  mod({ id: 'softbox-90-grid', name: 'Softbox 90 cm + 40° grid', appliesTo: ['cob', 'fresnel', 'hmi', 'tungsten'], transmission: 0.33, distribution: 'beam', beam: 40, size: 0.9 }),
+  mod({ id: 'softbox-90-grid', name: 'Softbox 90 cm + 40° grid', appliesTo: ['cob', 'fresnel', 'hmi', 'tungsten'], transmission: 0.4, distribution: 'grid', beam: 40, size: 0.9 }),
   mod({ id: 'softbox-150', name: 'Large softbox 150 cm', appliesTo: ['cob', 'hmi'], transmission: 0.45, distribution: 'lambertian', size: 1.5 }),
   mod({ id: 'lantern-65', name: 'Lantern 65 cm', appliesTo: ['cob'], transmission: 0.55, distribution: 'omni', size: 0.65 }),
-  mod({ id: 'panel-grid-40', name: 'Egg-crate grid (40°)', appliesTo: ['panel', 'soft'], transmission: 0.65, distribution: 'beam', beam: 40, allowsBarnDoors: true }),
+  mod({ id: 'panel-grid-40', name: 'Egg-crate grid (40°)', appliesTo: ['panel', 'soft'], transmission: 0.8, distribution: 'grid', beam: 40, allowsBarnDoors: true }),
   mod({ id: 'panel-softbox', name: 'Panel softbox', appliesTo: ['panel'], transmission: 0.6, distribution: 'lambertian', size: 0.6 }),
   mod({ id: 'par-spot', name: 'Spot lens (12°)', appliesTo: ['hmi'], transmission: 0.8, distribution: 'beam', beam: 12, allowsBarnDoors: true }),
   mod({ id: 'par-wide', name: 'Wide flood lens (50°)', appliesTo: ['hmi'], transmission: 0.95, distribution: 'beam', beam: 50, allowsBarnDoors: true }),
@@ -305,6 +320,9 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
   const range = modifier?.beamRange ?? (modifier?.beam === undefined ? p.beamRange : undefined);
   let beam = range ? Math.min(Math.max(l.beamAngle, range[0]), range[1]) : (modifier?.beam ?? p.defaultBeam);
   if (distribution !== 'beam') beam = nominalBeam(distribution) ?? beam;
+  // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
+  // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
+  if (distribution === 'grid') flux *= solidAngleFactor('grid', beam) / Math.PI;
   // Spotting a fresnel lens loses flux.
   if (distribution === 'beam' && range && (modifier?.focusesLikeFresnel || (!modifier && p.beamRange))) flux *= focusFactor(beam, range);
 
@@ -314,9 +332,10 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
     if (!f) continue;
     flux *= f.transmission;
     kelvin = shiftedKelvin(kelvin, f.mired);
-    if (f.diffusion === 'light') { if (distribution === 'beam') beam = Math.min(beam + 15, 160); }
-    else if (f.diffusion === 'medium') { if (distribution === 'beam') beam = Math.min(Math.max(beam * 1.8, 90), 160); }
-    else if (f.diffusion === 'heavy') { if (distribution === 'beam') { distribution = 'lambertian'; beam = 120; } }
+    const shaped = distribution === 'beam' || distribution === 'grid';
+    if (f.diffusion === 'light') { if (shaped) beam = Math.min(beam + 15, 160); }
+    else if (f.diffusion === 'medium') { if (shaped) beam = Math.min(Math.max(beam * 1.8, 90), 160); }
+    else if (f.diffusion === 'heavy') { if (shaped) { distribution = 'lambertian'; beam = 120; } }
   }
 
   // 4. Colour mode and output level.

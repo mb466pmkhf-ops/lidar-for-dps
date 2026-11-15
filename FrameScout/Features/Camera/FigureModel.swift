@@ -150,7 +150,7 @@ private final class FigureBuilder {
         let h = c.height, sitting = c.posture == .sitting
         let child = c.type.isChild, fem = c.type.shapeBlend, bust = !child && fem > 0.75
         let headH = h / (child ? 6 : 7.5), r = headH / 2
-        let hip0 = h * 0.52, drop = sitting ? hip0 - c.proportions.seatHeight : 0
+        let hip0 = h * 0.52, drop = sitting ? hip0 - c.proportions.seatHeight - c.proportions.sitLift : 0
         let hipY = hip0 - drop, shoulderY = h - headH * 1.42 - drop, headY = h - r - drop
         let build = min(max(c.build, 0), 1)
         let sw = h * (0.1 + 0.035 * build + 0.008 * (1 - fem)), hw = h * (0.078 + 0.03 * build + 0.006 * fem)

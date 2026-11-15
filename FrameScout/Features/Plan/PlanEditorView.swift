@@ -257,6 +257,9 @@ struct PlanEditorView: View {
     @AppStorage("plan.infoLayers") private var infoLayersRaw = ""
     /// Gesture tips show until the user taps them away once (Docs/LOOK.md: explain once, not forever).
     @AppStorage("tips.planGestures.seen") private var gestureTipSeen = false
+    /// "stop": the 3D picture as the camera exposes it at its settings; "fit": fitted to the screen.
+    /// Same choice and default as the desktop view (`framescan.3d.look`).
+    @AppStorage("framescan.3d.look") private var look3D = "stop"
     @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     @State private var showInfoBar = false
     /// Natural height of the panel under the plan, so it only scrolls when it has to.
@@ -404,6 +407,9 @@ struct PlanEditorView: View {
         .onChange(of: location) { _, _ in sync3D() }
         .onChange(of: selection) { _, _ in sync3D() }
         .onChange(of: scene3D.loaded) { _, _ in scene3D.showPlanEdits(plan); sync3D() }
+        // Changing the camera settings shows what they do: back to the as-shot picture.
+        .onChange(of: exposure) { _, _ in look3D = "stop" }
+        .onChange(of: look3D) { _, _ in sync3D() }
         .onChange(of: plan) { _, newPlan in
             scene3D.showPlanEdits(newPlan)
             sync3D()
@@ -599,7 +605,8 @@ struct PlanEditorView: View {
         let wt = location.displaySettings.windowTransmissionValue
         // Sun, sky and an LED wall, when the location has them (see `Stage`).
         let env = location.environment(plan: calcPlan, scan: scan)
-        let scene = LightingCalculator.Scene(lights: lights, plan: calcPlan, windowTransmission: wt, environment: env)
+        let surfaces = location.displaySettings.roomSurfacesValue
+        let scene = LightingCalculator.Scene(lights: lights, plan: calcPlan, windowTransmission: wt, environment: env, surfaces: surfaces)
         let meters = location.meterPoints(scanID: scan?.id)
         var readings: [MeterPoint.Source: LightingCalculator.Reading] = [:]
         for m in meters {
@@ -611,7 +618,7 @@ struct PlanEditorView: View {
             reading: { m in readings[m.source] ?? LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene) },
             solve: { light, m, lux in
                 LightingCalculator.solveOutput(for: light, target: lux, at: m.point, normal: m.normal,
-                                               allLights: lights, plan: calcPlan, windowTransmission: wt, environment: env)
+                                               allLights: lights, plan: calcPlan, windowTransmission: wt, environment: env, surfaces: surfaces)
             })
         return LightingAnalysis(context: context, readings: readings, scene: scene)
     }
@@ -694,12 +701,31 @@ struct PlanEditorView: View {
                     viewButton("arrow.counterclockwise", "Reset view") { scene3D.resetView() }
                     viewButton("square.dashed", "View from above") { scene3D.topView() }
                     viewButton("figure.stand", "Eye level") { scene3D.eyeLevelView() }
+                    if let camera = cameraToLookThrough {
+                        viewButton("camera.viewfinder", "Look through the camera") { router.start(.virtualCamera(ref, cameraID: camera)) }
+                    }
 
                     if let selection, let p = position(of: selection) {
                         viewButton("scope", "Focus on selection") { scene3D.focus(on: p.point, height: p.height) }
                     }
                 }
                 .padding(8)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Button { look3D = look3D == "fit" ? "stop" : "fit" } label: {
+                    Text(look3D == "fit" ? "Fitted" : "As shot · \(ExposureSettings.stopLabel(exposure.tStop))")
+                        .font(.fsMicro)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
+                        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerSmall, style: .continuous).stroke(.white.opacity(0.25), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(look3D == "fit" ? "Brightness fitted to the screen" : "Brightness as shot at the camera settings")
+                .accessibilityHint("Switches between the picture as the camera exposes it and one fitted to the screen. A preview, not a reading.")
+                .padding(8)
+                .padding(.leading, leadingInset)
             }
             .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 6) {
@@ -709,6 +735,14 @@ struct PlanEditorView: View {
                 .padding(8)
             }
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
+    }
+
+    /// The selected camera or shot, else the first one on this scan, for "Look through the camera".
+    private var cameraToLookThrough: UUID? {
+        guard let location, location.primaryScan != nil else { return nil }
+        if case .camera(let id)? = selection { return id }
+        if case .shot(let id)? = selection { return id }
+        return location.cameraPositions.first { inScan($0.scanID) }?.id ?? location.shots.first { inScan($0.scanID) }?.id
     }
 
     private func viewButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -775,7 +809,8 @@ struct PlanEditorView: View {
         }
         scene3D.setMeters(meters, selected: selectedMeter, showLabels: d.showsLabels(.meters))
         let lights = sceneLights.filter { $0.kind.emits ? !d.isHidden(group: .lights) : !d.isHidden(group: .grip) }
-        scene3D.setLights(lights, selected: selectedLight, showLabels: d.showsLabels(.lights), showBeams: true, plan: plan)
+        scene3D.setLights(lights, selected: selectedLight, showLabels: d.showsLabels(.lights), showBeams: true, plan: plan,
+                          referenceLux: look3D == "fit" ? nil : exposure.keyLux, surfaces: d.roomSurfacesValue)
         scene3D.setStage(stageVisuals(location))
         scene3D.applyDisplay(d)
         if scene3D.loaded, let scan { scene3D.applyAlignment(scan.alignmentValue) }

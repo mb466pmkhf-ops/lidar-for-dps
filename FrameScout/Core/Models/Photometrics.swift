@@ -29,6 +29,9 @@ enum BeamDistribution: String, Codable, CaseIterable {
     case omni
     /// Diffuse tube: I = I₀ · sin ψ, ψ measured from the tube's axis.
     case tube
+    /// Egg-crate grid on a diffuse face: I(θ) = I₀ · cos θ · (1 − tan θ ÷ tan C), a soft edge that
+    /// reaches nothing at the cut-off C, with C set so the light is at 50 % at the rated half angle.
+    case grid
 
     /// Intensity relative to the peak at `theta` degrees off the beam axis (beam and lambertian),
     /// or `psi` degrees from the tube axis (tube).
@@ -44,6 +47,10 @@ enum BeamDistribution: String, Codable, CaseIterable {
             return 1
         case .tube:
             return abs(sin(theta * .pi / 180))
+        case .grid:
+            guard theta < 90 else { return 0 }
+            let r = theta * .pi / 180
+            return max(0, cos(r) * (1 - tan(r) / Photometry.gridCutoffTan(beamAngle: beamAngle)))
         }
     }
 
@@ -53,7 +60,7 @@ enum BeamDistribution: String, Codable, CaseIterable {
         case .lambertian: return .pi
         case .omni: return 4 * .pi
         case .tube: return .pi * .pi
-        case .beam:
+        case .beam, .grid:
             // Simpson over 0…180°; the integrand is smooth and the beam is never narrower than 1°.
             let n = 720
             let h = Double.pi / Double(n)
@@ -70,7 +77,7 @@ enum BeamDistribution: String, Codable, CaseIterable {
     /// Nominal beam angle to show for shapes that don't have an adjustable one.
     var nominalBeam: Double? {
         switch self {
-        case .beam: return nil
+        case .beam, .grid: return nil
         case .lambertian: return 120
         case .omni, .tube: return 360
         }
@@ -350,14 +357,14 @@ enum FixtureLibrary {
                       distribution: .beam, beam: 26, beamRange: 19...36),
         LightModifier(id: "softbox-90", name: "Softbox 90 cm", appliesTo: [.cob, .fresnel, .hmi, .tungsten], transmission: 0.5,
                       distribution: .lambertian, size: 0.9),
-        LightModifier(id: "softbox-90-grid", name: "Softbox 90 cm + 40° grid", appliesTo: [.cob, .fresnel, .hmi, .tungsten], transmission: 0.33,
-                      distribution: .beam, beam: 40, size: 0.9),
+        LightModifier(id: "softbox-90-grid", name: "Softbox 90 cm + 40° grid", appliesTo: [.cob, .fresnel, .hmi, .tungsten], transmission: 0.4,
+                      distribution: .grid, beam: 40, size: 0.9),
         LightModifier(id: "softbox-150", name: "Large softbox 150 cm", appliesTo: [.cob, .hmi], transmission: 0.45,
                       distribution: .lambertian, size: 1.5),
         LightModifier(id: "lantern-65", name: "Lantern 65 cm", appliesTo: [.cob], transmission: 0.55,
                       distribution: .omni, size: 0.65),
-        LightModifier(id: "panel-grid-40", name: "Egg-crate grid (40°)", appliesTo: [.panel, .soft], transmission: 0.65,
-                      distribution: .beam, beam: 40, allowsBarnDoors: true),
+        LightModifier(id: "panel-grid-40", name: "Egg-crate grid (40°)", appliesTo: [.panel, .soft], transmission: 0.8,
+                      distribution: .grid, beam: 40, allowsBarnDoors: true),
         LightModifier(id: "panel-softbox", name: "Panel softbox", appliesTo: [.panel], transmission: 0.6,
                       distribution: .lambertian, size: 0.6),
         LightModifier(id: "par-spot", name: "Spot lens (12°)", appliesTo: [.hmi], transmission: 0.8,
@@ -480,13 +487,20 @@ enum Photometry {
             guard tubeLength > 0.01 else { return 1 / (d * d) }
             let a = atan(tubeLength / (2 * d))
             return (a + sin(a) * cos(a)) / (tubeLength * d)
-        case .lambertian, .beam:
+        case .lambertian, .beam, .grid:
             return 1 / (d * d + emitterRadius * emitterRadius)
         }
     }
 
     /// Exponent of the fresnel focus loss: beam flux ∝ (beam ÷ full flood)^k.
     static let fresnelFocusExponent = 0.85
+
+    /// tan of an egg-crate grid's cut-off angle: 50 % at half the rated angle (half angles past 55°
+    /// are treated as 55°). gridCutoffTan in photometrics.ts.
+    static func gridCutoffTan(beamAngle: Double) -> Double {
+        let h = min(max(beamAngle, 2) / 2, 55) * .pi / 180
+        return tan(h) / (1 - 0.5 / cos(h))
+    }
 
     /// Fraction of the full-flood beam flux a fresnel lens passes at `beam` (1 at full flood).
     static func focusFactor(beam: Double, range: ClosedRange<Double>) -> Double {
@@ -581,6 +595,9 @@ extension LightFixture {
             beam = modifier?.beam ?? p.defaultBeam
         }
         if distribution != .beam { beam = distribution.nominalBeam ?? beam }
+        // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
+        // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
+        if distribution == .grid { flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / .pi }
         // Spotting a fresnel lens loses flux.
         if distribution == .beam, let range {
             if modifier?.focusesLikeFresnel == true || (modifier == nil && p.beamRange != nil) {
@@ -593,10 +610,11 @@ extension LightFixture {
         for f in filterItems {
             flux *= f.transmission
             kelvin = Photometry.shifted(kelvin: kelvin, mired: f.mired)
+            let shaped = distribution == .beam || distribution == .grid
             switch f.diffusion {
-            case .light?: if distribution == .beam { beam = min(beam + 15, 160) }
-            case .medium?: if distribution == .beam { beam = min(max(beam * 1.8, 90), 160) }
-            case .heavy?: if distribution == .beam { distribution = .lambertian; beam = 120 }
+            case .light?: if shaped { beam = min(beam + 15, 160) }
+            case .medium?: if shaped { beam = min(max(beam * 1.8, 90), 160) }
+            case .heavy?: if shaped { distribution = .lambertian; beam = 120 }
             case nil: break
             }
         }

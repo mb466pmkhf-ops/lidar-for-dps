@@ -339,6 +339,15 @@ struct SetPiecePanel: View {
             SizeStepper(label: "Width", value: object.width) { v in change { $0.width = v } }
             SizeStepper(label: "Depth", value: object.depth) { v in change { $0.depth = v } }
             SizeStepper(label: "Height", value: object.height, range: SetPieces.sizeRange.lowerBound...SetPieces.heightMax) { v in change { $0.height = v } }
+            if SetPieces.isScreen(object.category) {
+                HStack(spacing: 8) {
+                    TagChip(text: "On its feet", selected: object.wallMounted != true) { update(SetPieces.standingOnFeet(object)) }
+                    if let mounted = SetPieces.mountedOnWall(plan, object) {
+                        TagChip(text: "On the wall", selected: object.wallMounted == true) { update(mounted) }
+                    }
+                }
+                SizeStepper(label: "Raised", value: object.base, range: 0...max(0.1, 4 - object.height)) { v in update(SetPieces.withElevation(object, v)) }
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Button { update(SetPieces.turned(object, by: -.pi / 2)) } label: { Label("Turn", systemImage: "rotate.left") }
@@ -495,6 +504,10 @@ struct LayersSheet: View {
             }
             SliderRow(title: "Light through glass", value: Binding(get: { display.windowTransmissionValue }, set: { display.windowTransmission = $0 }),
                       range: 0...1, step: 0.01, format: { "\(Int(($0 * 100).rounded())) %" })
+            Picker("Light off the room", selection: Binding(get: { display.roomSurfacesValue },
+                                                            set: { display.roomSurfaces = $0 == .typical ? nil : $0.rawValue })) {
+                ForEach([RoomSurfaces.typical, .light, .dark, .off]) { Text($0.label).tag($0) }
+            }
             if !display.isHidden(group: .walls) {
                 SliderRow(title: "Walls in 3D", value: Binding(get: { display.wallOpacityValue }, set: { display.wallOpacity = $0 }),
                           range: 0.1...1, step: 0.05, format: { $0 > 0.97 ? "Solid" : "\(Int(($0 * 100).rounded())) %" })

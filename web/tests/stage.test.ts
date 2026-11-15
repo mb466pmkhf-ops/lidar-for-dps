@@ -18,7 +18,8 @@ const loc = (patch: Partial<Location> = {}): Location => ({
 });
 const lux = (l: Location, plan: FloorPlan, p: Vec, n: Vec, id?: string) => {
   const r = reading(p, n, buildScene(l.lights ?? [], plan, 0.78, environment(l, plan)));
-  return id ? r.contributions.filter(c => c.lightID === id).reduce((s, c) => s + c.lux, 0) : r.lux;
+  // A source's own light, not what it puts on the room and the room throws back (that is tested in lighting.test.ts).
+  return id ? r.contributions.filter(c => c.lightID === id && !c.viaBounce).reduce((s, c) => s + c.lux, 0) : r.lux;
 };
 const withCurtain = (plan: FloorPlan, curtain?: 'sheer' | 'blackout'): FloorPlan => ({ ...plan, windows: plan.windows.map(w => ({ ...w, curtain })) });
 
@@ -212,7 +213,7 @@ describe('backdrop round several walls', () => {
     const both = lux(two, plan, p, n, AMBIENT_IDS.ledWall);
     expect(both).toBeGreaterThan(one * 1.2);
     const r = reading(p, n, buildScene([], plan, 0.78, environment(two, plan)));
-    expect(r.contributions.filter(c => c.lightID === AMBIENT_IDS.ledWall)).toHaveLength(1);
+    expect(r.contributions.filter(c => c.lightID === AMBIENT_IDS.ledWall && !c.viaBounce)).toHaveLength(1);
   });
 });
 

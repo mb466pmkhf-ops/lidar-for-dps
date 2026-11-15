@@ -324,6 +324,24 @@ struct LightForm: View {
         if !light.kind.emits {
             GripSection(light: $light)
         }
+        Section {
+            SliderRow(title: "Height", value: $light.height, range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
+            SliderRow(title: "Pan", value: $light.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
+            SliderRow(title: "Tilt", value: $light.tilt, range: -90...45, step: 1, format: { String(format: "%+.0f°", $0) })
+            if !light.kind.emits {
+                SliderRow(title: "Width", value: $light.width, range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
+                SliderRow(title: "Frame height", value: Binding(get: { light.boardHeight ?? light.width }, set: { light.boardHeight = $0 }),
+                          range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
+            }
+            Picker("Stand", selection: $light.support) {
+                Text("Automatic · \(LightSupport.automatic(for: light).label)").tag(LightSupport?.none)
+                ForEach(LightSupport.allCases) { Text($0.label).tag(LightSupport?.some($0)) }
+            }
+        } header: {
+            Text("Placement")
+        } footer: {
+            if let w = light.supportWarning { Text(w) }
+        }
         if light.kind.emits {
             Section {
                 Toggle("On", isOn: $light.isOn)
@@ -344,24 +362,6 @@ struct LightForm: View {
                 Text(pm.profile.technology == .tungsten ? "Output is light output. Tungsten draws more than its share when dimmed and warms as it dims."
                      : "Output is light output. Draw is an estimate from the rated power.")
             }
-        }
-        Section {
-            SliderRow(title: "Height", value: $light.height, range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
-            SliderRow(title: "Pan", value: $light.pan, range: 0...360, step: 1, format: { String(format: "%.0f°", $0) })
-            SliderRow(title: "Tilt", value: $light.tilt, range: -90...45, step: 1, format: { String(format: "%+.0f°", $0) })
-            if !light.kind.emits {
-                SliderRow(title: "Width", value: $light.width, range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
-                SliderRow(title: "Frame height", value: Binding(get: { light.boardHeight ?? light.width }, set: { light.boardHeight = $0 }),
-                          range: 0.1...6, step: 0.05, format: { UnitsFormatter.distance($0) })
-            }
-            Picker("Stand", selection: $light.support) {
-                Text("Automatic · \(LightSupport.automatic(for: light).label)").tag(LightSupport?.none)
-                ForEach(LightSupport.allCases) { Text($0.label).tag(LightSupport?.some($0)) }
-            }
-        } header: {
-            Text("Placement")
-        } footer: {
-            if let w = light.supportWarning { Text(w) }
         }
         Section {
             Toggle("Advanced options", isOn: $advanced.animation())
@@ -395,7 +395,7 @@ struct LightForm: View {
                 SliderRow(title: "Beam (spot ↔ flood)", value: $light.beamAngle, range: range, step: 1,
                           format: { String(format: "%.0f°", $0) })
             } else {
-                LabeledContent("Beam", value: pm.distribution == .beam ? String(format: "%.0f°", pm.beamAngle) : beamShapeLabel(pm.distribution))
+                LabeledContent("Beam", value: pm.distribution == .beam ? String(format: "%.0f°", pm.beamAngle) : pm.distribution == .grid ? String(format: "%.0f° grid, soft edge", pm.beamAngle) : beamShapeLabel(pm.distribution))
             }
             if pm.barnDoorsAvailable {
                 Toggle("Barn doors", isOn: Binding(get: { light.barnDoors != nil }, set: { light.barnDoors = $0 ? BarnDoors() : nil }))
@@ -419,6 +419,7 @@ struct LightForm: View {
     private func beamShapeLabel(_ d: BeamDistribution) -> String {
         switch d {
         case .beam: return "Beam"
+        case .grid: return "Grid, soft edge"
         case .lambertian: return "Soft, 120° (diffuse)"
         case .omni: return "All round"
         case .tube: return "All round the tube"
@@ -491,7 +492,7 @@ struct LightForm: View {
         } header: {
             Text("Throw (on the beam's centre, nothing in the way)")
         } footer: {
-            Text((pm.notes + ["Lux is calculated from photometric data, not from how bright the 3D view looks. Room reflections aren't included, so real readings indoors are usually higher."]).joined(separator: " "))
+            Text((pm.notes + ["Lux is calculated from photometric data, not from how bright the 3D view looks. Includes one bounce off the room's walls, floor and ceiling (Light off the room); light bouncing round more than once isn't, so real readings indoors can be a little higher."]).joined(separator: " "))
         }
     }
 

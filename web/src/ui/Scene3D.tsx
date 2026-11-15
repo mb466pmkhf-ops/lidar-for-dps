@@ -7,8 +7,10 @@
 // are real. Grip does what the calculator says it does: flags and negs cut the beam and show a faint
 // sheen where they are hit, bounce boards throw light back, and a diffusion frame stops the hard beam
 // and glows as a soft source on its far side (D-013). Daylight (sun through the windows, the sky as soft
-// light from each window) and an LED wall use the readings' levels on the same scale (D-014). No light
-// off walls, floor or ceiling. So it is a preview of the look, and the readings stay the figures to work from.
+// light from each window) and an LED wall use the readings' levels on the same scale (D-014). The
+// calculator's one bounce off the room (D-019) is shown as a few soft lights at the brightest walls,
+// floor or ceiling, not surface by surface. So it is a preview of the look, and the readings stay the
+// figures to work from.
 import { useEffect, useRef, useState } from 'react';
 import { useTip } from './tips';
 import * as THREE from 'three';
@@ -21,11 +23,11 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
-import { KIND_INFO, barnDoorTransmission, fixtureProfile, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
+import { KIND_INFO, barnDoorTransmission, fixtureProfile, gridCutoffTan, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
 import { gripStandCount, lightSupport } from '../model/rigging';
 import { keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
-import { boardOptics, buildScene, distanceToSegment, type MeterPoint } from '../model/calculator';
+import { at, boardOptics, buildScene, direction, distanceToSegment, throughGlass, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
@@ -55,10 +57,14 @@ interface Props {
   showReadings?: boolean;
   exposure: ExposureSettings;
   onSelect(s?: Selection): void;
+  /** Look through this camera or shot ("camera:<id>" or "shot:<id>"); `n` changes on every request. */
+  lookThrough?: { key: string; n: number };
 }
 
 type Quality = 0 | 1 | 2; // 2 = everything on, 1 = no ambient occlusion, 0 = plain
 const SHADOW_LIGHTS = 6;
+/** Soft lights for the bounce off the room: one per brightest wall, floor or ceiling. */
+const ROOM_LIGHTS = 3;
 /** The calculator splits each board into this many patches a side (PATCHES in calculator.ts). */
 const PATCHES = 3;
 const DEFAULT_FOV = 42;
@@ -137,6 +143,9 @@ interface Api {
   closed?: boolean;
   /** Backdrop pieces, with the walls they stand on: they fade with those walls. */
   backdropFades: BackdropFade[];
+  /** Soft lights standing in for the brightest bounce off the room's walls, floor and ceiling. Always
+   *  this many, dark when unused, so the number of lights never changes (see the shadow ranking). */
+  roomLights: THREE.SpotLight[];
 }
 
 interface BackdropFade { group: THREE.Object3D; walls: number[]; level: number; mats: { m: THREE.Material; base: number }[] }
@@ -147,8 +156,20 @@ export function Scene3D(p: Props) {
   const api = useRef<Api>(undefined);
   const onSelect = useRef(p.onSelect);
   onSelect.current = p.onSelect;
-  // "Balanced" fits the brightness to the screen; "set stop" shows it as the camera would expose it.
-  const [atStop, setAtStop] = useState(() => { try { return localStorage.getItem('framescan.3d.look') === 'stop'; } catch { return false; } });
+  const selRef = useRef(p.selection);
+  selRef.current = p.selection;
+  // "Set stop" (the default) shows the brightness as the camera would expose it, so changing the
+  // T-stop, ISO, shutter or ND visibly changes the picture; "balanced" fits it to the screen instead.
+  const [atStop, setAtStop] = useState(() => { try { return localStorage.getItem('framescan.3d.look') !== 'fit'; } catch { return true; } });
+  // Changing the camera settings goes back to the camera's exposure, so the change shows.
+  const exposureKey = JSON.stringify(p.exposure);
+  const lastExposure = useRef(exposureKey);
+  useEffect(() => {
+    if (lastExposure.current === exposureKey) return;
+    lastExposure.current = exposureKey;
+    setAtStop(true);
+    try { localStorage.setItem('framescan.3d.look', 'stop'); } catch { /* private mode */ }
+  }, [exposureKey]);
   // Looking through a camera: its frame lines are drawn over the view.
   const [tipSeen, hideTip] = useTip('3d-gestures');
   const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string }>();
@@ -162,6 +183,10 @@ export function Scene3D(p: Props) {
   // Beam reach maps already traced, so switching a unit off and on doesn't trace its beam again.
   const reachCache = useRef<ReachCache>(new Map());
   const viewPlan = useRef<FloorPlan | undefined | null>(null);
+  /** Looks through a camera; kept current for the double-click handler set up once. */
+  const lookRef = useRef<(key?: string) => void>(() => {});
+  /** Keys held for walking round (W A S D or arrows, Q and E for down and up, Shift to hurry). */
+  const held = useRef(new Set<string>());
 
   // Renderer, camera, controls: once.
   useEffect(() => {
@@ -204,6 +229,11 @@ export function Scene3D(p: Props) {
     scene.add(grid);
     const room = new THREE.Group(), items = new THREE.Group(), marks = new THREE.Group();
     scene.add(room, items, marks);
+    const roomLights = Array.from({ length: ROOM_LIGHTS }, () => {
+      const s = new THREE.SpotLight(0xffffff, 0, 0, rad(86), 1, 2);
+      scene.add(s, s.target);
+      return s;
+    });
     built.current = new Map();
     viewPlan.current = null; // a new camera needs placing
 
@@ -255,7 +285,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], invalidate };
+    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], roomLights, invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -267,10 +297,34 @@ export function Scene3D(p: Props) {
       camera.fov = DEFAULT_FOV; camera.updateProjectionMatrix();
     });
 
-    let frame = 0, last = 0, slow = 0, streak = 0;
-    const tmp = new THREE.Vector3();
+    let frame = 0, last = 0, slow = 0, streak = 0, lastMove = 0;
+    const tmp = new THREE.Vector3(), fwd = new THREE.Vector3(), side = new THREE.Vector3();
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
+      // Walking: W A S D (or the arrows) move the view and what it looks at together along the floor,
+      // Q and E down and up, Shift to go faster. Speed is per second, so it is the same on any screen.
+      const keys = held.current;
+      const dt = lastMove ? Math.min(0.05, (now - lastMove) / 1000) : 0;
+      lastMove = now;
+      if (keys.size && dt > 0) {
+        camera.getWorldDirection(fwd); fwd.y = 0;
+        if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+        fwd.normalize();
+        side.crossVectors(fwd, camera.up).normalize();
+        const k = (a: string, b: string) => (keys.has(a) || keys.has(b) ? 1 : 0);
+        const ahead = k('w', 'arrowup') - k('s', 'arrowdown'), right = k('d', 'arrowright') - k('a', 'arrowleft'), up = k('e', 'pageup') - k('q', 'pagedown');
+        if (ahead || right || up) {
+          const speed = (keys.has('shift') ? 3.2 : 1.4) * dt;
+          tmp.set(0, 0, 0).addScaledVector(fwd, ahead * speed).addScaledVector(side, right * speed);
+          tmp.y = up * speed;
+          // Keep the eye between the floor and a little over the ceiling.
+          const y = camera.position.y + tmp.y;
+          if (y < 0.15 || y > 12) tmp.y = 0;
+          camera.position.add(tmp); controls.target.add(tmp);
+          if (eyeRef.current) { setEye(undefined); camera.fov = DEFAULT_FOV; camera.updateProjectionMatrix(); }
+          invalidate();
+        }
+      }
       controls.update();
       const a = api.current!;
       // Cut away the walls between the camera and the room, easing them in and out.
@@ -335,7 +389,46 @@ export function Scene3D(p: Props) {
     };
     renderer.domElement.addEventListener('pointerdown', pd);
     renderer.domElement.addEventListener('pointerup', pu);
+    // Double-click a camera or shot to look through it.
+    const dbl = (e: MouseEvent) => {
+      const r = renderer.domElement.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+      for (const h of ray.intersectObjects(items.children, true)) {
+        let o: THREE.Object3D | null = h.object;
+        while (o && !o.userData.sel) o = o.parent;
+        const sel = o?.userData.sel as Selection | undefined;
+        if (sel && (sel.kind === 'camera' || sel.kind === 'shot')) { lookRef.current(`${sel.kind}:${sel.id}`); return; }
+        if (sel) return;
+      }
+    };
+    renderer.domElement.addEventListener('dblclick', dbl);
+    // Walking keys work while the pointer is over the 3D view or it has focus, and never while typing.
+    // Arrows walk only when nothing is selected: with a selection they nudge it, as on the plan.
+    const MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'pageup', 'pagedown', 'shift']);
+    const ARROWS = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
+    let over = false;
+    const enter = () => { over = true; }, leave = () => { over = false; };
+    el.addEventListener('pointerenter', enter); el.addEventListener('pointerleave', leave);
+    const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const kd = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (!(MOVE_KEYS.has(key) || (ARROWS.has(key) && !selRef.current)) || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      if (!over && !el.contains(document.activeElement)) return;
+      if (key !== 'shift') {
+        // These are the planner's shortcuts too (S opens the set menu): walking wins over the 3D view.
+        e.preventDefault(); e.stopPropagation();
+      }
+      held.current.add(key);
+      api.current?.invalidate();
+    };
+    const ku = (e: KeyboardEvent) => { held.current.delete(e.key.toLowerCase()); };
+    const blur = () => held.current.clear();
+    window.addEventListener('keydown', kd, true); window.addEventListener('keyup', ku); window.addEventListener('blur', blur);
     return () => {
+      window.removeEventListener('keydown', kd, true); window.removeEventListener('keyup', ku); window.removeEventListener('blur', blur);
+      el.removeEventListener('pointerenter', enter); el.removeEventListener('pointerleave', leave);
+      renderer.domElement.removeEventListener('dblclick', dbl);
       if (api.current) api.current.closed = true;
       cancelAnimationFrame(frame); ro.disconnect(); controls.dispose();
       for (const o of api.current?.trash ?? []) dispose(o);
@@ -425,6 +518,7 @@ export function Scene3D(p: Props) {
     // Daylight: the sun as a beam (walls, the lid and curtains shadow it), the sky as soft light from
     // each window, at the readings' levels on the same scale.
     const glass = loc.display?.windowTransmission ?? DEFAULT_WINDOW_TRANSMISSION;
+    const walls = buildScene([], p.plan, glass, undefined, 'off'); // walls and windows only, for `throughGlass`
     if (env?.sun) {
       const toward = v(Math.sin(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)), Math.sin(rad(env.sun.elevation)), -Math.cos(rad(env.sun.bearing)) * Math.cos(rad(env.sun.elevation)));
       a.sun.visible = true;
@@ -563,9 +657,9 @@ export function Scene3D(p: Props) {
         }
         // An unit that is off keeps its lamp at zero, for the same reason as the shadow ranking above.
         const z = -(size.front + 0.02);
-        if (pm.distribution === 'beam' || pm.distribution === 'lambertian') {
+        if (pm.distribution === 'beam' || pm.distribution === 'lambertian' || pm.distribution === 'grid') {
           // With the calculator's falloff projected, the cone only needs to be wide enough to hold it.
-          const half = pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.82, 80) : 78;
+          const half = pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.82, 80) : pm.distribution === 'grid' ? Math.min(Math.atan(gridCutoffTan(pm.beamAngle)) * 180 / Math.PI + 1, 80) : 78;
           const spot = new THREE.SpotLight(color, 0, 0, rad(hasMap ? half : pm.distribution === 'beam' ? Math.min(pm.beamAngle * 0.66, 80) : 80), hasMap ? 0 : pm.distribution === 'beam' ? 0.7 : 1, 2);
           spot.position.set(0, 0, z);
           spot.target.position.set(0, 0, z - 2);
@@ -607,14 +701,44 @@ export function Scene3D(p: Props) {
         const color = new THREE.Color(pm.color.r, pm.color.g, pm.color.b);
         relight(pan, color, l.isOn, glowLevel(pm), pan.userData.level);
         pan.userData.color = color;
-        if (lamp) { lamp.color.copy(color); lamp.intensity = pm.peakIntensity * scale; }
+        // A unit outside aimed in through a window loses what the glass takes, as in the readings.
+        if (lamp) { lamp.color.copy(color); lamp.intensity = pm.peakIntensity * scale * throughGlass(at(l.position, l.height), direction(l.pan, l.tilt), walls); }
       }
     }
 
     // Grip as a second source, from the calculator's own patches: each lit face of a board becomes
     // a soft spot facing out of it, and the far face of a diffusion glows with what it passes.
+    const optical = buildScene([...lit.map(x => x.l), ...p.lights.filter(l => !KIND_INFO[l.kind].emits && !hidden.has('grip'))], p.plan, glass, env, loc.display?.roomSurfaces ?? 'typical');
+    // The bounce off the room, as the calculator has it: each wall, the floor and the ceiling sum
+    // their pieces; the brightest few become soft lights at their middle, facing into the room.
+    {
+      const groups = new Map<string, { sum: number; at: THREE.Vector3; n: THREE.Vector3; colour: THREE.Color }>();
+      for (const q of optical.room) {
+        const key = `${q.normal.x.toFixed(2)},${q.normal.y.toFixed(2)},${q.normal.z.toFixed(2)}|${(q.centre.x * q.normal.x + q.centre.y * q.normal.y + q.centre.z * q.normal.z).toFixed(1)}`;
+        let g = groups.get(key);
+        if (!g) groups.set(key, g = { sum: 0, at: v(0, 0, 0), n: v(q.normal.x, q.normal.y, q.normal.z), colour: new THREE.Color(0, 0, 0) });
+        g.sum += q.intensity;
+        g.at.addScaledVector(v(q.centre.x, q.centre.y, q.centre.z), q.intensity);
+        // The colour of what lit it: each unit's own colour, daylight a cool white.
+        for (const s of q.shares) {
+          const c = pms.get(s.lightID)?.color;
+          g.colour.r += (c?.r ?? 0.95) * s.intensity; g.colour.g += (c?.g ?? 0.97) * s.intensity; g.colour.b += (c?.b ?? 1) * s.intensity;
+        }
+      }
+      const top = [...groups.values()].sort((x, y) => y.sum - x.sum).slice(0, ROOM_LIGHTS);
+      a.roomLights.forEach((s, i) => {
+        const g = top[i];
+        if (!g || !(g.sum * scale > 1e-4)) { s.intensity = 0; return; }
+        const c = g.at.multiplyScalar(1 / g.sum);
+        s.position.copy(c).addScaledVector(g.n, 0.05);
+        s.target.position.copy(c).addScaledVector(g.n, 1);
+        s.target.updateMatrixWorld();
+        const m = Math.max(g.colour.r, g.colour.g, g.colour.b) || 1;
+        s.color.setRGB(g.colour.r / m, g.colour.g / m, g.colour.b / m);
+        s.intensity = g.sum * scale;
+      });
+    }
     if (!hidden.has('grip')) {
-      const optical = buildScene([...lit.map(x => x.l), ...p.lights.filter(l => !KIND_INFO[l.kind].emits)], p.plan);
       for (const b of optical.boards) {
         const obj = next.get(`light:${b.id}`)?.obj;
         // Per face, how bright each of the calculator's patches glows with light passed through it
@@ -625,10 +749,9 @@ export function Scene3D(p: Props) {
           const mine = optical.patches.filter(q => q.board === b.id && Math.sign(q.normal.x * b.normal.x + q.normal.y * b.normal.y + q.normal.z * b.normal.z) === side);
           const total = mine.reduce((s, q) => s + q.intensity, 0);
           for (const q of total > 0 ? mine : []) {
-            // A patch facing away from its unit is light that came through the frame; what is
+            // A patch marked `through` is light that came through the frame; what is
             // reflected shows through the face's own albedo instead.
-            const e = optical.emitters.find(x => x.id === q.lightID);
-            if (!e || (e.position.x - q.centre.x) * q.normal.x + (e.position.y - q.centre.y) * q.normal.y + (e.position.z - q.centre.z) * q.normal.z >= 0) continue;
+            if (!q.through) continue;
             const d = { x: q.centre.x - b.centre.x, y: q.centre.y - b.centre.y, z: q.centre.z - b.centre.z };
             const along = d.x * b.right.x + d.y * b.right.y + d.z * b.right.z, up = d.x * b.up.x + d.y * b.up.y + d.z * b.up.z;
             const i = Math.max(0, Math.min(PATCHES - 1, Math.floor((along + b.halfWidth) / Math.max(1e-6, 2 * b.halfWidth) * PATCHES)));
@@ -768,13 +891,13 @@ export function Scene3D(p: Props) {
   const resetView = () => { setEye(undefined); const a = api.current!; moveTo(a.centre.clone().add(v(a.span * 0.72, a.span * 0.86, a.span * 0.98)), a.centre.clone().setY(0.7)); };
   const topView = () => { setEye(undefined); const a = api.current!; moveTo(a.centre.clone().add(v(0, a.span * 1.75, 0.01)), a.centre); };
   // Eye: look through the selected camera (or the first one) with its lens and frame; else stand at the room's edge.
-  const eyeLevel = () => {
+  const eyeLevel = (want?: string) => {
     const a = api.current!;
     const { location: loc, selection: sel, scanID } = p;
     const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase();
     const cams = [...loc.cameraPositions.filter(c => inScan(c.scanID)).map(c => ({ kind: 'camera', id: c.id, rig: c.rig, name: c.name })),
       ...loc.shots.filter(s => inScan(s.scanID)).map(s => ({ kind: 'shot', id: s.id, rig: s.rig, name: `Shot ${s.number}` }))];
-    const cam = cams.find(c => sel?.kind === c.kind && sel.id === c.id) ?? cams[0];
+    const cam = (want ? cams.find(c => `${c.kind}:${c.id}` === want) : undefined) ?? cams.find(c => sel?.kind === c.kind && sel.id === c.id) ?? cams[0];
     if (cam) {
       const { position, height, pan, tilt } = cam.rig;
       const dir = v(Math.sin(rad(pan)) * Math.cos(rad(tilt)), Math.sin(rad(tilt)), -Math.cos(rad(pan)) * Math.cos(rad(tilt)));
@@ -790,15 +913,19 @@ export function Scene3D(p: Props) {
     setEye(undefined);
     const t = v(a.centre.x, 1.4, a.centre.z); moveTo(t.clone().add(v(0, 0.2, a.span * 0.45)), t);
   };
+  lookRef.current = eyeLevel;
+  // Asked from the camera's details ("Look through it"): once the view is ready.
+  useEffect(() => { if (p.lookThrough) eyeLevel(p.lookThrough.key); }, [p.lookThrough?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cameraCount = p.location.cameraPositions.length + p.location.shots.length;
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
 
-  const what = p.location.daylight?.isOn ? 'Units and grip, sun and sky through the windows; no light off the walls.' : 'Units and grip only, no light off the walls, no daylight.';
+  const what = p.location.daylight?.isOn ? 'Units, grip, sun and sky through the windows, and a rough bounce off the room.' : 'Units, grip and a rough bounce off the room; no daylight.';
   const note = warming ? 'Preparing the 3D view…' : noLight ? 'No lights on: the room is shown under a plain work light.'
     : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. ${what} Estimate.`
     : `Preview: brightness fitted to the strongest source. ${what} Use the readings for exposure.`;
 
   return (
-    <div className="scene3d" ref={host}>
+    <div className="scene3d" ref={host} tabIndex={0} aria-label="3D view. W A S D to move, Q and E to go down and up.">
       <div className="scene3d-tags" ref={tagHost} aria-hidden="true" />
       {eye && (
         <div className="scene3d-frame" aria-hidden="true">
@@ -809,13 +936,18 @@ export function Scene3D(p: Props) {
       )}
       <div className="scene3d-hint">
         <span className="what">{note}</span>
-        {!tipSeen && <span className="how">Drag to look round · right-drag or two fingers to slide · scroll to zoom · click to select <button className="linkish" onClick={hideTip}>Got it</button></span>}
+        {!tipSeen
+          ? <span className="how">Move: W A S D (Shift to hurry), Q and E down and up · drag to turn round · right-drag to slide · scroll to zoom · double-click a camera to look through it <button className="linkish" onClick={hideTip}>Got it</button></span>
+          : <span className="how keys" aria-hidden="true">W A S D move · Q E down, up · drag to turn</span>}
       </div>
       <div className="scene3d-buttons">
-        <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title="Show the brightness as the camera would expose it at the set stop, instead of fitting it to the screen">At {stopLabel(p.exposure.tStop)}</button>
+        <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title={atStop ? 'Brightness as the camera exposes it at the settings above. Click to fit it to the screen instead.' : 'Brightness fitted to the screen. Click to show it as the camera exposes it.'}>{atStop ? `As shot · ${stopLabel(p.exposure.tStop)}` : 'Fitted'}</button>
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>
         <button className="tool" onClick={topView} title="View from above">Top</button>
-        <button className={'tool' + (eye ? ' on' : '')} onClick={eyeLevel} title="Look through the selected camera, or the first one, with its lens and frame">Eye</button>
+        <button className={'tool' + (eye ? ' on' : '')} aria-pressed={!!eye} onClick={() => (eye ? resetView() : eyeLevel())}
+          title={eye ? 'Leave the camera view' : cameraCount ? 'Look through the selected camera, or the first one, with its lens and frame' : 'Stand in the room at eye level (add a camera to look through it)'}>
+          <Icon name={cameraCount ? 'camera' : 'eye'} /> {eye ? 'Leave camera' : cameraCount ? 'Camera view' : 'Eye level'}
+        </button>
       </div>
     </div>
   );

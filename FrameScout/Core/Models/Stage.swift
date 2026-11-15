@@ -482,12 +482,15 @@ enum Stage {
     static let sunID = UUID(uuidString: "5A11D000-0000-4000-8000-000000000001")!
     static let skyID = UUID(uuidString: "5A11D000-0000-4000-8000-000000000002")!
     static let ledWallID = UUID(uuidString: "5A11D000-0000-4000-8000-000000000003")!
+    /// Light thrown back off the room's walls, floor and ceiling (a `viaBounce` id, not a source).
+    static let roomID = UUID(uuidString: "5A11D000-0000-4000-8000-000000000004")!
 
     static func ambientName(_ id: UUID) -> String? {
         switch id {
         case sunID: return "Sun through the window"
         case skyID: return "Daylight through the windows"
         case ledWallID: return "LED wall"
+        case roomID: return "the walls, floor and ceiling"
         default: return nil
         }
     }

@@ -17,8 +17,37 @@ import Foundation
 /// - with a `Stage.Environment`: sun and sky through the windows, and an LED wall;
 /// - overlapping units add up.
 ///
-/// What isn't: light reflected by walls, floor and ceiling, and furniture shadows.
-/// Real readings in a room will usually be higher than these. Every result is an estimate.
+/// - the room's walls, floor and ceiling send back one bounce of what lands on them, at the
+///   reflectances picked in the display settings (`RoomSurfaces`, D-019).
+///
+/// What isn't: light bouncing round more than once, the colour of the walls, and furniture shadows.
+/// Real readings in a room will usually be a little higher than these. Every result is an estimate.
+
+/// How much light the room's own surfaces throw back (ROOM_SURFACES in calculator.ts).
+enum RoomSurfaces: String, Codable, CaseIterable, Identifiable {
+    case off, dark, typical, light
+    var id: String { rawValue }
+
+    /// Reflectance of walls, ceiling and floor. Typical: emulsion walls, a white ceiling, a mid-toned
+    /// wooden or carpeted floor. Dark: a blacked-out room or studio.
+    var reflectance: (wall: Double, ceiling: Double, floor: Double) {
+        switch self {
+        case .off: return (0, 0, 0)
+        case .dark: return (0.08, 0.1, 0.06)
+        case .typical: return (0.5, 0.7, 0.2)
+        case .light: return (0.75, 0.8, 0.35)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .typical: return "Typical room"
+        case .light: return "White room"
+        case .dark: return "Dark or blacked out"
+        case .off: return "Off"
+        }
+    }
+}
 /// How a piece of grip treats light that lands on it (same numbers as `boardOptics` on the web).
 struct BoardOptics: Equatable {
     /// Fraction that gets through.
@@ -105,6 +134,8 @@ enum LightingCalculator {
             var normal: Point
             var intensity: Double
             var radius: Double
+            /// Light that came through a diffusion and out of its far face (otherwise reflected off the lit face).
+            var through: Bool
         }
 
         var emitters: [Emitter] = []
@@ -119,11 +150,25 @@ enum LightingCalculator {
         var plan: FloorPlan?
         /// What the boards re-emit, worked out once per scene.
         var patches: [Patch] = []
+        /// A piece of the room's walls, floor or ceiling re-emitting one bounce of what lands on it;
+        /// `shares` splits its intensity by the source that lit it (a unit, sun, sky, LED wall).
+        struct RoomPatch {
+            var centre: Point
+            var normal: Point
+            var intensity: Double
+            var radius: Double
+            var shares: [(lightID: UUID, intensity: Double)]
+        }
+        /// One bounce off the room's walls, floor and ceiling.
+        var room: [RoomPatch] = []
+        /// Smallest piece of room surface (m); bigger rooms use bigger pieces so there are never many more than `roomPatches`.
+        static let roomCell = 1.0
+        static let roomPatches = 160.0
         /// Each board is split into this many patches a side, so a frame half in the beam glows only where lit.
         static let patchesPerSide = 3
 
         init(lights: [LightFixture], plan: FloorPlan? = nil, windowTransmission: Double = SceneDisplay.defaultWindowTransmission,
-             environment: Stage.Environment? = nil) {
+             environment: Stage.Environment? = nil, surfaces: RoomSurfaces = .typical) {
             self.windowTransmission = windowTransmission
             self.plan = plan
             if let plan {
@@ -151,6 +196,7 @@ enum LightingCalculator {
                 }
             }
             patches = LightingCalculator.secondarySources(self)
+            room = LightingCalculator.roomSources(self, surfaces.reflectance)
         }
 
         private mutating func addEnvironment(_ env: Stage.Environment, plan: FloorPlan?) {
@@ -180,8 +226,10 @@ enum LightingCalculator {
         }
     }
 
-    /// For each unit, the light landing on each board patch (with everything else in the way), sent
-    /// back off the lit face and, through a diffusion, out of the far face. One bounce only.
+    /// For each unit, the sun, the sky in each window and each LED wall, the light landing on each
+    /// board patch (with everything else in the way), sent back off the lit face and, through a
+    /// diffusion, out of the far face. One bounce: light off one board doesn't light another (it does
+    /// light the room, see `roomSources`).
     static func secondarySources(_ scene: Scene) -> [Scene.Patch] {
         var patches: [Scene.Patch] = []
         let n = Scene.patchesPerSide
@@ -194,24 +242,106 @@ enum LightingCalculator {
                     let x = ((Double(i) + 0.5) / Double(n) - 0.5) * 2 * board.halfWidth
                     let y = board.lo + (Double(j) + 0.5) / Double(n) * (board.hi - board.lo)
                     let centre = board.centre + board.right * x + board.up * y
+                    func send(_ lightID: UUID, _ lit: Point, _ incident: Double) {
+                        guard incident > 0 else { return }
+                        let each = incident * patchArea / .pi // a matte surface's intensity: exitance × area ÷ π
+                        if o.reflectance > 0 {
+                            patches.append(Scene.Patch(board: board.id, lightID: lightID, centre: centre, normal: lit, intensity: o.reflectance * each, radius: radius, through: false))
+                        }
+                        if o.transmission * o.scatter > 0 {
+                            patches.append(Scene.Patch(board: board.id, lightID: lightID, centre: centre, normal: lit * -1, intensity: o.transmission * o.scatter * each, radius: radius, through: true))
+                        }
+                    }
                     for e in scene.emitters {
                         let side = (e.position - centre).dot(board.normal)
                         if side == 0 { continue }
                         let lit = side > 0 ? board.normal : board.normal * -1
-                        let incident = illuminance(from: e, at: centre, normal: lit, scene: scene, ignoringBoard: board.id)
-                        guard incident > 0 else { continue }
-                        let each = incident * patchArea / .pi // a matte surface's intensity: exitance × area ÷ π
-                        if o.reflectance > 0 {
-                            patches.append(Scene.Patch(board: board.id, lightID: e.id, centre: centre, normal: lit, intensity: o.reflectance * each, radius: radius))
-                        }
-                        if o.transmission * o.scatter > 0 {
-                            patches.append(Scene.Patch(board: board.id, lightID: e.id, centre: centre, normal: lit * -1, intensity: o.transmission * o.scatter * each, radius: radius))
-                        }
+                        send(e.id, lit, illuminance(from: e, at: centre, normal: lit, scene: scene, ignoringBoard: board.id))
+                    }
+                    // Daylight and LED walls bounce off grip too (an Ultrabounce catching the sun, a silk in a window).
+                    for side in [1.0, -1.0] {
+                        let lit = board.normal * side
+                        if scene.sun != nil { send(Stage.sunID, lit, sunlight(at: centre, normal: lit, scene: scene, ignoring: [board.id])) }
+                        for area in scene.areas { send(area.id, lit, areaIlluminance(area, at: centre, normal: lit, scene: scene, ignoring: [board.id])) }
                     }
                 }
             }
         }
         return patches
+    }
+
+    /// One bounce off the room: the walls (less their windows, doors and openings), the floor and the
+    /// ceiling are cut into pieces; each takes what every unit, the sun, the sky and an LED wall put
+    /// on it, directly or off grip (with everything in the way), and sends back its reflectance of it
+    /// like a matte surface. The room doesn't light itself twice, and its bounce doesn't bounce off grip
+    /// again. Same order and numbers as roomSources in calculator.ts.
+    static func roomSources(_ scene: Scene, _ r: (wall: Double, ceiling: Double, floor: Double)) -> [Scene.RoomPatch] {
+        guard let plan = scene.plan, !scene.walls.isEmpty, r.wall > 0 || r.ceiling > 0 || r.floor > 0 else { return [] }
+        guard !scene.emitters.isEmpty || scene.sun != nil || !scene.areas.isEmpty else { return [] }
+        let top = max(0, scene.walls.map { $0.bottom + $0.height }.max() ?? 0)
+        guard top > 0.3 else { return [] }
+        let b = plan.bounds, bw = b.maxX - b.minX, bd = b.maxZ - b.minZ
+        let wallArea = scene.walls.reduce(0.0) { $0 + $1.a.distance(to: $1.b) * $1.height }
+        let cell = max(Scene.roomCell, ((wallArea + 2 * bw * bd) / Scene.roomPatches).squareRoot())
+        var cells: [(centre: Point, normal: Point, area: Double, reflectance: Double)] = []
+        if r.wall > 0 {
+            for w in scene.walls {
+                let L = w.a.distance(to: w.b)
+                guard L > 0.05, w.height > 0.05 else { continue }
+                let n = Stage.inwardNormal(w.a, w.b, plan: plan)
+                let nu = max(1, Int((L / cell).rounded())), nv = max(1, Int((w.height / cell).rounded()))
+                for i in 0..<nu {
+                    for j in 0..<nv {
+                        let u = (Double(i) + 0.5) / Double(nu), y = w.bottom + (Double(j) + 0.5) / Double(nv) * w.height
+                        let q = PlanPoint(x: w.a.x + (w.b.x - w.a.x) * u, z: w.a.z + (w.b.z - w.a.z) * u)
+                        if scene.apertures.contains(where: { distance(q, toSegment: $0.a, $0.b) < 0.15 && y >= $0.bottom && y <= $0.bottom + $0.height }) { continue }
+                        cells.append((Point(x: q.x + n.x * 0.03, y: y, z: q.z + n.z * 0.03), Point(x: n.x, y: 0, z: n.z),
+                                      (L / Double(nu)) * (w.height / Double(nv)), r.wall))
+                    }
+                }
+            }
+        }
+        let nx = max(1, Int((bw / cell).rounded())), nz = max(1, Int((bd / cell).rounded()))
+        let cw = bw / Double(nx), ch = bd / Double(nz)
+        for (y, ny, refl) in [(0.03, 1.0, r.floor), (top - 0.03, -1.0, r.ceiling)] {
+            guard refl > 0 else { continue }
+            for k in 0..<nz {
+                for i in 0..<nx {
+                    let p = PlanPoint(x: b.minX + (Double(i) + 0.5) * cw, z: b.minZ + (Double(k) + 0.5) * ch)
+                    guard Stage.insideRoom(p, plan: plan) else { continue }
+                    cells.append((Point(x: p.x, y: y, z: p.z), Point(x: 0, y: ny, z: 0), cw * ch, refl))
+                }
+            }
+        }
+        var out: [Scene.RoomPatch] = []
+        for c in cells {
+            var shares: [(lightID: UUID, intensity: Double)] = []
+            let k = c.reflectance * c.area / .pi // a matte surface's intensity: exitance × area ÷ π
+            for e in scene.emitters {
+                let lux = illuminance(from: e, at: c.centre, normal: c.normal, scene: scene)
+                if lux > 0 { shares.append((e.id, lux * k)) }
+            }
+            if scene.sun != nil {
+                let lux = sunlight(at: c.centre, normal: c.normal, scene: scene)
+                if lux > 0 { shares.append((Stage.sunID, lux * k)) }
+            }
+            for area in scene.areas {
+                let lux = areaIlluminance(area, at: c.centre, normal: c.normal, scene: scene)
+                guard lux > 0 else { continue }
+                if let i = shares.firstIndex(where: { $0.lightID == area.id }) { shares[i].intensity += lux * k } else { shares.append((area.id, lux * k)) }
+            }
+            // What grip sends on: a bounce board lighting the ceiling, a silk lighting the far wall.
+            for patch in scene.patches {
+                let lux = fromPatch(patch, to: c.centre, normal: c.normal, scene: scene)
+                guard lux > 0 else { continue }
+                if let i = shares.firstIndex(where: { $0.lightID == patch.lightID }) { shares[i].intensity += lux * k } else { shares.append((patch.lightID, lux * k)) }
+            }
+            let intensity = shares.reduce(0.0) { $0 + $1.intensity }
+            if intensity > 1e-6 {
+                out.append(Scene.RoomPatch(centre: c.centre, normal: c.normal, intensity: intensity, radius: (c.area / .pi).squareRoot(), shares: shares))
+            }
+        }
+        return out
     }
 
     struct Contribution: Hashable {
@@ -289,6 +419,24 @@ enum LightingCalculator {
         return t * boardsPass(a, b, scene: scene, ignoring: ignoring)
     }
 
+    /// For the 3D picture only: a unit outside the room aimed in through a window loses what the glass
+    /// and curtain take (the readings get this from `transmission`). 1 for a unit inside the room, or
+    /// one whose axis meets a wall, a door or nothing first: shadows show those. Same as calculator.ts.
+    static func throughGlass(position: Point, axis: Point, scene: Scene) -> Double {
+        guard let plan = scene.plan, !Stage.insideRoom(position.plan, plan: plan) else { return 1 }
+        let far = position + axis * 40
+        var best: (s: Double, t: Double)?
+        for w in scene.walls {
+            guard let hit = intersect(position.plan, far.plan, w.a, w.b) else { continue }
+            let (s, q) = hit
+            let y = position.y + s * (far.y - position.y)
+            guard y >= w.bottom - 0.01, y <= w.bottom + w.height + 0.01, best.map({ s < $0.s }) ?? true else { continue }
+            let opening = scene.apertures.first { distance(q, toSegment: $0.a, $0.b) < 0.15 && y >= $0.bottom - 0.01 && y <= $0.bottom + $0.height + 0.01 }
+            best = (s, opening?.kind == .window ? scene.windowTransmission * Stage.curtainPass(opening?.curtain) : 1)
+        }
+        return best?.t ?? 1
+    }
+
     private static func boardsPass(_ a: Point, _ b: Point, scene: Scene, ignoring: [UUID]) -> Double {
         var t = 1.0
         let ab = b - a
@@ -352,6 +500,20 @@ enum LightingCalculator {
             contributions.append(Contribution(lightID: id, lux: lux))
             total += lux
         }
+        // The room's bounce: one contribution per source, marked as coming off the room.
+        for patch in scene.room {
+            let lux = fromSurface(patch, to: point, normal: normal, scene: scene)
+            guard lux > 0 else { continue }
+            for s in patch.shares {
+                let part = lux * s.intensity / patch.intensity
+                if let i = contributions.firstIndex(where: { $0.lightID == s.lightID && $0.viaBounce == Stage.roomID }) {
+                    contributions[i].lux += part
+                } else {
+                    contributions.append(Contribution(lightID: s.lightID, lux: part, viaBounce: Stage.roomID))
+                }
+            }
+            total += lux
+        }
         return Reading(lux: total, contributions: contributions)
     }
 
@@ -361,7 +523,7 @@ enum LightingCalculator {
     /// rectangle (Lambert's polygon formula, clipped to what the receptor faces); what blocks it on
     /// the way (walls, glass, curtains, flags) is averaged over a grid of patches, weighted by how
     /// much each patch gives.
-    static func areaIlluminance(_ area: Stage.AreaSource, at point: Point, normal: Point, scene: Scene) -> Double {
+    static func areaIlluminance(_ area: Stage.AreaSource, at point: Point, normal: Point, scene: Scene, ignoring: [UUID] = []) -> Double {
         let f = Point(x: area.facing.x, y: 0, z: area.facing.z)
         let toP = Point(x: point.x - area.origin.x, y: point.y - area.bottom, z: point.z - area.origin.z)
         guard toP.dot(f) > 1e-6 else { return 0 }
@@ -384,11 +546,11 @@ enum LightingCalculator {
                 guard out > 0, inc > 0 else { continue }
                 let w = out * inc * dA / (dist2 + soften)
                 weight += w
-                passed += w * transmission(from: c, to: point, scene: scene)
+                passed += w * transmission(from: c, to: point, scene: scene, ignoring: ignoring)
             }
         }
         guard weight > 0 else {
-            return exact * transmission(from: corner(area.width / 2, area.height / 2), to: point, scene: scene)
+            return exact * transmission(from: corner(area.width / 2, area.height / 2), to: point, scene: scene, ignoring: ignoring)
         }
         return exact * passed / weight
     }
@@ -422,7 +584,7 @@ enum LightingCalculator {
 
     /// Direct sun at a point: it has to come in through a window or open door. Indoors, a path that
     /// goes over a wall goes through the ceiling. Sheer and blackout curtains stop the beam.
-    static func sunlight(at point: Point, normal: Point, scene: Scene) -> Double {
+    static func sunlight(at point: Point, normal: Point, scene: Scene, ignoring: [UUID] = []) -> Double {
         guard let sun = scene.sun else { return 0 }
         let inc = sun.toward.dot(normal)
         guard inc > 0 else { return 0 }
@@ -446,7 +608,7 @@ enum LightingCalculator {
             if t <= 0 { return 0 }
         }
         if indoor && !crossed { return 0 }
-        t *= boardsPass(point, far, scene: scene, ignoring: [])
+        t *= boardsPass(point, far, scene: scene, ignoring: ignoring)
         return t > 0 ? sun.directNormal * inc * t : 0
     }
 
@@ -461,6 +623,19 @@ enum LightingCalculator {
         let lux = patch.intensity * out * incidence / (d * d + patch.radius * patch.radius)
         guard lux > 1e-6 else { return 0 }
         return lux * transmission(from: patch.centre, to: point, scene: scene, ignoring: [patch.board])
+    }
+
+    /// Light one piece of the room sends to `point`, like `fromPatch`.
+    static func fromSurface(_ patch: Scene.RoomPatch, to point: Point, normal: Point, scene: Scene) -> Double {
+        let toPoint = point - patch.centre
+        let d = toPoint.length
+        guard d > 0.05 else { return 0 }
+        let v = toPoint * (1 / d)
+        let out = v.dot(patch.normal), incidence = -v.dot(normal)
+        guard out > 0, incidence > 0 else { return 0 }
+        let lux = patch.intensity * out * incidence / (d * d + patch.radius * patch.radius)
+        guard lux > 1e-6 else { return 0 }
+        return lux * transmission(from: patch.centre, to: point, scene: scene)
     }
 
     /// Readings on a grid over `bounds`, row by row (z then x), at `height`. `normal` gives the
@@ -499,12 +674,12 @@ enum LightingCalculator {
     /// Output for `light` so the total at the point reaches `target` lux, keeping the other units as they are.
     static func solveOutput(for light: LightFixture, target: Double, at point: Point, normal: Point,
                             allLights: [LightFixture], plan: FloorPlan?, windowTransmission: Double = SceneDisplay.defaultWindowTransmission,
-                            environment: Stage.Environment? = nil) -> IntensitySolution {
+                            environment: Stage.Environment? = nil, surfaces: RoomSurfaces = .typical) -> IntensitySolution {
         let others = allLights.filter { $0.id != light.id }
         var full = light
         full.dimmer = 1
         full.isOn = true
-        let fullScene = Scene(lights: others + [full], plan: plan, windowTransmission: windowTransmission, environment: environment)
+        let fullScene = Scene(lights: others + [full], plan: plan, windowTransmission: windowTransmission, environment: environment, surfaces: surfaces)
         let fullReading = reading(at: point, normal: normal, scene: fullScene)
         let mine = fullReading.contributions.filter { $0.lightID == light.id }.reduce(0) { $0 + $1.lux }
         let othersLux = fullReading.lux - mine

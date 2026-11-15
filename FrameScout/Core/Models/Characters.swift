@@ -201,6 +201,9 @@ struct FigureProportions {
     var legRadius: Double
     var armLength: Double
     var seatHeight: Double
+    /// A seated person's hip joints above the seat: the thigh's half thickness less a centimetre of
+    /// give in the cushion (sitLift in characters.ts).
+    var sitLift: Double
     var sitting: Bool
     var top: Double
 
@@ -223,8 +226,9 @@ struct FigureProportions {
         sitting = c.posture == .sitting
         // On a sofa, chair or bed: its seat (Placement); otherwise a usual chair height.
         seatHeight = sitting ? (c.seatHeight ?? min(0.45, standingHip * 0.5)) : 0
-        // Sitting lowers everything above the hips to a seat (thighs horizontal).
-        let drop = sitting ? standingHip - seatHeight : 0
+        sitLift = sitting ? max(0, h * (0.052 + 0.016 * min(max(c.build, 0), 1)) - 0.01) : 0
+        // Sitting lowers everything above the hips to a seat (thighs horizontal), resting on it.
+        let drop = sitting ? standingHip - seatHeight - sitLift : 0
         hipHeight = standingHip - drop
         shoulderHeight = h * 0.818 - drop
         neckBase = h * 0.845 - drop

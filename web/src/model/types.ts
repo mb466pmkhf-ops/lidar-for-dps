@@ -25,6 +25,10 @@ export interface PlanObject {
   width: number; depth: number; height: number; rotation: number;
   /** Placed or changed by hand (sizes typed or picked, not measured). Absent on scanned items. */
   byHand?: boolean;
+  /** Height of its underside above the floor (m): a TV on the wall or up on a unit. Absent = on the floor. */
+  elevation?: number;
+  /** Hung on the wall it backs onto (TVs and screens). */
+  wallMounted?: boolean;
 }
 export interface FloorPlan {
   walls: PlanSegment[]; doors: PlanSegment[]; windows: PlanSegment[]; openings: PlanSegment[];
@@ -75,6 +79,8 @@ export interface LightMeter {
   [key: string]: unknown;
 }
 
+export type RoomSurfaces = 'off' | 'dark' | 'typical' | 'light';
+
 export interface ExposureSettings {
   iso: number; frameRate: number; shutterAngle: number; shutterSeconds?: number;
   tStop: number; lensTransmission: number; ndStops: number;
@@ -104,6 +110,8 @@ export interface Shot {
 export interface SceneDisplay {
   hiddenItems?: string[]; hiddenGroups?: string[]; hiddenLabels?: string[];
   windowOpacity?: number; windowTransmission?: number; wallOpacity?: number; showLuxMap?: boolean;
+  /** How much light the room's own surfaces throw back (calculator.ts ROOM_SURFACES). Absent = typical. */
+  roomSurfaces?: RoomSurfaces;
   [key: string]: unknown;
 }
 

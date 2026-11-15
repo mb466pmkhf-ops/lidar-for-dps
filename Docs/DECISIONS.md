@@ -133,7 +133,7 @@ furniture and people). Better pictures look more trustworthy, so the rules of D-
 - **From the photometric model**: each unit's colour, its brightness relative to the other units, and (web and
   desktop) its falloff across the beam and its barn-door cut, which are the calculator's own curves projected by
   the light. Shadow softness follows the size of the source.
-- **Not modelled, and said so on screen**: light bouncing round the room, daylight (added in D-014), and bounce boards. The
+- **Not modelled, and said so on screen**: daylight (added in D-014), bounce boards (D-013) and light bouncing round the room (one bounce added in D-019). The
   picture shows direct light plus a trace of work light so the room stays readable.
 - **Brightness**: by default the picture is fitted to the screen (the brightest reading sits a little over
   mid-grey). Web and desktop can instead show it at the set stop, where an incident reading equal to the key
@@ -264,3 +264,33 @@ marketing and fixed vulnerabilities. Choices:
   Third-party code is MIT/Apache/BSD/MPL-style only; anything else fails the release gate.
 - Still open: store name and bundle id (D-001, Vorbi chose to decide later), native Sign in with
   Apple once the paid team exists (rule 4.8).
+
+## D-019 · Light off the room, egg-crate grids, and the 3D picture as shot — 2026-11-15
+
+Vorbi's test notes: egg-crates made the light too focused, the camera settings changed nothing in 3D,
+bounced light didn't seem to reach people, and the phone and desktop looked different. Choices:
+
+- **One bounce off the room.** Readings now add one bounce off the walls, floor and ceiling. The room
+  is cut into pieces about 1 m across (never many more than 160); each piece takes the light that
+  reaches it from the units, daylight and boards, and sends back `reflectance × E / π` per square metre
+  as a soft (Lambertian) source, stopped by walls like any other. Windows, doors and openings send
+  nothing back. One bounce only: light that bounces twice is left out, so a bright white room still
+  reads a little low. The breakdown names it "the walls, floor and ceiling".
+- **Grip in the bounce.** Light off grip (a bounce board, an Ultrabounce, a silk) also lights the room's
+  pieces, and grip now catches the sun, the sky through each window and LED walls as well as the units
+  (before, only units bounced off grip). The room's own bounce does not bounce off grip again.
+- **Reflectance is a choice, not a measurement.** "Light off the room" in the display settings: Off,
+  Dark (walls 8 %, ceiling 10 %, floor 6 %), Typical (50 / 70 / 20 %, the default) or Light
+  (75 / 80 / 35 %). The scan knows shapes, not paint, so the readings with bounce are estimates.
+  Projects opened from before this decision get Typical, so their readings rise (about 10–25 % in the
+  sample rooms); the samples' key was re-set to keep their stated stop.
+- **Egg-crate grids** no longer narrow the light into a beam. A grid passes about `cos θ × (1 − tan θ /
+  tan c)` of a bare soft source's light at angle θ, cut to nothing at the grid's cut-off c, so the centre
+  is a little under the bare panel (40° grid on a panel 80 %, on a 90 cm softbox 40 % of the bare
+  head) and the edge falls off softly. Before, a 40° grid made a panel about five times brighter on axis.
+- **The 3D picture** (amends D-011): it now shows the room's bounce as three soft lights at the
+  brightest walls/floor/ceiling, from the calculator's own pieces. It opens "As shot" at the camera
+  settings on both platforms (changing a setting returns to it); "Fitted" stays one press away. The
+  iPhone's light falloff was changed to follow 1/d² within about ⅔ stop from 1.5 to 6 m (SceneKit has
+  no inverse-square falloff) and its work light lowered to the desktop's trace. Still a preview: the
+  readings are the figures to use, and the phone's daylight look is not yet on the same scale.

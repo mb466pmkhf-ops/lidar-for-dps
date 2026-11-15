@@ -37,6 +37,7 @@ export const FURNITURE_PRESETS: FurniturePreset[] = [
   { id: 'bath', label: 'Bath', category: 'Bathtub', width: 1.7, depth: 0.75, height: 0.55 },
   { id: 'toilet', label: 'Toilet', category: 'Toilet', width: 0.4, depth: 0.65, height: 0.8 },
   { id: 'fireplace', label: 'Fireplace', category: 'Fireplace', width: 1.4, depth: 0.4, height: 1.1 },
+  { id: 'tv', label: 'TV (55 in)', category: 'Television', width: 1.23, depth: 0.08, height: 0.71 },
   { id: 'box', label: 'Box', category: 'Box', width: 0.6, depth: 0.6, height: 0.6 },
 ];
 
@@ -143,6 +144,34 @@ export function backOntoWall(plan: FloorPlan | undefined, center: PlanPoint, dep
   if ((c.x - hit.point.x) * nx + (c.z - hit.point.z) * nz < 0) { nx = -nx; nz = -nz; }
   const off = depth / 2 + 0.02;
   return { center: P(hit.point.x + nx * off, hit.point.z + nz * off), rotation: r6(Math.atan2(uz, ux)) };
+}
+
+/** TVs, monitors and screens: they can hang on a wall and be raised. */
+export const isScreen = (category: string) => /tele|^tv$|screen|monitor/i.test(category.trim());
+/** Usual underside height (m) of a TV hung on a wall: its middle near seated eye level. */
+export const WALL_TV_ELEVATION = 0.95;
+
+/** Hangs a piece on the nearest wall (its back flat to the wall, 3 cm off it for the bracket), keeping
+ *  its height off the floor or, the first time, putting it at the usual height. undefined with no wall. */
+export function mountOnWall(plan: FloorPlan | undefined, o: PlanObject): PlanObject | undefined {
+  const wall = backOntoWall(plan, o.center, o.depth, 50);
+  if (!wall) return undefined;
+  return { ...o, center: wall.center, rotation: wall.rotation, wallMounted: true, elevation: r3(o.elevation ?? WALL_TV_ELEVATION), byHand: true };
+}
+
+/** Takes a piece off the wall: it stands on its own feet at the same height (on a unit, or the floor). */
+export function standOnFeet(o: PlanObject): PlanObject {
+  const n: PlanObject = { ...o, byHand: true };
+  delete n.wallMounted;
+  return n;
+}
+
+/** Sets how high a piece's underside is, 0…(4 m less its own height); 0 removes the field. */
+export function setElevation(o: PlanObject, elevation: number): PlanObject {
+  const e = r3(Math.min(Math.max(0, Number.isFinite(elevation) ? elevation : 0), Math.max(0, 4 - o.height)));
+  const n: PlanObject = { ...o, byHand: true };
+  if (e > 0) n.elevation = e; else delete n.elevation;
+  return n;
 }
 
 /** A piece of furniture at `p`; near a wall it turns to back onto it. */

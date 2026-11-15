@@ -5,7 +5,7 @@
 // the floor or a wall. It fades towards its edge and its far end, so it reads as light in the air.
 import * as THREE from 'three';
 import type { LightFixture } from '../../model/types';
-import type { ResolvedPhotometrics } from '../../model/photometrics';
+import { gridCutoffTan, type ResolvedPhotometrics } from '../../model/photometrics';
 import { rad, v } from './kit';
 
 const BEAM_MAX = 7;
@@ -119,8 +119,8 @@ function traceReach(origin: THREE.Vector3, q: THREE.Quaternion, L: number, R: nu
 }
 
 export function beam(l: LightFixture, pm: ResolvedPhotometrics, origin: THREE.Vector3, q: THREE.Quaternion, color: THREE.Color, hitTargets: THREE.Object3D[], cache?: { store: ReachCache; key: string }): THREE.Mesh | undefined {
-  if (pm.distribution !== 'beam' && pm.distribution !== 'lambertian') return undefined;
-  const half = Math.min(pm.distribution === 'beam' ? pm.beamAngle * 0.6 : 50, 70);
+  if (pm.distribution !== 'beam' && pm.distribution !== 'lambertian' && pm.distribution !== 'grid') return undefined;
+  const half = Math.min(pm.distribution === 'beam' ? pm.beamAngle * 0.6 : pm.distribution === 'grid' ? Math.atan(gridCutoffTan(pm.beamAngle)) * 180 / Math.PI * 0.7 : 50, 70);
   const th = Math.tan(rad(half));
   const doors = l.barnDoors;
   const lim = (d: number) => Math.tan(rad(Math.min(half, doors ? d : 90)));

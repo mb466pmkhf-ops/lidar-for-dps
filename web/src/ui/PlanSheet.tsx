@@ -113,7 +113,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         {kit.drawRated > 0 && (
           <p className="sheet-power"><strong>Power</strong> · rated, all units {watts(kit.drawRated)} ({amps(kit.drawRated, 230).toFixed(1)} A at 230 V, {amps(kit.drawRated, 120).toFixed(1)} A at 120 V) · as set, units on ≈ {watts(kit.drawNow)}</p>
         )}
-        <p className="note">≈ Readings and power are estimates from the plan (direct light and one bounce, no room reflections). Check on the day.</p>
+        <p className="note">≈ Readings and power are estimates from the plan (direct light, one bounce off boards and one off the room). Check on the day.</p>
       </article>
     </div>
   );
