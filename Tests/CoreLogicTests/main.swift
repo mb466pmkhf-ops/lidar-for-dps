@@ -686,6 +686,11 @@ do {
     let kept = SyncMerge.merge(base: base, local: changedA, remote: deleted) as! [String: Any]
     let keptIDs = (((kept["locations"] as! [[String: Any]])[0]["lights"] as! [[String: Any]])).map { $0["id"] as! String }
     check(keptIDs == ["A", "B"], "sync merge keeps an item deleted on one side but changed on the other")
+    let dupBase = j(#"{"l":[{"id":"A","v":1}]}"#)
+    let dupRemote = j(#"{"l":[{"id":"A","v":2},{"id":"A","v":3}]}"#)
+    let dupLocal = j(#"{"l":[{"id":"A","v":1},{"id":"B","v":1}]}"#)
+    let dup = ((SyncMerge.merge(base: dupBase, local: dupLocal, remote: dupRemote) as! [String: Any])["l"] as! [[String: Any]])
+    check(dup.map { $0["id"] as! String } == ["A", "B"] && (dup[0]["v"] as! Double) == 2, "sync merge lists an id given twice once, keeping the first (as merge.ts)")
     let p = try SyncMerge.project(from: SyncMerge.jsonObject(Project(name: "Round trip")))
     check(p.name == "Round trip", "project survives the JSON round trip used by sync")
 } catch {

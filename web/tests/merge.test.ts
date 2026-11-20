@@ -46,4 +46,11 @@ describe('three-way merge', () => {
     expect(m.setups).toEqual([{ id: 'S', name: 'Night' }]);
     expect(m.name).toBe('Renamed');
   });
+
+  it('lists an id given twice once, keeping the first (as SyncMerge.swift)', () => {
+    const m = mergeDocuments({ l: [{ id: 'A', v: 1 }] }, { l: [{ id: 'A', v: 1 }, { id: 'B', v: 1 }] },
+      { l: [{ id: 'A', v: 2 }, { id: 'A', v: 3 }] }) as { l: { id: string; v: number }[] };
+    expect(m.l.map(x => x.id)).toEqual(['A', 'B']);
+    expect(m.l[0].v).toBe(2);
+  });
 });

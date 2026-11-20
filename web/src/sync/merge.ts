@@ -57,7 +57,8 @@ function merge3(base: Maybe, local: Maybe, remote: Maybe): Maybe {
     return out;
   }
   if (isIdArray(local) && isIdArray(remote) && (base === MISSING || isIdArray(base))) {
-    const index = (arr: Obj[]) => new Map(arr.map(e => [idOf(e)!, e] as const));
+    // An id listed twice (shouldn't happen) keeps its first item, the same as SyncMerge.swift.
+    const index = (arr: Obj[]) => { const m = new Map<string, Obj>(); for (const e of arr) if (!m.has(idOf(e)!)) m.set(idOf(e)!, e); return m; };
     const b = index(base === MISSING ? [] : (base as Obj[])), l = index(local), r = index(remote);
     const order: string[] = [];
     for (const id of r.keys()) order.push(id);

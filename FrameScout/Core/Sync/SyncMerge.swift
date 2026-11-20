@@ -73,10 +73,12 @@ enum SyncMerge {
                 Dictionary(a.map { (id($0)!, $0) }, uniquingKeysWith: { first, _ in first })
             }
             let bi = index(b), li = index(l), ri = index(r)
-            var order = r.map { id($0)! }
+            // An id listed twice (shouldn't happen) appears once, keeping its first item, as in merge.ts.
+            var order: [String] = []
+            for item in r where !order.contains(id(item)!) { order.append(id(item)!) }
             for (n, item) in l.enumerated() {
                 let itemID = id(item)!
-                guard ri[itemID] == nil else { continue }
+                guard ri[itemID] == nil, !order.contains(itemID) else { continue }
                 let prev = n > 0 ? id(l[n - 1]) : nil
                 let at = prev.flatMap { order.firstIndex(of: $0) } ?? -1
                 order.insert(itemID, at: at + 1)
