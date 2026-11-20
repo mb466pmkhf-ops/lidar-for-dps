@@ -104,6 +104,10 @@ final class ProjectStore: ObservableObject {
 
     func project(_ id: UUID) -> Project? { projects.first { $0.id == id } }
 
+    /// True while an edit to the project is waiting for its debounced save (and so hasn't been
+    /// reported to sync yet).
+    func hasPendingSave(_ id: UUID) -> Bool { pendingSaves[id] != nil }
+
     func location(_ ref: LocationRef) -> Location? {
         project(ref.projectID)?.locations.first { $0.id == ref.locationID }
     }

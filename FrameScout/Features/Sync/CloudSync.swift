@@ -122,11 +122,13 @@ final class CloudSync: ObservableObject {
     }
 
     private func syncSoon(after seconds: Double) {
+        // Only the wait is cancelled when another request comes in. The sync itself runs in a task of
+        // its own: cancelling it mid-request would abort the upload and show "cancelled" as an error.
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             if seconds > 0 { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
             guard !Task.isCancelled else { return }
-            await self?.sync()
+            Task { @MainActor [weak self] in await self?.sync() }
         }
     }
 
@@ -364,6 +366,8 @@ final class CloudSync: ObservableObject {
                     guard let idString = head["id"] as? String, let id = UUID(uuidString: idString) else { continue }
                     let rev = (head["rev"] as? NSNumber)?.intValue ?? 0
                     if (head["deleted"] as? Bool) == true {
+                        // Deleted here and on the server too: nothing left to send.
+                        if meta[id]?.deleted == true { meta[id] = nil; continue }
                         if store.project(id) != nil && meta[id]?.dirty != true {
                             store.onProjectDeleted = nil
                             store.deleteProject(id)
@@ -394,8 +398,18 @@ final class CloudSync: ObservableObject {
         guard let doc = row["doc"] else { return }
         let rev = (row["rev"] as? NSNumber)?.intValue ?? 0
         var m = meta[id] ?? Meta()
+        // Deleted on this phone and waiting to tell the server: take the new revision so the delete
+        // can go up, but don't put the project back.
+        if m.deleted {
+            m.rev = rev
+            meta[id] = m
+            return
+        }
         var result = doc
-        if m.dirty, let local = store.project(id) {
+        // An edit still waiting for its debounced save counts as a local change too, or the server's
+        // copy would replace it (typing notes while the desktop changes the same project).
+        let editing = store.hasPendingSave(id)
+        if m.dirty || editing, let local = store.project(id) {
             let base = m.base.flatMap { try? JSONSerialization.jsonObject(with: $0) }
             result = SyncMerge.merge(base: base, local: try SyncMerge.jsonObject(local), remote: doc)
         }
@@ -411,8 +425,9 @@ final class CloudSync: ObservableObject {
         m.base = try JSONSerialization.data(withJSONObject: doc)
         m.planIDs = Array(remotePlans.keys)
         m.planBase = try? JSONSerialization.data(withJSONObject: remotePlans)
-        // Set pieces edited here and not on the server yet go up on the next push.
-        if !SyncMerge.equal(plans, remotePlans) { m.dirty = true }
+        // Set pieces edited here and not on the server yet go up on the next push, and so do local
+        // edits merged into the project above.
+        if !SyncMerge.equal(plans, remotePlans) || !SyncMerge.equal(result, doc) { m.dirty = true }
         meta[id] = m
     }
 
@@ -479,7 +494,19 @@ final class CloudSync: ObservableObject {
         let plans = localPlans(project, store: store)
         let planIDs = plans.keys.sorted()
         let basePlans = m.planBase.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+        // Deleted on this phone while the upload was on its way: the row now exists at `rev`, so keep
+        // the delete waiting to go up instead of writing back the metadata captured before it.
+        let deletedMeanwhile = { (rev: Int?) -> Bool in
+            guard store.project(id) == nil else { return false }
+            var d = self.meta[id] ?? Meta()
+            if let rev { d.rev = rev }
+            d.deleted = d.rev != nil
+            d.dirty = d.rev != nil
+            self.meta[id] = d.rev == nil ? nil : d
+            return true
+        }
         let sent = { (rev: Int) in
+            if deletedMeanwhile(rev) { return }
             m.rev = rev
             m.base = try? JSONSerialization.data(withJSONObject: doc)
             m.planIDs = planIDs
@@ -496,14 +523,22 @@ final class CloudSync: ObservableObject {
             // Plans go up whenever they changed since the last sync (a set piece moved, a door added).
             if basePlans == nil || !SyncMerge.equal(plans, basePlans) { body["plans"] = plans }
             let rows = try await rest("PATCH", "id=eq.\(id.uuidString)&rev=eq.\(rev)&select=id", body: body, prefer: "return=representation") as? [Any]
-            if rows?.count == 1 { sent(rev + 1) } else if let row = try await fetchRow(id) { try absorb(row, id: id, store: store); again = true }
+            if rows?.count == 1 { sent(rev + 1) } else if let row = try await fetchRow(id) {
+                let newRev = (row["rev"] as? NSNumber)?.intValue
+                if !deletedMeanwhile(newRev) { try absorb(row, id: id, store: store) }
+                again = true
+            }
         } else {
             do {
                 _ = try await rest("POST", "select=id", body: ["id": id.uuidString, "name": project.name, "doc": doc, "plans": plans,
                                                               "rev": 1, "deleted": false, "updated_by": device], prefer: "return=minimal")
                 sent(1)
             } catch SyncError.conflict {
-                if let row = try await fetchRow(id) { try absorb(row, id: id, store: store); again = true }
+                if let row = try await fetchRow(id) {
+                    let newRev = (row["rev"] as? NSNumber)?.intValue
+                    if !deletedMeanwhile(newRev) { try absorb(row, id: id, store: store) }
+                    again = true
+                }
             }
         }
     }

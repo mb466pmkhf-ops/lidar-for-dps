@@ -27,7 +27,7 @@ export const BUILT_IN_SERVER: SyncConfig = {
   url: 'https://nuprvuipspqmhsczdqrk.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51cHJ2dWlwc3BxbWhzY3pkcXJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTYzNDIsImV4cCI6MjEwOTQ5MjM0Mn0.tNQo2XqWI1krE3KMfzuRFzqXSz55eWdgnjgJQFK-jcY',
 };
-const DEVICE = typeof navigator !== 'undefined' && '__TAURI_INTERNALS__' in window ? 'desktop' : 'web';
+const DEVICE = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window ? 'desktop' : 'web';
 
 function readJSON<T>(key: string): T | undefined {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as T : undefined; } catch { return undefined; }
@@ -56,10 +56,17 @@ export class Workspace {
   client?: SupabaseClient;
   state: SyncState = { kind: 'local' };
   loaded = false;
+  /// Set when this browser refused to store a change (storage full or blocked). Shown in the top bar.
+  saveError?: string;
+  private failedSaves = new Set<UUID>();
 
   constructor() {
     const config = readJSON<SyncConfig>(CONFIG_KEY) ?? defaultConfig();
     if (config) this.connect(config, readJSON<Session>(SESSION_KEY));
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => this.flushSaves());
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.flushSaves(); });
+    }
   }
 
   // MARK: Subscriptions (for useSyncExternalStore)
@@ -128,20 +135,52 @@ export class Workspace {
   remove(id: UUID) {
     const e = this.entries.get(id);
     if (!e) return;
-    if (e.rev === undefined) { this.entries.delete(id); void localStore.remove(id); }
+    // A debounced save still waiting would otherwise write the project back after it's gone.
+    clearTimeout(this.saveTimers.get(id)); this.saveTimers.delete(id); this.pendingWrites.delete(id);
+    if (e.rev === undefined) {
+      this.entries.delete(id); void localStore.remove(id);
+      this.clearFailedSave(id);
+    }
     else { e.deleted = true; e.dirty = true; e.version++; this.persist(e, true); }
     this.emit();
     void this.sync();
   }
 
+  private clearFailedSave(id: string) {
+    if (this.failedSaves.delete(id) && this.failedSaves.size === 0) this.saveError = undefined;
+  }
+
   private persist(e: Entry, now = false) {
     clearTimeout(this.saveTimers.get(e.id));
     const write = () => {
+      this.saveTimers.delete(e.id);
       const { version: _v, ...stored } = e;
-      void localStore.put(stored);
+      // The warning stays until every project whose write failed has saved again.
+      localStore.put(stored).then(
+        () => {
+          if (this.failedSaves.delete(e.id) && this.failedSaves.size === 0) { this.saveError = undefined; this.emit(); }
+        },
+        err => {
+          // A write that fails after the project was removed has nothing left to warn about.
+          if (this.entries.get(e.id) !== e) return;
+          this.failedSaves.add(e.id);
+          this.saveError = `Couldn't save on this device: ${err instanceof Error ? err.message : String(err)}`;
+          this.emit();
+        });
       if (e.dirty) void this.sync();
     };
-    if (now) write(); else this.saveTimers.set(e.id, setTimeout(write, 600));
+    if (now) { this.pendingWrites.delete(e.id); write(); return; }
+    this.pendingWrites.set(e.id, write);
+    this.saveTimers.set(e.id, setTimeout(() => this.writeLater(e.id), 600));
+  }
+
+  private pendingWrites = new Map<UUID, () => void>();
+  private writeLater(id: UUID) { const w = this.pendingWrites.get(id); this.pendingWrites.delete(id); w?.(); }
+
+  /// Writes every edit still waiting for its debounce. Called when the page is hidden or closed, so
+  /// an edit made just before closing the tab or the desktop window isn't lost.
+  flushSaves() {
+    for (const id of [...this.saveTimers.keys()]) { clearTimeout(this.saveTimers.get(id)); this.writeLater(id); }
   }
 
   // MARK: Sync setup
@@ -241,6 +280,8 @@ export class Workspace {
         const id = head.id;
         const local = this.entries.get(id);
         if (head.deleted) {
+          // Deleted here and on the server too: nothing left to send.
+          if (local?.deleted) { this.entries.delete(id); await localStore.remove(id); continue; }
           if (local && !local.dirty) { this.entries.delete(id); await localStore.remove(id); }
           continue;
         }
@@ -291,13 +332,27 @@ export class Workspace {
     const version = e.version;
     const bundle = e.bundle;
     const done = (rev: number) => {
+      if (this.entries.get(e.id) !== e) {
+        // A new copy with the same id took its place (imported again): leave it alone. It uploads,
+        // meets this row and merges with it like any other conflict.
+        if (this.entries.has(e.id)) return;
+        // Removed here while its first upload was on the way: the row exists now, so delete it there.
+        e.rev = rev; e.deleted = true; e.dirty = true; e.version++;
+        this.entries.set(e.id, e);
+        this.persist(e, true);
+        return;
+      }
       e.base = bundle; e.rev = rev;
       if (e.version === version) e.dirty = false;
       this.persist(e, true);
     };
     if (e.deleted) {
       if (e.rev === undefined || await client.update(e.id, e.rev, { deleted: true })) {
+        // A copy re-added under the same id while the delete was on the way stays: it uploads and
+        // meets the deleted row like any other conflict.
+        if (this.entries.get(e.id) !== e) return;
         this.entries.delete(e.id);
+        this.clearFailedSave(e.id);
         await localStore.remove(e.id);
       }
       return;
@@ -306,7 +361,10 @@ export class Workspace {
     if (e.rev === undefined) {
       const ok = await client.insert({ id: e.id, name: doc.name, doc, plans: bundle.plans, rev: 1, deleted: false, updated_by: DEVICE });
       if (ok) done(1);
-      else { const row = await client.fetch(e.id); if (row) this.absorb(row); }
+      else {
+        const row = await client.fetch(e.id);
+        if (row) { if (!this.entries.has(e.id)) done(row.rev); else this.absorb(row); }
+      }
       return;
     }
     const patch: Partial<RemoteRow> = { name: doc.name, doc, deleted: false, updated_by: DEVICE };
