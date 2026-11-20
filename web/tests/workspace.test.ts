@@ -102,6 +102,30 @@ describe('workspace saving and sync', () => {
     expect(stored.has(p.id)).toBe(false);
   });
 
+  it('a copy re-added while its old delete is on the way is kept', async () => {
+    const w = offline();
+    const p = newProject('Back again');
+    stored.set(p.id, { id: p.id, bundle: { project: p, plans: {} }, base: { project: p, plans: {} }, rev: 2, dirty: true, deleted: true });
+    let release!: () => void;
+    w.client = {
+      session: { accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 1e6, userID: 'u', email: 'e' },
+      heads: async () => [],
+      fetch: async () => undefined,
+      insert: async () => false,
+      update: () => new Promise<boolean>(r => { release = () => r(true); }),
+    } as unknown as SupabaseClient;
+    await w.load();
+    const running = w.sync();
+    await vi.advanceTimersByTimeAsync(0);   // the delete's update now waits
+    expect(release).toBeTypeOf('function');
+    w.add({ project: { ...p, name: 'Re-imported' }, plans: {} });
+    release();
+    await running;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.bundle(p.id)?.project.name).toBe('Re-imported');
+    expect(stored.has(p.id)).toBe(true);
+  });
+
   it('keeps the save warning until every failed project has saved', async () => {
     const w = offline();
     await w.load();

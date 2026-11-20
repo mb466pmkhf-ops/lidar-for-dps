@@ -139,11 +139,15 @@ export class Workspace {
     clearTimeout(this.saveTimers.get(id)); this.saveTimers.delete(id); this.pendingWrites.delete(id);
     if (e.rev === undefined) {
       this.entries.delete(id); void localStore.remove(id);
-      if (this.failedSaves.delete(id) && this.failedSaves.size === 0) this.saveError = undefined;
+      this.clearFailedSave(id);
     }
     else { e.deleted = true; e.dirty = true; e.version++; this.persist(e, true); }
     this.emit();
     void this.sync();
+  }
+
+  private clearFailedSave(id: string) {
+    if (this.failedSaves.delete(id) && this.failedSaves.size === 0) this.saveError = undefined;
   }
 
   private persist(e: Entry, now = false) {
@@ -157,6 +161,8 @@ export class Workspace {
           if (this.failedSaves.delete(e.id) && this.failedSaves.size === 0) { this.saveError = undefined; this.emit(); }
         },
         err => {
+          // A write that fails after the project was removed has nothing left to warn about.
+          if (this.entries.get(e.id) !== e) return;
           this.failedSaves.add(e.id);
           this.saveError = `Couldn't save on this device: ${err instanceof Error ? err.message : String(err)}`;
           this.emit();
@@ -342,7 +348,11 @@ export class Workspace {
     };
     if (e.deleted) {
       if (e.rev === undefined || await client.update(e.id, e.rev, { deleted: true })) {
+        // A copy re-added under the same id while the delete was on the way stays: it uploads and
+        // meets the deleted row like any other conflict.
+        if (this.entries.get(e.id) !== e) return;
         this.entries.delete(e.id);
+        this.clearFailedSave(e.id);
         await localStore.remove(e.id);
       }
       return;
