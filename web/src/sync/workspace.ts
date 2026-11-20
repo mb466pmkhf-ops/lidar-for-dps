@@ -327,6 +327,9 @@ export class Workspace {
     const bundle = e.bundle;
     const done = (rev: number) => {
       if (this.entries.get(e.id) !== e) {
+        // A new copy with the same id took its place (imported again): leave it alone. It uploads,
+        // meets this row and merges with it like any other conflict.
+        if (this.entries.has(e.id)) return;
         // Removed here while its first upload was on the way: the row exists now, so delete it there.
         e.rev = rev; e.deleted = true; e.dirty = true; e.version++;
         this.entries.set(e.id, e);
@@ -350,7 +353,7 @@ export class Workspace {
       if (ok) done(1);
       else {
         const row = await client.fetch(e.id);
-        if (row) { if (this.entries.get(e.id) !== e) done(row.rev); else this.absorb(row); }
+        if (row) { if (!this.entries.has(e.id)) done(row.rev); else this.absorb(row); }
       }
       return;
     }
