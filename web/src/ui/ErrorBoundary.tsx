@@ -5,9 +5,12 @@ import { Component, type ReactNode } from 'react';
 export class ErrorBoundary extends Component<{ children: ReactNode }, { error?: Error }> {
   state: { error?: Error } = {};
 
-  static getDerivedStateFromError(error: Error) { return { error }; }
+  /// Anything can be thrown, even null: keep an Error so the screen always shows.
+  static getDerivedStateFromError(thrown: unknown) {
+    return { error: thrown instanceof Error ? thrown : new Error(String(thrown)) };
+  }
 
-  componentDidCatch(error: Error) { console.error('FrameScan planner crashed', error); }
+  componentDidCatch(thrown: unknown) { console.error('FrameScan planner crashed', thrown); }
 
   render() {
     const { error } = this.state;
