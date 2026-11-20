@@ -153,6 +153,12 @@ for _ in 0..<12 { quad(0, 2); quad(2.7, 3) }
 let decoded = try MeshScanData(data: mesh.encoded())
 check(decoded.positions == mesh.positions && decoded.indices == mesh.indices && decoded.faceClasses == mesh.faceClasses, "mesh binary round trip")
 check(abs((decoded.analyse().stats.ceilingHeight ?? 0) - 2.7) < 1e-4, "mesh ceiling height")
+var badIndex = mesh
+badIndex.indices[0] = UInt32(mesh.positions.count + 5)
+check((try? MeshScanData(data: badIndex.encoded())) == nil, "a mesh file indexing past its vertices is refused, not a crash")
+var badFloat = mesh
+badFloat.positions[0] = Vec3(.nan, 0, 0)
+check((try? MeshScanData(data: badFloat.encoded())) == nil, "a mesh file with NaN positions is refused")
 
 // MARK: Exporters
 let root = SceneNode(name: "FrameScout Location")
