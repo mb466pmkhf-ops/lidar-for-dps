@@ -44,7 +44,8 @@ usage = {
     "NSCameraUsageDescription": r"\bARSession\b|RoomCaptureSession|AVCaptureDevice|ObjectCaptureSession",
     "NSLocationWhenInUseUsageDescription": r"CLLocationManager",
     "NSMotionUsageDescription": r"CMMotionManager|CMHeadingManager",
-    "NSPhotoLibraryAddUsageDescription": r"PHPhotoLibrary\.shared\(\)\.performChanges|UIImageWriteToSavedPhotosAlbum",
+    # The share sheet offers "Save Image" for any image it's given, which crashes without this text.
+    "NSPhotoLibraryAddUsageDescription": r"PHPhotoLibrary\.shared\(\)\.performChanges|UIImageWriteToSavedPhotosAlbum|UIActivityViewController",
     "NSMicrophoneUsageDescription": r"AVAudioRecorder|AVAudioSession\.sharedInstance\(\)\.requestRecordPermission",
 }
 for key, pattern in usage.items():

@@ -91,6 +91,11 @@ struct MeshScanData {
         indices.withUnsafeMutableBytes { dst in
             data.copyBytes(to: dst.bindMemory(to: UInt8.self), from: iStart..<(iStart + indexBytes))
         }
+        // A damaged or hand-made file (from an imported backup) must not index past the vertices or
+        // carry NaN/infinite positions: both would crash later, every time the scan is opened.
+        guard indices.allSatisfy({ Int($0) < vc }), floats.allSatisfy({ $0.isFinite }) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
         let cStart = iStart + indexBytes
         faceClasses = [UInt8](data[cStart..<(cStart + fc)])
         positions.reserveCapacity(vc)

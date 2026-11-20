@@ -52,7 +52,7 @@ enum ZipError: LocalizedError {
         case .cannotCreate(let p): return "Cannot create archive at \(p)."
         case .corrupt(let why): return "The ZIP archive is damaged (\(why))."
         case .unsupportedMethod(let m): return "Unsupported ZIP compression method \(m)."
-        case .tooLarge: return "Archive entry exceeds 4 GB (ZIP64 is not supported)."
+        case .tooLarge: return "This export would be bigger than 4 GB (or hold more than 65,535 files), which this ZIP format can't hold. Export fewer scans or objects at a time."
         }
     }
 }
@@ -129,7 +129,11 @@ final class ZipWriter {
         header.append(name)
         header.append(extra)
 
-        guard offset < UInt64(UInt32.max) else { throw ZipError.tooLarge }
+        // Plain ZIP (no ZIP64) holds 4 GB and 65,535 entries. Say so instead of trapping on the
+        // conversions below or in `finish` (a big project with many object-capture photos).
+        guard offset + UInt64(header.count + payload.count) < UInt64(UInt32.max), entries.count < Int(UInt16.max) else {
+            throw ZipError.tooLarge
+        }
         entries.append(CentralEntry(name: name, method: method, crc: crc,
                                     compressedSize: UInt32(payload.count), size: UInt32(data.count),
                                     offset: UInt32(offset), time: dosTime, date: dosDate))
