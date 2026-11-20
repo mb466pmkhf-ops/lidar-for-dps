@@ -189,12 +189,17 @@ final class CloudSync: ObservableObject {
     @Published private(set) var enabledProviders: Set<Provider>?
 
     func refreshProviders() async {
-        guard let config, let url = URL(string: "\(config.url)/auth/v1/settings") else { enabledProviders = nil; return }
+        // Unknown until this answer arrives, so an earlier "off" never hides a button after a failed ask.
+        enabledProviders = nil
+        guard let config, let url = URL(string: "\(config.url)/auth/v1/settings") else { return }
         var req = URLRequest(url: url)
         req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let external = json["external"] as? [String: Any] else { return }
+        // Only a clear yes or no for every provider counts; anything else stays unknown.
+        let flags = Provider.allCases.map { external[$0.rawValue] as? Bool }
+        guard !flags.contains(where: { $0 == nil }) else { return }
         enabledProviders = Set(Provider.allCases.filter { external[$0.rawValue] as? Bool == true })
     }
 

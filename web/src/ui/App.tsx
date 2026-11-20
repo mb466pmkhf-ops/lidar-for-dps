@@ -389,6 +389,7 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
               </div>
               <div className="auth-or"><span>or use email</span></div>
             </>)}
+            {!offers('apple') && !offers('google') && <div className="auth-or"><span>Email</span></div>}
             <div className="segmented" role="tablist" aria-label="Email account">
               <button role="tab" aria-selected={mode === 'signIn'} className={mode === 'signIn' ? 'on' : ''} onClick={() => switchMode('signIn')}>Sign in</button>
               <button role="tab" aria-selected={mode === 'create'} className={mode === 'create' ? 'on' : ''} onClick={() => switchMode('create')}>Create account</button>
