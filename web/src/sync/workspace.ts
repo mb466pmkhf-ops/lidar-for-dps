@@ -58,6 +58,7 @@ export class Workspace {
   loaded = false;
   /// Set when this browser refused to store a change (storage full or blocked). Shown in the top bar.
   saveError?: string;
+  private failedSaves = new Set<UUID>();
 
   constructor() {
     const config = readJSON<SyncConfig>(CONFIG_KEY) ?? defaultConfig();
@@ -136,7 +137,10 @@ export class Workspace {
     if (!e) return;
     // A debounced save still waiting would otherwise write the project back after it's gone.
     clearTimeout(this.saveTimers.get(id)); this.saveTimers.delete(id); this.pendingWrites.delete(id);
-    if (e.rev === undefined) { this.entries.delete(id); void localStore.remove(id); }
+    if (e.rev === undefined) {
+      this.entries.delete(id); void localStore.remove(id);
+      if (this.failedSaves.delete(id) && this.failedSaves.size === 0) this.saveError = undefined;
+    }
     else { e.deleted = true; e.dirty = true; e.version++; this.persist(e, true); }
     this.emit();
     void this.sync();
@@ -147,9 +151,13 @@ export class Workspace {
     const write = () => {
       this.saveTimers.delete(e.id);
       const { version: _v, ...stored } = e;
+      // The warning stays until every project whose write failed has saved again.
       localStore.put(stored).then(
-        () => { if (this.saveError) { this.saveError = undefined; this.emit(); } },
+        () => {
+          if (this.failedSaves.delete(e.id) && this.failedSaves.size === 0) { this.saveError = undefined; this.emit(); }
+        },
         err => {
+          this.failedSaves.add(e.id);
           this.saveError = `Couldn't save on this device: ${err instanceof Error ? err.message : String(err)}`;
           this.emit();
         });
@@ -318,6 +326,13 @@ export class Workspace {
     const version = e.version;
     const bundle = e.bundle;
     const done = (rev: number) => {
+      if (this.entries.get(e.id) !== e) {
+        // Removed here while its first upload was on the way: the row exists now, so delete it there.
+        e.rev = rev; e.deleted = true; e.dirty = true; e.version++;
+        this.entries.set(e.id, e);
+        this.persist(e, true);
+        return;
+      }
       e.base = bundle; e.rev = rev;
       if (e.version === version) e.dirty = false;
       this.persist(e, true);
@@ -333,7 +348,10 @@ export class Workspace {
     if (e.rev === undefined) {
       const ok = await client.insert({ id: e.id, name: doc.name, doc, plans: bundle.plans, rev: 1, deleted: false, updated_by: DEVICE });
       if (ok) done(1);
-      else { const row = await client.fetch(e.id); if (row) this.absorb(row); }
+      else {
+        const row = await client.fetch(e.id);
+        if (row) { if (this.entries.get(e.id) !== e) done(row.rev); else this.absorb(row); }
+      }
       return;
     }
     const patch: Partial<RemoteRow> = { name: doc.name, doc, deleted: false, updated_by: DEVICE };

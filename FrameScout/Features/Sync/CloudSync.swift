@@ -494,7 +494,19 @@ final class CloudSync: ObservableObject {
         let plans = localPlans(project, store: store)
         let planIDs = plans.keys.sorted()
         let basePlans = m.planBase.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+        // Deleted on this phone while the upload was on its way: the row now exists at `rev`, so keep
+        // the delete waiting to go up instead of writing back the metadata captured before it.
+        let deletedMeanwhile = { (rev: Int?) -> Bool in
+            guard store.project(id) == nil else { return false }
+            var d = self.meta[id] ?? Meta()
+            if let rev { d.rev = rev }
+            d.deleted = d.rev != nil
+            d.dirty = d.rev != nil
+            self.meta[id] = d.rev == nil ? nil : d
+            return true
+        }
         let sent = { (rev: Int) in
+            if deletedMeanwhile(rev) { return }
             m.rev = rev
             m.base = try? JSONSerialization.data(withJSONObject: doc)
             m.planIDs = planIDs
@@ -511,14 +523,22 @@ final class CloudSync: ObservableObject {
             // Plans go up whenever they changed since the last sync (a set piece moved, a door added).
             if basePlans == nil || !SyncMerge.equal(plans, basePlans) { body["plans"] = plans }
             let rows = try await rest("PATCH", "id=eq.\(id.uuidString)&rev=eq.\(rev)&select=id", body: body, prefer: "return=representation") as? [Any]
-            if rows?.count == 1 { sent(rev + 1) } else if let row = try await fetchRow(id) { try absorb(row, id: id, store: store); again = true }
+            if rows?.count == 1 { sent(rev + 1) } else if let row = try await fetchRow(id) {
+                let newRev = (row["rev"] as? NSNumber)?.intValue
+                if !deletedMeanwhile(newRev) { try absorb(row, id: id, store: store) }
+                again = true
+            }
         } else {
             do {
                 _ = try await rest("POST", "select=id", body: ["id": id.uuidString, "name": project.name, "doc": doc, "plans": plans,
                                                               "rev": 1, "deleted": false, "updated_by": device], prefer: "return=minimal")
                 sent(1)
             } catch SyncError.conflict {
-                if let row = try await fetchRow(id) { try absorb(row, id: id, store: store); again = true }
+                if let row = try await fetchRow(id) {
+                    let newRev = (row["rev"] as? NSNumber)?.intValue
+                    if !deletedMeanwhile(newRev) { try absorb(row, id: id, store: store) }
+                    again = true
+                }
             }
         }
     }

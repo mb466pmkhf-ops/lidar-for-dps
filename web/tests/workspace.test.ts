@@ -77,4 +77,46 @@ describe('workspace saving and sync', () => {
     expect(w.saveError).toMatch(/QuotaExceededError/);
     put.mockRestore();
   });
+
+  it('a project removed while its first upload was on the way is deleted on the server next', async () => {
+    const w = offline();
+    await w.load();
+    const p = newProject('Short-lived');
+    let release!: () => void;
+    const update = vi.fn(async () => true);
+    w.client = {
+      session: { accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 1e6, userID: 'u', email: 'e' },
+      heads: async () => [],
+      fetch: async () => undefined,
+      insert: () => new Promise<boolean>(r => { release = () => r(true); }),
+      update,
+    } as unknown as SupabaseClient;
+    w.add({ project: p, plans: {} });
+    await vi.advanceTimersByTimeAsync(0);   // adding it starts a sync; its insert now waits
+    expect(release).toBeTypeOf('function');
+    w.remove(p.id);                         // while the insert is waiting
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    await w.sync();
+    expect(update).toHaveBeenCalledWith(p.id, 1, { deleted: true });
+    expect(stored.has(p.id)).toBe(false);
+  });
+
+  it('keeps the save warning until every failed project has saved', async () => {
+    const w = offline();
+    await w.load();
+    const { localStore } = await import('../src/sync/localStore');
+    const put = vi.spyOn(localStore, 'put').mockRejectedValueOnce(new Error('full'));
+    const a = newProject('A'), b = newProject('B');
+    w.add({ project: a, plans: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    w.add({ project: b, plans: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.saveError).toMatch(/full/);
+    w.commit({ ...a, name: 'A2' });
+    w.flushSaves();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.saveError).toBeUndefined();
+    put.mockRestore();
+  });
 });
