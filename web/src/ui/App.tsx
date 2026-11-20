@@ -278,6 +278,15 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
   const [notice, setNotice] = useState<string>();
   const [editServer, setEditServer] = useState(!client);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Sign-in buttons for providers the server has switched off stay hidden (shown while unknown).
+  const [offered, setOffered] = useState<{ apple: boolean; google: boolean }>();
+  useEffect(() => {
+    let live = true;
+    setOffered(undefined);
+    void client?.providers().then(p => { if (live) setOffered(p); });
+    return () => { live = false; };
+  }, [client]);
+  const offers = (p: 'apple' | 'google') => offered?.[p] ?? true;
   useWorkspace();
 
   const run = async (fn: () => Promise<void>) => {
@@ -366,16 +375,23 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
           </>
         ) : (
           <>
-            <div className="auth-providers">
-              <button className="btn provider apple" disabled={busy} onClick={() => run(() => workspace.signInWith('apple'))}>
-                Continue with Apple
-              </button>
-              <button className="btn provider" disabled={busy} onClick={() => run(() => workspace.signInWith('google'))}>
-                <span className="g" aria-hidden="true">G</span>
-                Continue with Google
-              </button>
-            </div>
-            <div className="auth-or"><span>or use email</span></div>
+            {(offers('apple') || offers('google')) && (<>
+              <div className="auth-providers">
+                {offers('apple') && (
+                  <button className="btn provider apple" disabled={busy} onClick={() => run(() => workspace.signInWith('apple'))}>
+                    Continue with Apple
+                  </button>
+                )}
+                {offers('google') && (
+                  <button className="btn provider" disabled={busy} onClick={() => run(() => workspace.signInWith('google'))}>
+                    <span className="g" aria-hidden="true">G</span>
+                    Continue with Google
+                  </button>
+                )}
+              </div>
+              <div className="auth-or"><span>or use email</span></div>
+            </>)}
+            {!offers('apple') && !offers('google') && <div className="auth-or"><span>Email</span></div>}
             <div className="segmented" role="tablist" aria-label="Email account">
               <button role="tab" aria-selected={mode === 'signIn'} className={mode === 'signIn' ? 'on' : ''} onClick={() => switchMode('signIn')}>Sign in</button>
               <button role="tab" aria-selected={mode === 'create'} className={mode === 'create' ? 'on' : ''} onClick={() => switchMode('create')}>Create account</button>

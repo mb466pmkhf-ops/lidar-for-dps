@@ -27,3 +27,18 @@ describe('sign-in helpers', () => {
     expect(authMessage({}, 500)).toBe('Sign-in failed (500)');
   });
 });
+
+describe('sign-in providers the server offers', () => {
+  it('reads which providers are switched on, and says when it cannot tell', async () => {
+    const c = new SupabaseClient({ url: 'https://x.supabase.co', anonKey: 'k' });
+    const real = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => new Response(JSON.stringify({ external: { apple: false, google: true, email: true } }))) as typeof fetch;
+      expect(await c.providers()).toEqual({ apple: false, google: true });
+      globalThis.fetch = (async () => new Response(JSON.stringify({ external: {} }))) as typeof fetch;
+      expect(await c.providers()).toBeUndefined();
+      globalThis.fetch = (async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch;
+      expect(await c.providers()).toBeUndefined();
+    } finally { globalThis.fetch = real; }
+  });
+});

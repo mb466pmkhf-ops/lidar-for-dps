@@ -183,7 +183,30 @@ final class CloudSync: ObservableObject {
 
     // MARK: Apple and Google
 
-    enum Provider: String { case apple, google }
+    enum Provider: String, CaseIterable { case apple, google }
+
+    /// The sign-in providers the server has switched on, once known (nil until asked, or when the
+    /// server's answer couldn't be read). Buttons for providers that are off stay hidden, so nobody
+    /// (App Review included) taps a sign-in that can only fail.
+    @Published private(set) var enabledProviders: Set<Provider>?
+
+    func refreshProviders() async {
+        // Unknown until this answer arrives, so an earlier "off" never hides a button after a failed ask.
+        enabledProviders = nil
+        guard let config, let url = URL(string: "\(config.url)/auth/v1/settings") else { return }
+        var req = URLRequest(url: url)
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let external = json["external"] as? [String: Any] else { return }
+        // Only a clear yes or no for every provider counts; anything else stays unknown.
+        let flags = Provider.allCases.map { external[$0.rawValue] as? Bool }
+        guard !flags.contains(where: { $0 == nil }) else { return }
+        enabledProviders = Set(Provider.allCases.filter { external[$0.rawValue] as? Bool == true })
+    }
+
+    /// Show the button unless the server said the provider is off.
+    func offers(_ provider: Provider) -> Bool { enabledProviders?.contains(provider) ?? true }
 
     /// Where the sign-in page sends the browser back to. Must be listed under Supabase → Authentication
     /// → URL Configuration → Redirect URLs. ASWebAuthenticationSession catches it, so the scheme needs

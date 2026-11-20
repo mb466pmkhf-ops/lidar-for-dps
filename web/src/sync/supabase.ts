@@ -75,6 +75,20 @@ export class SupabaseClient {
   }
   async resendSignup(email: string) { await this.post('resend', { type: 'signup', email }); }
 
+  /// Which sign-in providers the server has switched on, or undefined when it couldn't be asked.
+  async providers(): Promise<Record<OAuthProvider, boolean> | undefined> {
+    try {
+      const res = await fetch(`${this.base()}/auth/v1/settings`, { headers: { apikey: this.config.anonKey } });
+      const body: unknown = await res.json();
+      const external = typeof body === 'object' && body !== null ? (body as { external?: unknown }).external : undefined;
+      if (typeof external !== 'object' || external === null) return undefined;
+      const { apple, google } = external as Record<string, unknown>;
+      // Only a clear yes or no for both counts; anything else stays unknown (buttons shown).
+      if (typeof apple !== 'boolean' || typeof google !== 'boolean') return undefined;
+      return { apple, google };
+    } catch { return undefined; }
+  }
+
   /// Fails with plain words when the server hasn't switched the provider on (instead of a raw error
   /// page in the browser). An unreadable answer lets the attempt go ahead.
   async requireProvider(provider: OAuthProvider) {
