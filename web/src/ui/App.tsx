@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BUILT_IN_SERVER, workspace, type SyncState } from '../sync/workspace';
 import { readBackupZip } from '../sync/zip';
+import { checkedBundle } from '../sync/importBundle';
 import { demoBundle } from '../model/demo';
 import { newLocation, newProject, uuid } from '../model/factory';
 import type { Location, ProjectBundle } from '../model/types';
@@ -135,12 +136,12 @@ export function App() {
   const importFile = async (file: File) => {
     try {
       let b: ProjectBundle;
-      if (/\.zip$/i.test(file.name)) b = await readBackupZip(file);
+      if (/\.zip$/i.test(file.name)) b = checkedBundle(await readBackupZip(file));
       else {
-        const j = JSON.parse(await file.text());
-        b = j.project ? j : { project: j, plans: {} };
+        let j: unknown;
+        try { j = JSON.parse(await file.text()); } catch { throw new Error('That file is not a FrameScan project.'); }
+        b = checkedBundle(j);
       }
-      if (!b.project?.locations) throw new Error('That file is not a FrameScan project.');
       if (projects.some(p => p.id === b.project.id)) {
         if (!confirm(`"${b.project.name}" is already here. Import it as a copy?`)) return;
         b = { ...b, project: { ...b.project, id: uuid(), name: b.project.name + ' (Imported)' } };

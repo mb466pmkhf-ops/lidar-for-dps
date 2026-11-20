@@ -8,6 +8,8 @@
 	<string>FrameScout uses the camera and LiDAR sensor to scan locations, measure distances and show lens frame lines.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FrameScout records the GPS position of a location to calculate sun direction, sunrise and sunset. GPS works without a network connection.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>FrameScout saves reference photos and lighting diagrams to your photo library when you choose Save Image.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>FrameScout uses motion sensors to estimate which way north is inside a scan.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
