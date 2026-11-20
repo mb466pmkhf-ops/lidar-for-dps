@@ -56,7 +56,7 @@ struct SyncSettingsView: View {
                 } else if let pending = pendingEmail {
                     verifySection(pending)
                 } else {
-                    providerSection
+                    if sync.offers(.apple) || sync.offers(.google) { providerSection }
                     emailSection
                     Section { Button("Server…") { startEditingServer() } }
                 }
@@ -71,6 +71,7 @@ struct SyncSettingsView: View {
             .disabled(busy)
             .fsScreen()
             .navigationTitle("Account & sync")
+            .task(id: sync.config?.url) { await sync.refreshProviders() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Delete your account?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -86,15 +87,19 @@ struct SyncSettingsView: View {
 
     private var providerSection: some View {
         Section {
-            Button { signIn(with: .apple) } label: {
-                Label("Continue with Apple", systemImage: "apple.logo").frame(maxWidth: .infinity)
+            if sync.offers(.apple) {
+                Button { signIn(with: .apple) } label: {
+                    Label("Continue with Apple", systemImage: "apple.logo").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).tint(.primary).foregroundStyle(Color(uiColor: .systemBackground))
+                .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent).tint(.primary).foregroundStyle(Color(uiColor: .systemBackground))
-            .controlSize(.large)
-            Button { signIn(with: .google) } label: {
-                Label("Continue with Google", systemImage: "g.circle").frame(maxWidth: .infinity)
+            if sync.offers(.google) {
+                Button { signIn(with: .google) } label: {
+                    Label("Continue with Google", systemImage: "g.circle").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered).controlSize(.large)
             }
-            .buttonStyle(.bordered).controlSize(.large)
         } footer: {
             Text("Use the same account in the web planner and the desktop app.")
         }
@@ -123,7 +128,7 @@ struct SyncSettingsView: View {
                 Button("Sign in") { signIn() }.disabled(!validEmail || password.isEmpty)
             }
         } header: {
-            Text("Or use email")
+            Text(sync.offers(.apple) || sync.offers(.google) ? "Or use email" : "Email")
         } footer: {
             if mode == .create {
                 Text("We'll email you to confirm the address before the account can sync.")
