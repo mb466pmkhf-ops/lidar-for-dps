@@ -471,6 +471,7 @@ enum ExportService {
     private static func exportStamp() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd_HHmm"
-        return f.string(from: Date())
+        // A short random tail keeps two exports in the same minute from sharing (and deleting) one file.
+        return f.string(from: Date()) + "_" + String(UUID().uuidString.prefix(6))
     }
 }

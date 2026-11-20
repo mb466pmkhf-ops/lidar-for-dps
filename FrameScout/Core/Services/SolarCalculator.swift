@@ -95,10 +95,12 @@ enum SolarCalculator {
     static func events(on date: Date, latitude: Double, longitude: Double, timeZone: TimeZone) -> SunEvents {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let start = calendar.startOfDay(for: date)
+        // The clocks-change days last 23 or 25 hours, and some start at 01:00 when midnight is skipped:
+        // sample the calendar's own day, not a fixed 24 h.
+        let day = calendar.dateInterval(of: .day, for: date)
+        let start = day?.start ?? calendar.startOfDay(for: date)
+        let end = day?.end ?? start.addingTimeInterval(86400)
         let step: TimeInterval = 120
-        // The clocks-change days last 23 or 25 hours: sample the whole local day, not a fixed 24 h.
-        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400)
         let samples = max(1, Int((end.timeIntervalSince(start) / step).rounded()))
 
         var elevations: [Double] = []
