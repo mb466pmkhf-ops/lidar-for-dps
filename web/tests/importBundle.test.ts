@@ -28,14 +28,15 @@ describe('importing a project file', () => {
   });
 
   it('drops plan entries and lists that could not be drawn', () => {
-    const b = checkedBundle({ project: { id: 'P', locations: [{ id: 'L', lights: {}, meters: [null, { id: 'M' }, { id: 'N', position: { x: 1, z: 2 } }],
-      shots: [{ id: 'S' }, { id: 'T', rig: { position: { x: 0, z: 0 } } }] }] },
+    const b = checkedBundle({ project: { id: 'P', locations: [{ id: 'L', lights: {}, looks: [{ id: 'LOOK', name: 'Day' }, { id: 'NIGHT', lights: [null] }], meters: [null, { id: 'M' }, { id: 'N', position: { x: 1, z: 2 } }],
+      shots: [{ id: 'S' }, { id: 'U', rig: { position: { x: 0, z: 0 } } }, { id: 'T', rig: { position: { x: 0, z: 0 }, height: 1.5, pan: 0, tilt: 0, focalLength: 35 } }] }] },
       plans: {
-        good: { walls: [null, { a: { x: 0, z: 0 }, b: { x: 1, z: 0 } }], objects: [{ center: { x: 0, z: 0 } }, { category: 'sofa', center: { x: 0, z: 0 } }], floorPolygons: [null, [{ x: 0, z: 0 }, null]], bounds: { minX: 0, minZ: 0, maxX: 1, maxZ: 1 } },
+        good: { walls: [null, { a: { x: 0, z: 0 }, b: { x: 1, z: 0 } }], objects: [{ center: { x: 0, z: 0 } }, { category: 'chair', center: { x: 0, z: 0 } }, { id: 'O', category: 'sofa', center: { x: 0, z: 0 } }], floorPolygons: [null, [{ x: 0, z: 0 }, null]], bounds: { minX: 0, minZ: 0, maxX: 1, maxZ: 1 } },
         noBounds: { walls: [], bounds: {} },
       } });
     const l = b.project.locations[0];
     expect(l.lights).toEqual([]);
+    expect(l.looks).toEqual([{ id: 'NIGHT', lights: [] }]);
     expect(l.meters).toEqual([{ id: 'N', position: { x: 1, z: 2 } }]);
     expect(l.shots.map(x => x.id)).toEqual(['T']);
     expect('characters' in l).toBe(false);

@@ -16,20 +16,21 @@ const segments = (v: unknown) => list<Record<string, unknown>>(v).filter(s => po
 type Item = Record<string, unknown>;
 const hasID = (o: Item) => typeof o.id === 'string' && o.id.length > 0;
 const placed = (o: Item) => hasID(o) && point(o.position);
-const rigged = (o: Item) => hasID(o) && isObj(o.rig) && point(o.rig.position);
+const RIG_NUMBERS = ['height', 'pan', 'tilt', 'focalLength'] as const;
+const rigged = (o: Item) => hasID(o) && isObj(o.rig) && point(o.rig.position) && RIG_NUMBERS.every(k => num((o.rig as Item)[k]));
 const light = (o: Item) => placed(o) && typeof o.kind === 'string';
 /// What every item in a location's lists needs before the planner can draw it. Items without it
 /// are dropped (the rest of the file still imports).
 const ITEM_CHECKS: Record<string, (o: Item) => boolean> = {
   scans: hasID, cameraPositions: rigged, shots: rigged,
   lights: light, characters: placed, meters: placed,
-  looks: o => hasID(o) && (o.lights === undefined || Array.isArray(o.lights)),
+  looks: o => hasID(o) && Array.isArray(o.lights),
 };
 /// Lists a location may leave out: when present they must be lists of drawable items.
 const OPTIONAL_LISTS = ['lights', 'characters', 'meters', 'looks'] as const;
 const items = (key: string, v: unknown) => {
   const out = list<Item>(v).filter(ITEM_CHECKS[key]);
-  return key === 'looks' ? out.map(l => (l.lights === undefined ? l : { ...l, lights: list<Item>(l.lights).filter(light) })) : out;
+  return key === 'looks' ? out.map(l => ({ ...l, lights: list<Item>(l.lights).filter(light) })) : out;
 };
 
 function location(v: unknown): Location | undefined {
@@ -67,7 +68,7 @@ export function checkedBundle(input: unknown): ProjectBundle {
     plans[k.toUpperCase()] = {
       ...v,
       walls: segments(v.walls), doors: segments(v.doors), windows: segments(v.windows), openings: segments(v.openings),
-      objects: list<Item>(v.objects).filter(o => typeof o.category === 'string' && point(o.center)),
+      objects: list<Item>(v.objects).filter(o => hasID(o) && typeof o.category === 'string' && point(o.center)),
       floorPolygons: (Array.isArray(v.floorPolygons) ? v.floorPolygons : []).filter(Array.isArray).map(poly => (poly as unknown[]).filter(point)),
       occupancy: (Array.isArray(v.occupancy) ? v.occupancy : []).filter(point),
       floorY: num(v.floorY) ? v.floorY : 0,

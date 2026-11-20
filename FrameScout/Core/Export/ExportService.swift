@@ -136,10 +136,7 @@ enum ExportService {
         StoragePaths.ensureDirectory(StoragePaths.exportsRoot)
         let stamp = exportStamp()
         let zipURL = StoragePaths.exportsRoot.appendingPathComponent("\(folderName)_\(stamp).zip")
-        let zip = try ZipWriter(url: zipURL)
-        try zip.addDirectory(root, prefix: folderName)
-        try zip.finish()
-        return zipURL
+        return try zipping(zipURL) { try $0.addDirectory(root, prefix: folderName) }
     }
 
     /// Every location in the project, each in its own package folder, plus a project summary.
@@ -164,10 +161,7 @@ enum ExportService {
 
         StoragePaths.ensureDirectory(StoragePaths.exportsRoot)
         let zipURL = StoragePaths.exportsRoot.appendingPathComponent("\(projectName)_\(exportStamp()).zip")
-        let zip = try ZipWriter(url: zipURL)
-        try zip.addDirectory(root, prefix: projectName)
-        try zip.finish()
-        return zipURL
+        return try zipping(zipURL) { try $0.addDirectory(root, prefix: projectName) }
     }
 
     /// Raw project folder for moving between devices (re-importable via Import Project).
@@ -175,10 +169,21 @@ enum ExportService {
         StoragePaths.ensureDirectory(StoragePaths.exportsRoot)
         let name = StoragePaths.safeName(project.name, fallback: "Project")
         let zipURL = StoragePaths.exportsRoot.appendingPathComponent("\(name)_\(exportStamp()).framescout.zip")
-        let zip = try ZipWriter(url: zipURL)
-        try zip.addDirectory(StoragePaths.projectDir(project.id), prefix: "\(name).framescout")
-        try zip.finish()
-        return zipURL
+        return try zipping(zipURL) { try $0.addDirectory(StoragePaths.projectDir(project.id), prefix: "\(name).framescout") }
+    }
+
+    /// Writes a ZIP; when anything fails the half-written file is removed, so failed exports of big
+    /// projects don't pile up gigabytes in Exports.
+    private static func zipping(_ url: URL, _ fill: (ZipWriter) throws -> Void) throws -> URL {
+        do {
+            let zip = try ZipWriter(url: url)
+            try fill(zip)
+            try zip.finish()
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
     private static func writeLocationFolder(project: Project, location: Location, ref: LocationRef,
