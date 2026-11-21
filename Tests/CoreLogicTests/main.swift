@@ -1470,6 +1470,12 @@ do {
     check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).isEmpty, "a C-stand beside the frame is clear")
     boom.support = .megaBoom
     check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).map(\.part) == [.stand], "a MegaBoom's column behind the head is seen")
+    func reach(_ id: String) -> Double {
+        var l = LightFixture(name: id, kind: .softbox, position: PlanPoint(x: 0, z: 0), pan: 90)
+        l.apply(profile: FixtureLibrary.profile(id: id)!); l.modifierID = "softbox-150"; l.tilt = 0
+        return FrameCheck.samplePoints(l).filter { $0.part == .unit }.map(\.p.x).max() ?? 0
+    }
+    check(abs(reach("hmi-1800-par") - 0.82) < 1e-6 && abs(reach("cob-1200-d") - 0.78) < 1e-6, "a softbox's front sits where the 3D view draws it (HMI further out than COB)")
     var box = LightFixture(name: "Box", kind: .softbox, position: PlanPoint(x: 1.9, z: -3), pan: 270)
     box.height = 1.5; box.support = LightSupport.none
     check(FrameCheck.unitsInFrame(rig, lights: [box], plan: nil).isEmpty, "a bare head beside the frame is clear")
