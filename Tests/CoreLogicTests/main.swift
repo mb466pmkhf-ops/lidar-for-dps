@@ -1459,6 +1459,12 @@ do {
     check(FrameCheck.unitsInFrame(rig, lights: [board], plan: nil).map(\.part) == [.unit], "a board's lower edge is seen with its centre above frame")
     board.boardHeight = 0.6
     check(FrameCheck.unitsInFrame(rig, lights: [board], plan: nil).isEmpty, "a short board above frame is clear")
+    var lens50 = rig; lens50.focalLength = 50
+    var close = light("Neg", 0, -1, height: 2, kind: .negative)
+    close.width = 1.2; close.boardHeight = 2.4; close.support = LightSupport.none
+    check(FrameCheck.unitsInFrame(lens50, lights: [close], plan: nil).map(\.part) == [.unit], "a board filling the frame between its sample rows is seen")
+    close.position = PlanPoint(x: 3, z: -1)
+    check(FrameCheck.unitsInFrame(lens50, lights: [close], plan: nil).isEmpty, "the same board off to the side is clear")
     var boom = LightFixture(name: "Boom", kind: .fresnel, position: PlanPoint(x: 3, z: -3), pan: 90)
     boom.height = 2.5; boom.support = .cStand
     check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).isEmpty, "a C-stand beside the frame is clear")
