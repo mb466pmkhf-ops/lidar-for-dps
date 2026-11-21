@@ -21,20 +21,74 @@ export const BOOM_REACH = 2.2;
 
 interface P3 { x: number; y: number; z: number }
 
-/** True when the point sits inside the camera's frame (image area at the rig's focal length). */
-export function pointInFrame(rig: CameraRig, p: P3): boolean {
+/** The camera's axes: forward, right, and up = right × forward, so a camera tilted down still has its
+ *  frame's top edge up. `tx`, `ty`: half the frame's width and height per metre of depth. */
+function cameraBasis(rig: CameraRig) {
   const area = imageArea(rig);
-  if (!(rig.focalLength > 0)) return false;
   const f = direction(rig.pan, rig.tilt);
   const right = direction(rig.pan + 90, 0);
-  // up = right × forward, so a camera tilted down still has its frame's top edge up.
   const up = { x: right.y * f.z - right.z * f.y, y: right.z * f.x - right.x * f.z, z: right.x * f.y - right.y * f.x };
+  return { f, right, up, tx: area.width / (2 * rig.focalLength), ty: area.height / (2 * rig.focalLength) };
+}
+type Basis = ReturnType<typeof cameraBasis>;
+const dot = (a: P3, b: P3) => a.x * b.x + a.y * b.y + a.z * b.z;
+/** The point in camera space: x right, y up, z depth along the lens axis (m). */
+function toCamera(rig: CameraRig, c: Basis, p: P3): P3 {
   const v = { x: p.x - rig.position.x, y: p.y - rig.height, z: p.z - rig.position.z };
-  const depth = v.x * f.x + v.y * f.y + v.z * f.z;
-  if (depth < FRAME_NEAR) return false;
-  const sx = (v.x * right.x + v.y * right.y + v.z * right.z) / depth;
-  const sy = (v.x * up.x + v.y * up.y + v.z * up.z) / depth;
-  return Math.abs(sx) <= area.width / (2 * rig.focalLength) && Math.abs(sy) <= area.height / (2 * rig.focalLength);
+  return { x: dot(v, c.right), y: dot(v, c.up), z: dot(v, c.f) };
+}
+
+/** True when the point sits inside the camera's frame (image area at the rig's focal length). */
+export function pointInFrame(rig: CameraRig, p: P3): boolean {
+  if (!(rig.focalLength > 0)) return false;
+  const c = cameraBasis(rig);
+  const q = toCamera(rig, c, p);
+  if (q.z < FRAME_NEAR) return false;
+  return Math.abs(q.x / q.z) <= c.tx && Math.abs(q.y / q.z) <= c.ty;
+}
+
+/** A flat face (corners in order) against the frame: the part of it the camera sees, clipped to the
+ *  frame's edges, as one world point in the middle of that part. Undefined when none of it is in frame.
+ *  Catches a board that fills the frame between its sample rows (one close to the lens). */
+export function faceInFrame(rig: CameraRig, corners: P3[]): P3 | undefined {
+  if (!(rig.focalLength > 0) || corners.length < 3) return undefined;
+  const c = cameraBasis(rig);
+  let poly = corners.map(p => toCamera(rig, c, p));
+  const planes: ((q: P3) => number)[] = [
+    q => q.z - FRAME_NEAR, q => c.tx * q.z - q.x, q => c.tx * q.z + q.x, q => c.ty * q.z - q.y, q => c.ty * q.z + q.y,
+  ];
+  for (const d of planes) {
+    const out: P3[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], da = d(a), db = d(b);
+      if (da >= 0) out.push(a);
+      if ((da >= 0) !== (db >= 0)) {
+        const t = da / (da - db);
+        out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t });
+      }
+    }
+    poly = out;
+    if (!poly.length) return undefined;
+  }
+  const m = poly.reduce((s, q) => ({ x: s.x + q.x / poly.length, y: s.y + q.y / poly.length, z: s.z + q.z / poly.length }), { x: 0, y: 0, z: 0 });
+  return {
+    x: rig.position.x + c.right.x * m.x + c.up.x * m.y + c.f.x * m.z,
+    y: rig.height + c.right.y * m.x + c.up.y * m.y + c.f.y * m.z,
+    z: rig.position.z + c.right.z * m.x + c.up.z * m.y + c.f.z * m.z,
+  };
+}
+
+/** A board's face as four corners: its width along the level right, bottom to top along its own up
+ *  (which leans with the tilt; an opened floppy included). Undefined for anything that isn't a board. */
+export function boardCorners(l: LightFixture): P3[] | undefined {
+  if (!isGrip(l.kind)) return undefined;
+  const span = gripSpan(l);
+  const right = direction(l.pan + 90, 0), up = direction(l.pan, l.tilt + 90);
+  const half = Math.max(0, l.width) / 2, lo = span.bottom - l.height, hi = span.top - l.height;
+  const at = (dx: number, du: number) => ({
+    x: l.position.x + right.x * dx + up.x * du, y: l.height + right.y * dx + up.y * du, z: l.position.z + right.z * dx + up.z * du,
+  });
+  return [at(-half, lo), at(half, lo), at(half, hi), at(-half, hi)];
 }
 
 /** Walls between the lens and the point hide it where the sight line passes between the wall's bottom
@@ -116,6 +170,11 @@ export function unitsInFrame(rig: CameraRig, lights: LightFixture[], plan?: Floo
       if (!pointInFrame(rig, s.p) || hiddenByWall(rig, s.p, plan)) continue;
       if (s.part === 'unit') { part = 'unit'; break; }
       part = 'stand';
+    }
+    if (part !== 'unit') {
+      const corners = boardCorners(l);
+      const seen = corners && faceInFrame(rig, corners);
+      if (seen && !hiddenByWall(rig, seen, plan)) part = 'unit';
     }
     if (part) result.push({ id: l.id, name: l.name, part });
   }

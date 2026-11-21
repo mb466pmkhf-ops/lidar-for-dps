@@ -33,6 +33,12 @@ describe('frame check (units and stands in shot)', () => {
     expect(unitsInFrame(rig, [board]).map(i => i.part)).toEqual(['unit']);
     expect(unitsInFrame(rig, [{ ...board, boardHeight: 0.6 }])).toEqual([]);
   });
+  it('sees a board that fills the frame between its sample rows', () => {
+    const lens50 = { ...rig, focalLength: 50 };
+    const board = { ...light('Neg', 0, -1, 2, 'negative'), width: 1.2, boardHeight: 2.4, support: 'none' as const };
+    expect(unitsInFrame(lens50, [board]).map(i => i.part)).toEqual(['unit']);
+    expect(unitsInFrame(lens50, [{ ...board, position: { x: 3, z: -1 } }])).toEqual([]);
+  });
   it("sees a MegaBoom's column behind the head", () => {
     const boom = { ...newLight('fresnel', { x: 3, z: -3 }, 90), name: 'Boom', height: 2.5 };
     expect(unitsInFrame(rig, [{ ...boom, support: 'cStand' as const }])).toEqual([]);

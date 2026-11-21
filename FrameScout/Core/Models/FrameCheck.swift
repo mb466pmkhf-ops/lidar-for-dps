@@ -17,20 +17,68 @@ enum FrameCheck {
 
     typealias Point = LightingCalculator.Point
 
-    /// True when the point sits inside the camera's frame (image area at the rig's focal length).
-    static func pointInFrame(_ rig: CameraRig, _ p: Point) -> Bool {
-        guard rig.focalLength > 0 else { return false }
+    /// The camera's axes: forward, right, and up = right × forward, so a camera tilted down still has its
+    /// frame's top edge up. `tx`, `ty`: half the frame's width and height per metre of depth.
+    private struct Basis { var f: Point; var right: Point; var up: Point; var tx: Double; var ty: Double }
+    private static func basis(_ rig: CameraRig) -> Basis {
         let area = rig.imageArea
         let f = LightingCalculator.direction(bearing: rig.pan, tilt: rig.tilt)
         let right = LightingCalculator.direction(bearing: rig.pan + 90, tilt: 0)
-        // up = right × forward, so a camera tilted down still has its frame's top edge up.
         let up = Point(x: right.y * f.z - right.z * f.y, y: right.z * f.x - right.x * f.z, z: right.x * f.y - right.y * f.x)
+        return Basis(f: f, right: right, up: up, tx: area.width / (2 * rig.focalLength), ty: area.height / (2 * rig.focalLength))
+    }
+    private static func dot(_ a: Point, _ b: Point) -> Double { a.x * b.x + a.y * b.y + a.z * b.z }
+    /// The point in camera space: x right, y up, z depth along the lens axis (m).
+    private static func toCamera(_ rig: CameraRig, _ c: Basis, _ p: Point) -> Point {
         let v = Point(x: p.x - rig.position.x, y: p.y - rig.height, z: p.z - rig.position.z)
-        let depth = v.x * f.x + v.y * f.y + v.z * f.z
-        guard depth >= near else { return false }
-        let sx = (v.x * right.x + v.y * right.y + v.z * right.z) / depth
-        let sy = (v.x * up.x + v.y * up.y + v.z * up.z) / depth
-        return abs(sx) <= area.width / (2 * rig.focalLength) && abs(sy) <= area.height / (2 * rig.focalLength)
+        return Point(x: dot(v, c.right), y: dot(v, c.up), z: dot(v, c.f))
+    }
+
+    /// True when the point sits inside the camera's frame (image area at the rig's focal length).
+    static func pointInFrame(_ rig: CameraRig, _ p: Point) -> Bool {
+        guard rig.focalLength > 0 else { return false }
+        let c = basis(rig)
+        let q = toCamera(rig, c, p)
+        guard q.z >= near else { return false }
+        return abs(q.x / q.z) <= c.tx && abs(q.y / q.z) <= c.ty
+    }
+
+    /// A flat face (corners in order) against the frame: the part of it the camera sees, clipped to the
+    /// frame's edges, as one world point in the middle of that part. Nil when none of it is in frame.
+    /// Catches a board that fills the frame between its sample rows (one close to the lens).
+    static func faceInFrame(_ rig: CameraRig, corners: [Point]) -> Point? {
+        guard rig.focalLength > 0, corners.count >= 3 else { return nil }
+        let c = basis(rig)
+        var poly = corners.map { toCamera(rig, c, $0) }
+        let planes: [(Point) -> Double] = [
+            { $0.z - near }, { c.tx * $0.z - $0.x }, { c.tx * $0.z + $0.x }, { c.ty * $0.z - $0.y }, { c.ty * $0.z + $0.y },
+        ]
+        for d in planes {
+            var out: [Point] = []
+            for i in poly.indices {
+                let a = poly[i], b = poly[(i + 1) % poly.count], da = d(a), db = d(b)
+                if da >= 0 { out.append(a) }
+                if (da >= 0) != (db >= 0) { out.append(a + (b - a) * (da / (da - db))) }
+            }
+            poly = out
+            if poly.isEmpty { return nil }
+        }
+        let n = Double(poly.count)
+        let m = poly.reduce(Point(x: 0, y: 0, z: 0)) { $0 + $1 * (1 / n) }
+        return Point(x: rig.position.x, y: rig.height, z: rig.position.z) + c.right * m.x + c.up * m.y + c.f * m.z
+    }
+
+    /// A board's face as four corners: its width along the level right, bottom to top along its own up
+    /// (which leans with the tilt; an opened floppy included). Nil for anything that isn't a board.
+    static func boardCorners(_ l: LightFixture) -> [Point]? {
+        guard GripCatalog.gripKinds.contains(l.kind) else { return nil }
+        let span = l.gripSpan
+        let right = LightingCalculator.direction(bearing: l.pan + 90, tilt: 0)
+        let up = LightingCalculator.direction(bearing: l.pan, tilt: l.tilt + 90)
+        let half = max(0, l.width) / 2, lo = span.bottom - l.height, hi = span.top - l.height
+        let centre = Point(x: l.position.x, y: l.height, z: l.position.z)
+        func at(_ dx: Double, _ du: Double) -> Point { centre + right * dx + up * du }
+        return [at(-half, lo), at(half, lo), at(half, hi), at(-half, hi)]
     }
 
     /// Walls between the lens and the point hide it where the sight line passes between the wall's
@@ -108,6 +156,10 @@ enum FrameCheck {
                 guard pointInFrame(rig, s.p), !hiddenByWall(rig, s.p, plan: plan) else { continue }
                 if s.part == .unit { part = .unit; break }
                 part = .stand
+            }
+            if part != .unit, let corners = boardCorners(l), let seen = faceInFrame(rig, corners: corners),
+               !hiddenByWall(rig, seen, plan: plan) {
+                part = .unit
             }
             if let part { result.append(Intrusion(id: l.id, name: l.name, part: part)) }
         }
