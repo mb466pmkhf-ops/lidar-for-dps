@@ -81,8 +81,37 @@ const about2800K = q('About 2,800 K bare and warms further when dimmed, so it re
   'How FrameScan models it');
 const q100WHouseholdTungsten = q('100 W household tungsten bulbs are no longer sold in the EU and UK. Source them from film suppliers or use a dimmed photoflood.',
   'EU Regulation 244/2009', 'https://eur-lex.europa.eu/eli/reg/2009/244/oj');
+const openFaceHarsh = q('No lens, so the light is harsh and spills widely. Spotting moves the lamp in the reflector, and the beam is less even than a fresnel\'s.',
+  'General crew practice');
+const openFaceFigures = q('FrameScan matches the maker\'s full-spot and full-flood figures. In between, a medium beam can read up to half a stop off.',
+  'How FrameScan models it');
+const ellipsoidalHardEdge = q('A hard-edged beam you can cut with the built-in shutters and pattern with a gobo. Focus the barrel for a sharp or soft edge.',
+  'General crew practice');
+const ellipsoidalOneLens = q('Uses the 36° lens figure with a 230 V lamp. Other lens tubes change the beam and the throw; FrameScan doesn\'t offer them yet.',
+  'How FrameScan models it');
+const estimateBetween2kAnd12k = q('No published table was found for this size. The output is an estimate between the 2K and 12K published figures.',
+  'How FrameScan models it');
+const estimateFrom12k = q('The output is an estimate: the 12K\'s published figure scaled by wattage. Many 12K heads also take a 10K lamp.',
+  'How FrameScan models it');
+const draws5k = q('Draws about 22 A at 230 V (42 A at 120 V): a generator or a heavy-duty distro circuit, never a household socket.',
+  'Electrical: current = watts ÷ volts');
+const drawsBigTungsten = q('A 10K draws about 43 A at 230 V, a 12K about 52 A and a 24K over 100 A: generator or studio power only.',
+  'Electrical: current = watts ÷ volts');
+const bigHeadsAreHeavy = q('Big heads weigh 25 kg or more. Use a rolling wind-up or crank stand and enough hands to rig it.',
+  'General crew practice');
+const softPanelDiffusion = q('The figure is with the standard diffusion. The clear intensifier adds about two thirds of a stop; heavy diffusion takes about a third away.',
+  'Maker data sheets for 4×1 and 4×3 soft panels');
+const drawsAbout7A = q('Draws about 7 A at 230 V (13 A at 120 V) at full output: give it its own circuit.',
+  'Electrical: current = watts ÷ volts');
+const lensedPanelBeam = q('The lens gives a 45° beam rather than a soft wash, so treat it as a small hard source and diffuse it near faces.',
+  'General crew practice');
+const drawsAbout11A = q('Draws about 11 A at 230 V (21 A at 120 V) before ballast losses: give it its own circuit.',
+  'Electrical: current = watts ÷ volts');
+const reflectorFigureWorkedOut = q('The reflector figure is worked out from the maker\'s bare reading with FrameScan\'s reflector model, not measured with a reflector.',
+  'How FrameScan models it');
 
 export const fixtureQuirks: Record<string, UnitQuirk[]> = {
+  'cob-60-bi': [dimmedLedsCanFlicker, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift, reflectorFigureWorkedOut],
   'cob-100-bi': [dimmedLedsCanFlicker, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
   'cob-300-bi': [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
   'cob-300-d': [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes],
@@ -91,21 +120,38 @@ export const fixtureQuirks: Record<string, UnitQuirk[]> = {
   'cob-1200-d': [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes, atFullOutputIt],
   'fresnel-led-200-bi': [dimmedLedsCanFlicker, fanCooledQuietOr, biColourUnitsMix, mixedWhitesCanDrift, theOutputFigureIs2, aFresnelSSoft],
   'fresnel-led-600-d': [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs2, aFresnelSSoft],
+  'panel-small-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, lensedPanelBeam],
   'panel-1x1-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, barePanelsAreMade, barnDoorsOnA],
   'panel-1x1-rgb': [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, barePanelsAreMade, barnDoorsOnA],
   'panel-2x1-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, barePanelsAreMade, barnDoorsOnA],
   'panel-2x1-rgb': [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, barePanelsAreMade, barnDoorsOnA],
+  'panel-4x1-soft-rgb': [dimmedLedsCanFlicker, saturatedColoursGiveFar, softPanelDiffusion, barnDoorsOnA],
+  'panel-2x1-rgb-600': [dimmedLedsCanFlicker, fanCooledQuietOr, saturatedColoursGiveFar, barePanelsAreMade, barnDoorsOnA],
+  'panel-4x3-soft-rgb': [dimmedLedsCanFlicker, fanCooledQuietOr, saturatedColoursGiveFar, softPanelDiffusion, drawsAbout7A],
   'tube-2ft-rgb': [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, batteryRunTimeIs, framescanTreatsTheTube],
   'tube-4ft-rgb': [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, batteryRunTimeIs, framescanTreatsTheTube],
+  'mat-1x2-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
   'mat-2x2-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
   'mat-4x4-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
+  'hmi-fresnel-575': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft],
+  'hmi-open-800': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, openFaceHarsh],
+  'hmi-fresnel-1200': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft],
   'hmi-1800-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theLampAloneDraws],
+  'hmi-fresnel-2500': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft, drawsAbout11A],
+  'hmi-fresnel-4000': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft, tooMuchForA],
   'hmi-4000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, tooMuchForA],
   'hmi-9000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
   'hmi-18000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
   'tungsten-650': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd],
+  'tungsten-750-open': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, openFaceHarsh, openFaceFigures],
+  'ellipsoidal-750': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, ellipsoidalHardEdge, ellipsoidalOneLens],
   'tungsten-1k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout8A],
   'tungsten-2k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout17A],
+  'tungsten-2k-open': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, openFaceHarsh, openFaceFigures, drawsAbout17A],
+  'tungsten-5k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, estimateBetween2kAnd12k, draws5k, bigHeadsAreHeavy],
+  'tungsten-10k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, estimateFrom12k, drawsBigTungsten, bigHeadsAreHeavy],
+  'tungsten-12k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsBigTungsten, bigHeadsAreHeavy],
+  'tungsten-24k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsBigTungsten, bigHeadsAreHeavy],
   'lantern-300-bi': [dimmedLedsCanFlicker, fanCooledQuietOr, biColourUnitsMix, mixedWhitesCanDrift, lightsEverythingAroundIt, framescanTreatsTheLantern],
   'bulb-led-60': [householdLedBulbsOften, manyArenTDimmable],
   'bulb-tungsten-100': [about2800K, q100WHouseholdTungsten],

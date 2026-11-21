@@ -97,7 +97,7 @@ enum FixtureCategory: String, Codable, CaseIterable, Identifiable {
         case .tube: return "LED tube"
         case .soft: return "Flexible LED mat"
         case .hmi: return "HMI"
-        case .tungsten: return "Tungsten fresnel"
+        case .tungsten: return "Tungsten"
         case .spaceLight: return "Space light / lantern"
         case .practical: return "Practical"
         }
@@ -178,6 +178,8 @@ struct FixtureProfile: Identifiable, Hashable {
     var minOutput: Double = 0.01
     /// Modifier fitted by default (its effect is part of the reference reading).
     var defaultModifierID: String? = nil
+    /// Focus loss for a built-in spot/flood range, when it isn't a fresnel lens's (open faces lose less).
+    var focusExponent: Double? = nil
 
     var powerLabel: String {
         ratedPower >= 1000 ? String(format: "%gK", ratedPower / 1000) : "\(Int(ratedPower)) W"
@@ -251,6 +253,10 @@ enum FixtureLibrary {
     /// HMIs against 1.8 kW and 4 kW open-face PARs at 30° (≈39,000 / 72,000 lx at 3 m).
     /// The 100 W COB is scaled from the 300 W one by power (no table checked).
     static let profiles: [FixtureProfile] = [
+        FixtureProfile(id: "cob-60-bi", name: "60 W COB LED · bi-colour", category: .cob, kind: .fresnel, technology: .led,
+                       ratedPower: 60, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 55,
+                       reference: ref(930, at: 3, beam: 55, "Standard 55° reflector, 5600 K (from the maker’s bare reading)"), emitterWidth: 0.08, emitterHeight: 0.08,
+                       defaultModifierID: "reflector-55"),
         FixtureProfile(id: "cob-100-bi", name: "100 W COB LED · bi-colour", category: .cob, kind: .fresnel, technology: .led,
                        ratedPower: 100, color: .biColour(2700, 6500), distribution: .beam, defaultBeam: 55,
                        reference: ref(900, at: 3, beam: 55, "Standard 55° reflector, 5600 K"), emitterWidth: 0.12, emitterHeight: 0.12,
@@ -283,6 +289,9 @@ enum FixtureLibrary {
                        ratedPower: 600, color: .fixed(5600), distribution: .beam, defaultBeam: 60, beamRange: 15...60,
                        reference: ref(2500, at: 3, beam: 60, "Full flood"), emitterWidth: 0.3, emitterHeight: 0.3,
                        hasBarnDoors: true),
+        FixtureProfile(id: "panel-small-bi", name: "Small lensed LED panel · bi-colour (≈60 W)", category: .panel, kind: .ledPanel, technology: .led,
+                       ratedPower: 60, color: .biColour(3200, 6500), distribution: .beam, defaultBeam: 45,
+                       reference: ref(1328, at: 2, beam: 45, "Bare, 5600 K"), emitterWidth: 0.2, emitterHeight: 0.15),
         FixtureProfile(id: "panel-1x1-bi", name: "1×1 LED panel · bi-colour (≈100 W)", category: .panel, kind: .ledPanel, technology: .led,
                        ratedPower: 100, color: .biColour(3200, 5600), distribution: .lambertian, defaultBeam: 120,
                        reference: ref(1850, at: 1, "Bare panel, 5600 K"), emitterWidth: 0.3, emitterHeight: 0.3,
@@ -299,21 +308,56 @@ enum FixtureLibrary {
                        ratedPower: 350, color: .fullColour(2500, 10000), distribution: .lambertian, defaultBeam: 120,
                        reference: ref(4800, at: 1, "Bare panel, 5600 K white"), emitterWidth: 0.6, emitterHeight: 0.3,
                        hasBarnDoors: true),
+        FixtureProfile(id: "panel-4x1-soft-rgb", name: "4×1 LED soft panel · RGB (≈400 W)", category: .panel, kind: .ledPanel, technology: .led,
+                       ratedPower: 400, color: .fullColour(2800, 10000), distribution: .lambertian, defaultBeam: 120,
+                       reference: ref(1556, at: 3, "Standard diffusion, 5600 K"), emitterWidth: 1.29, emitterHeight: 0.3,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "panel-2x1-rgb-600", name: "2×1 LED panel · RGB (≈600 W)", category: .panel, kind: .ledPanel, technology: .led,
+                       ratedPower: 600, color: .fullColour(2000, 10000), distribution: .lambertian, defaultBeam: 120,
+                       reference: ref(2167, at: 3, "Bare panel, 5600 K white"), emitterWidth: 0.6, emitterHeight: 0.3,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "panel-4x3-soft-rgb", name: "4×3 LED soft panel · RGB (≈1.5 kW)", category: .panel, kind: .ledPanel, technology: .led,
+                       ratedPower: 1500, color: .fullColour(2800, 10000), distribution: .lambertian, defaultBeam: 120,
+                       reference: ref(6444, at: 3, "Standard diffusion, 5600 K"), emitterWidth: 1.28, emitterHeight: 0.87,
+                       hasBarnDoors: true),
         FixtureProfile(id: "tube-2ft-rgb", name: "2 ft LED tube · RGB (≈20 W)", category: .tube, kind: .tube, technology: .led,
                        ratedPower: 20, color: .fullColour(2000, 10000), distribution: .tube, defaultBeam: 360,
                        reference: ref(130, at: 1, "Broadside, 5600 K white"), emitterWidth: 0.6, emitterHeight: 0.04),
         FixtureProfile(id: "tube-4ft-rgb", name: "4 ft LED tube · RGB (≈40 W)", category: .tube, kind: .tube, technology: .led,
                        ratedPower: 40, color: .fullColour(2000, 10000), distribution: .tube, defaultBeam: 360,
                        reference: ref(300, at: 1, "Broadside, 5600 K white"), emitterWidth: 1.2, emitterHeight: 0.04),
+        FixtureProfile(id: "mat-1x2-bi", name: "1×2 flexible LED mat · bi-colour (≈100 W)", category: .soft, kind: .softbox, technology: .led,
+                       ratedPower: 100, color: .biColour(2700, 6500), distribution: .lambertian, defaultBeam: 120,
+                       reference: ref(263, at: 3, "With its softbox, 5600 K"), emitterWidth: 0.3, emitterHeight: 0.6),
         FixtureProfile(id: "mat-2x2-bi", name: "2×2 flexible LED mat · bi-colour (≈150 W)", category: .soft, kind: .softbox, technology: .led,
                        ratedPower: 150, color: .biColour(2700, 6500), distribution: .lambertian, defaultBeam: 120,
                        reference: ref(230, at: 3, "With its diffusion, 5600 K"), emitterWidth: 0.6, emitterHeight: 0.6),
         FixtureProfile(id: "mat-4x4-bi", name: "4×4 flexible LED mat · bi-colour (≈400 W)", category: .soft, kind: .softbox, technology: .led,
                        ratedPower: 400, color: .biColour(2700, 6500), distribution: .lambertian, defaultBeam: 120,
                        reference: ref(600, at: 3, "With its diffusion, 5600 K"), emitterWidth: 1.2, emitterHeight: 1.2),
+        FixtureProfile(id: "hmi-fresnel-575", name: "575 W HMI fresnel", category: .hmi, kind: .fresnel, technology: .hmi,
+                       ratedPower: 575, color: .fixed(5600), distribution: .beam, defaultBeam: 56, beamRange: 6...56,
+                       reference: ref(591, at: 7, beam: 56, "Full flood"), emitterWidth: 0.15, emitterHeight: 0.15,
+                       hasBarnDoors: true, minOutput: 0.5),
+        FixtureProfile(id: "hmi-open-800", name: "800 W HMI open face", category: .hmi, kind: .hmi, technology: .hmi,
+                       ratedPower: 800, color: .fixed(5600), distribution: .beam, defaultBeam: 60, beamRange: 15...60,
+                       reference: ref(1600, at: 5, beam: 60, "Full flood"), emitterWidth: 0.3, emitterHeight: 0.3,
+                       hasBarnDoors: true, minOutput: 0.5, focusExponent: 0.31),
+        FixtureProfile(id: "hmi-fresnel-1200", name: "1.2K HMI fresnel", category: .hmi, kind: .fresnel, technology: .hmi,
+                       ratedPower: 1200, color: .fixed(5600), distribution: .beam, defaultBeam: 50, beamRange: 7.5...50,
+                       reference: ref(864, at: 9, beam: 50, "Full flood"), emitterWidth: 0.175, emitterHeight: 0.175,
+                       hasBarnDoors: true, minOutput: 0.5),
         FixtureProfile(id: "hmi-1800-par", name: "1.8K HMI PAR", category: .hmi, kind: .hmi, technology: .hmi,
                        ratedPower: 1800, color: .fixed(5600), distribution: .beam, defaultBeam: 30,
                        reference: ref(40000, at: 3, beam: 30, "Medium flood lens"), emitterWidth: 0.4, emitterHeight: 0.4,
+                       hasBarnDoors: true, minOutput: 0.5),
+        FixtureProfile(id: "hmi-fresnel-2500", name: "2.5K HMI fresnel", category: .hmi, kind: .fresnel, technology: .hmi,
+                       ratedPower: 2500, color: .fixed(5600), distribution: .beam, defaultBeam: 59, beamRange: 6...59,
+                       reference: ref(852, at: 12, beam: 59, "Full flood"), emitterWidth: 0.25, emitterHeight: 0.25,
+                       hasBarnDoors: true, minOutput: 0.5),
+        FixtureProfile(id: "hmi-fresnel-4000", name: "4K HMI fresnel", category: .hmi, kind: .fresnel, technology: .hmi,
+                       ratedPower: 4000, color: .fixed(5600), distribution: .beam, defaultBeam: 61, beamRange: 6.5...61,
+                       reference: ref(760, at: 16, beam: 61, "Full flood"), emitterWidth: 0.3, emitterHeight: 0.3,
                        hasBarnDoors: true, minOutput: 0.5),
         FixtureProfile(id: "hmi-4000-par", name: "4K HMI PAR", category: .hmi, kind: .hmi, technology: .hmi,
                        ratedPower: 4000, color: .fixed(5600), distribution: .beam, defaultBeam: 30,
@@ -331,6 +375,13 @@ enum FixtureLibrary {
                        ratedPower: 650, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
                        reference: ref(1200, at: 3, beam: 55, "Full flood"), emitterWidth: 0.15, emitterHeight: 0.15,
                        hasBarnDoors: true),
+        FixtureProfile(id: "tungsten-750-open", name: "750 W open face", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 750, color: .fixed(3200), distribution: .beam, defaultBeam: 66, beamRange: 18...66,
+                       reference: ref(269, at: 4, beam: 66, "Full flood"), emitterWidth: 0.15, emitterHeight: 0.15,
+                       hasBarnDoors: true, focusExponent: 0.75),
+        FixtureProfile(id: "ellipsoidal-750", name: "750 W ellipsoidal spot · 36° lens", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 750, color: .fixed(3200), distribution: .beam, defaultBeam: 27,
+                       reference: ref(3218, at: 4.6, beam: 27, "36° lens, 230 V lamp"), emitterWidth: 0.15, emitterHeight: 0.15),
         FixtureProfile(id: "tungsten-1k", name: "1K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
                        ratedPower: 1000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
                        reference: ref(2250, at: 3, beam: 55, "Full flood"), emitterWidth: 0.2, emitterHeight: 0.2,
@@ -338,6 +389,26 @@ enum FixtureLibrary {
         FixtureProfile(id: "tungsten-2k", name: "2K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
                        ratedPower: 2000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 15...55,
                        reference: ref(3800, at: 3, beam: 55, "Full flood"), emitterWidth: 0.25, emitterHeight: 0.25,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "tungsten-2k-open", name: "2K open face", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 2000, color: .fixed(3200), distribution: .beam, defaultBeam: 53, beamRange: 20...53,
+                       reference: ref(764, at: 6, beam: 53, "Full flood"), emitterWidth: 0.25, emitterHeight: 0.25,
+                       hasBarnDoors: true, focusExponent: 0.36),
+        FixtureProfile(id: "tungsten-5k", name: "5K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 5000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 13...55,
+                       reference: ref(11700, at: 3, beam: 55, "Full flood; estimate between the 2K and 12K figures"), emitterWidth: 0.3, emitterHeight: 0.3,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "tungsten-10k", name: "10K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 10000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 13...55,
+                       reference: ref(3880, at: 8, beam: 55, "Full flood; estimate: 12K figure scaled by wattage"), emitterWidth: 0.42, emitterHeight: 0.42,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "tungsten-12k", name: "12K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 12000, color: .fixed(3200), distribution: .beam, defaultBeam: 55, beamRange: 13...55,
+                       reference: ref(4656, at: 8, beam: 55, "Full flood"), emitterWidth: 0.42, emitterHeight: 0.42,
+                       hasBarnDoors: true),
+        FixtureProfile(id: "tungsten-24k", name: "24K tungsten fresnel", category: .tungsten, kind: .fresnel, technology: .tungsten,
+                       ratedPower: 24000, color: .fixed(3200), distribution: .beam, defaultBeam: 56, beamRange: 13...56,
+                       reference: ref(4306, at: 11, beam: 56, "Full flood"), emitterWidth: 0.625, emitterHeight: 0.625,
                        hasBarnDoors: true),
         FixtureProfile(id: "lantern-300-bi", name: "LED lantern / space light · bi-colour (≈300 W)", category: .spaceLight, kind: .spaceLight, technology: .led,
                        ratedPower: 300, color: .biColour(2700, 6500), distribution: .omni, defaultBeam: 360,
@@ -511,9 +582,9 @@ enum Photometry {
     }
 
     /// Fraction of the full-flood beam flux a fresnel lens passes at `beam` (1 at full flood).
-    static func focusFactor(beam: Double, range: ClosedRange<Double>) -> Double {
+    static func focusFactor(beam: Double, range: ClosedRange<Double>, exponent: Double = fresnelFocusExponent) -> Double {
         let b = min(max(beam, range.lowerBound), range.upperBound)
-        return pow(b / range.upperBound, fresnelFocusExponent)
+        return pow(b / range.upperBound, exponent)
     }
 
     /// Mired arithmetic for gels.
@@ -584,7 +655,7 @@ extension LightFixture {
         var flux = refPeak * refDistribution.solidAngleFactor(beamAngle: refBeam)
         // A fresnel's own reading taken spotted in → the flux at full flood.
         if refModifier == nil, let r = p.beamRange, refDistribution == .beam {
-            flux /= Photometry.focusFactor(beam: refBeam, range: r)
+            flux /= Photometry.focusFactor(beam: refBeam, range: r, exponent: p.focusExponent ?? Photometry.fresnelFocusExponent)
         }
 
         // 2. Modifier: shape, size and loss relative to the reference configuration.
@@ -605,11 +676,25 @@ extension LightFixture {
         if distribution != .beam { beam = distribution.nominalBeam ?? beam }
         // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
         // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
-        if distribution == .grid { flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / .pi }
+        // The face behind the grid sets that peak: a softbox's own diffuse front (π), or for a grid fitted
+        // straight to a panel, the panel's own shape (π for a diffuse face, narrower for a lensed panel).
+        // A grid straight on a lensed panel can only trim its beam, so it stays a beam no wider than the
+        // panel's own (the grid's soft shape would spread light the lens never sends off axis).
+        if distribution == .grid && modifier?.size == nil && p.distribution == .beam {
+            let trimmed = min(beam, p.defaultBeam)
+            flux *= BeamDistribution.beam.solidAngleFactor(beamAngle: trimmed) / BeamDistribution.beam.solidAngleFactor(beamAngle: p.defaultBeam)
+            distribution = .beam
+            beam = trimmed
+        } else if distribution == .grid {
+            let face = modifier?.size != nil ? Double.pi : p.distribution.solidAngleFactor(beamAngle: p.defaultBeam)
+            flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / face
+        }
         // Spotting a fresnel lens loses flux.
         if distribution == .beam, let range {
-            if modifier?.focusesLikeFresnel == true || (modifier == nil && p.beamRange != nil) {
+            if modifier?.focusesLikeFresnel == true {
                 flux *= Photometry.focusFactor(beam: beam, range: range)
+            } else if modifier == nil && p.beamRange != nil {
+                flux *= Photometry.focusFactor(beam: beam, range: range, exponent: p.focusExponent ?? Photometry.fresnelFocusExponent)
             }
         }
 

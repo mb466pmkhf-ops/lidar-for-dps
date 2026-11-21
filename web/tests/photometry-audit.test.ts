@@ -185,6 +185,64 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
     expect(stopsOff(luxAt('hmi-1800-par', 10, l => { l.modifierID = 'par-spot'; }), 11250 * Math.pow(15 / 12, 1.7))).toBeLessThan(THIRD);
   });
 
+  // Units added 2026-11-21, each checked at distances and beams other than its reference reading.
+  // HMI fresnels (575 W, 1.2K, 2.5K, 4K): maker's poster, medium 30° and a further flood distance.
+  // Open faces: 800 W HMI (spot 15° 16,200 lx at 5 m, medium 40° 3,020), 2K tungsten (spot 20° 3,715 at 6 m).
+  // Big tungsten fresnels: 12K (spot 13° 27,188 at 8 m, medium 30° 9,047), 24K (medium 30° 9,504 at 11 m, flood 1,302 at 20 m).
+  // Soft panels: 4×1 560 lx at 5 m, 4×3 716 at 9 m and 403 at 12 m; 2×1 600 W 847 at 5 m; small lensed panel 5,070 at 1 m.
+  it('units added from published tables', () => {
+    const at = (id: string, d: number, beam?: number) => luxAt(id, d, beam === undefined ? undefined : l => { l.beamAngle = beam; });
+    expect(stopsOff(at('hmi-fresnel-575', 7, 30), 1414)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-575', 10, 56), 290)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-1200', 9, 30), 1701)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-1200', 9, 7.5), 7315)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-2500', 12, 30), 1924)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-2500', 12, 6), 11269)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-4000', 16, 30), 1766)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-fresnel-4000', 20, 61), 486)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-open-800', 5, 15), 16200)).toBeLessThan(THIRD);
+    expect(stopsOff(at('hmi-open-800', 5, 40), 3020)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-2k-open', 6, 20), 3715)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-2k-open', 10, 53), 275)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-12k', 8, 13), 27188)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-12k', 8, 30), 9047)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-24k', 11, 30), 9504)).toBeLessThan(THIRD);
+    expect(stopsOff(at('tungsten-24k', 20, 56), 1302)).toBeLessThan(THIRD);
+    expect(stopsOff(at('panel-4x1-soft-rgb', 5), 560)).toBeLessThan(THIRD);
+    expect(stopsOff(at('panel-4x3-soft-rgb', 9), 716)).toBeLessThan(THIRD);
+    expect(stopsOff(at('panel-4x3-soft-rgb', 12), 403)).toBeLessThan(THIRD);
+    expect(stopsOff(at('panel-2x1-rgb-600', 5), 847)).toBeLessThan(THIRD);
+    expect(stopsOff(at('panel-small-bi', 1), 5070)).toBeLessThan(THIRD);
+    expect(stopsOff(at('mat-1x2-bi', 1), 1944)).toBeLessThan(THIRD);
+  });
+
+  it('a grid on a lensed panel keeps its peak times the grid transmission', () => {
+    const bare_ = photometrics(light('panel-small-bi'));
+    const gridded_ = photometrics(light('panel-small-bi', l => { l.modifierID = 'panel-grid-40'; }));
+    const bare = bare_.peakIntensity, gridded = gridded_.peakIntensity;
+    expect(gridded / bare).toBeCloseTo(0.8, 6);
+    // …and never sends more light off axis than the bare panel.
+    for (const deg of [10, 20, 30, 45, 60]) {
+      expect(relativeIntensity(gridded_.distribution, deg, gridded_.beamAngle) * gridded)
+        .toBeLessThanOrEqual(relativeIntensity(bare_.distribution, deg, bare_.beamAngle) * bare + 1e-9);
+    }
+  });
+
+  // A softbox's grid sits on the softbox's diffuse front, not on the unit's reflector beam.
+  it('a gridded softbox keeps the softbox peak times the grid share', () => {
+    const soft = photometrics(light('cob-300-d', l => { l.modifierID = 'softbox-90'; })).peakIntensity;
+    const gridded = photometrics(light('cob-300-d', l => { l.modifierID = 'softbox-90-grid'; })).peakIntensity;
+    expect(gridded / soft).toBeCloseTo(0.4 / 0.5, 6);
+  });
+
+  // An open face loses less than a fresnel when spotted: the 750 W open face matches the maker's
+  // spot (1,881 lx at 4 m) and medium (494) to within half a stop each, the best one exponent allows.
+  it('the 750 W open face spot and medium, within half a stop', () => {
+    const at = (beam: number) => luxAt('tungsten-750-open', 4, l => { l.beamAngle = beam; });
+    expect(stopsOff(at(18), 1881)).toBeLessThan(0.52);
+    expect(stopsOff(at(30), 494)).toBeLessThan(0.52);
+  });
+
   // LEE datasheets (Y % under tungsten/daylight, mired shift).
   it('gels and diffusion', () => {
     const f = (id: string) => filters.find(x => x.id === id)!;
@@ -241,6 +299,7 @@ describe('TypeScript tables match the Swift source', () => {
       expect(/hasBarnDoors: true/.test(b)).toBe(p.hasBarnDoors);
       expect(num(b, 'minOutput') ?? 0.01).toBe(p.minOutput);
       expect(b.match(/defaultModifierID: "([^"]+)"/)?.[1]).toBe(p.defaultModifierID);
+      expect(num(b, 'focusExponent')).toBe(p.focusExponent);
       const c = b.match(/color: \.(fixed|biColour|fullColour)\(([\d.]+)(?:, ([\d.]+))?\)/)!;
       expect([Number(c[2]), Number(c[3] ?? c[2]), c[1] === 'fullColour']).toEqual([p.color.minKelvin, p.color.maxKelvin, p.color.rgb]);
     });

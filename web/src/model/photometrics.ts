@@ -11,7 +11,7 @@ export type RGB = { r: number; g: number; b: number };
 
 export const categoryLabel: Record<FixtureCategory, string> = {
   cob: 'COB LED', fresnel: 'LED fresnel', panel: 'LED panel', tube: 'LED tube', soft: 'Flexible LED mat',
-  hmi: 'HMI', tungsten: 'Tungsten fresnel', spaceLight: 'Space light / lantern', practical: 'Practical',
+  hmi: 'HMI', tungsten: 'Tungsten', spaceLight: 'Space light / lantern', practical: 'Practical',
 };
 
 export function relativeIntensity(d: BeamDistribution, theta: number, beamAngle: number): number {
@@ -98,6 +98,8 @@ export interface FixtureProfile {
   ratedPower: number; color: ColorCapability; distribution: BeamDistribution; defaultBeam: number;
   beamRange?: Range; reference: PhotometricReference; emitterWidth: number; emitterHeight: number;
   hasBarnDoors: boolean; minOutput: number; defaultModifierID?: string;
+  /** Focus loss for a built-in spot/flood range, when it isn't a fresnel lens's (open faces lose less). */
+  focusExponent?: number;
 }
 
 export const powerLabel = (p: FixtureProfile) =>
@@ -128,6 +130,7 @@ type P = Omit<FixtureProfile, 'hasBarnDoors' | 'minOutput'> & { hasBarnDoors?: b
 const prof = (p: P): FixtureProfile => ({ hasBarnDoors: false, minOutput: 0.01, ...p });
 
 export const profiles: FixtureProfile[] = [
+  prof({ id: 'cob-60-bi', name: '60 W COB LED · bi-colour', category: 'cob', kind: 'fresnel', technology: 'led', ratedPower: 60, color: biColour(2700, 6500), distribution: 'beam', defaultBeam: 55, reference: ref(930, 3, 55, 'Standard 55° reflector, 5600 K (from the maker’s bare reading)'), emitterWidth: 0.08, emitterHeight: 0.08, defaultModifierID: 'reflector-55' }),
   prof({ id: 'cob-100-bi', name: '100 W COB LED · bi-colour', category: 'cob', kind: 'fresnel', technology: 'led', ratedPower: 100, color: biColour(2700, 6500), distribution: 'beam', defaultBeam: 55, reference: ref(900, 3, 55, 'Standard 55° reflector, 5600 K'), emitterWidth: 0.12, emitterHeight: 0.12, defaultModifierID: 'reflector-55' }),
   prof({ id: 'cob-300-bi', name: '300 W COB LED · bi-colour', category: 'cob', kind: 'fresnel', technology: 'led', ratedPower: 300, color: biColour(2700, 6500), distribution: 'beam', defaultBeam: 55, reference: ref(2800, 3, 55, 'Standard 55° reflector, 5600 K'), emitterWidth: 0.18, emitterHeight: 0.18, defaultModifierID: 'reflector-55' }),
   prof({ id: 'cob-300-d', name: '300 W COB LED · daylight', category: 'cob', kind: 'fresnel', technology: 'led', ratedPower: 300, color: fixed(5600), distribution: 'beam', defaultBeam: 55, reference: ref(3500, 3, 55, 'Standard 55° reflector'), emitterWidth: 0.18, emitterHeight: 0.18, defaultModifierID: 'reflector-55' }),
@@ -136,21 +139,38 @@ export const profiles: FixtureProfile[] = [
   prof({ id: 'cob-1200-d', name: '1200 W COB LED · daylight', category: 'cob', kind: 'fresnel', technology: 'led', ratedPower: 1200, color: fixed(5600), distribution: 'beam', defaultBeam: 55, reference: ref(20000, 3, 55, 'Standard 55° reflector'), emitterWidth: 0.25, emitterHeight: 0.25, defaultModifierID: 'reflector-55' }),
   prof({ id: 'fresnel-led-200-bi', name: '200 W LED fresnel · bi-colour', category: 'fresnel', kind: 'fresnel', technology: 'led', ratedPower: 200, color: biColour(2700, 6500), distribution: 'beam', defaultBeam: 50, beamRange: [15, 50], reference: ref(1100, 3, 50, 'Full flood, 5600 K'), emitterWidth: 0.2, emitterHeight: 0.2, hasBarnDoors: true }),
   prof({ id: 'fresnel-led-600-d', name: '600 W LED fresnel · daylight', category: 'fresnel', kind: 'fresnel', technology: 'led', ratedPower: 600, color: fixed(5600), distribution: 'beam', defaultBeam: 60, beamRange: [15, 60], reference: ref(2500, 3, 60, 'Full flood'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true }),
+  prof({ id: 'panel-small-bi', name: 'Small lensed LED panel · bi-colour (≈60 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 60, color: biColour(3200, 6500), distribution: 'beam', defaultBeam: 45, reference: ref(1328, 2, 45, 'Bare, 5600 K'), emitterWidth: 0.2, emitterHeight: 0.15 }),
   prof({ id: 'panel-1x1-bi', name: '1×1 LED panel · bi-colour (≈100 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 100, color: biColour(3200, 5600), distribution: 'lambertian', defaultBeam: 120, reference: ref(1850, 1, undefined, 'Bare panel, 5600 K'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true }),
   prof({ id: 'panel-1x1-rgb', name: '1×1 LED panel · RGB (≈150 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 150, color: fullColour(2500, 10000), distribution: 'lambertian', defaultBeam: 120, reference: ref(1900, 1, undefined, 'Bare panel, 5600 K white'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true }),
   prof({ id: 'panel-2x1-bi', name: '2×1 LED panel · bi-colour (≈200 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 200, color: biColour(2700, 6500), distribution: 'lambertian', defaultBeam: 120, reference: ref(3600, 1, undefined, 'Bare panel, 5600 K'), emitterWidth: 0.6, emitterHeight: 0.3, hasBarnDoors: true }),
   prof({ id: 'panel-2x1-rgb', name: '2×1 LED panel · RGB (≈350 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 350, color: fullColour(2500, 10000), distribution: 'lambertian', defaultBeam: 120, reference: ref(4800, 1, undefined, 'Bare panel, 5600 K white'), emitterWidth: 0.6, emitterHeight: 0.3, hasBarnDoors: true }),
+  prof({ id: 'panel-4x1-soft-rgb', name: '4×1 LED soft panel · RGB (≈400 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 400, color: fullColour(2800, 10000), distribution: 'lambertian', defaultBeam: 120, reference: ref(1556, 3, undefined, 'Standard diffusion, 5600 K'), emitterWidth: 1.29, emitterHeight: 0.3, hasBarnDoors: true }),
+  prof({ id: 'panel-2x1-rgb-600', name: '2×1 LED panel · RGB (≈600 W)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 600, color: fullColour(2000, 10000), distribution: 'lambertian', defaultBeam: 120, reference: ref(2167, 3, undefined, 'Bare panel, 5600 K white'), emitterWidth: 0.6, emitterHeight: 0.3, hasBarnDoors: true }),
+  prof({ id: 'panel-4x3-soft-rgb', name: '4×3 LED soft panel · RGB (≈1.5 kW)', category: 'panel', kind: 'ledPanel', technology: 'led', ratedPower: 1500, color: fullColour(2800, 10000), distribution: 'lambertian', defaultBeam: 120, reference: ref(6444, 3, undefined, 'Standard diffusion, 5600 K'), emitterWidth: 1.28, emitterHeight: 0.87, hasBarnDoors: true }),
   prof({ id: 'tube-2ft-rgb', name: '2 ft LED tube · RGB (≈20 W)', category: 'tube', kind: 'tube', technology: 'led', ratedPower: 20, color: fullColour(2000, 10000), distribution: 'tube', defaultBeam: 360, reference: ref(130, 1, undefined, 'Broadside, 5600 K white'), emitterWidth: 0.6, emitterHeight: 0.04 }),
   prof({ id: 'tube-4ft-rgb', name: '4 ft LED tube · RGB (≈40 W)', category: 'tube', kind: 'tube', technology: 'led', ratedPower: 40, color: fullColour(2000, 10000), distribution: 'tube', defaultBeam: 360, reference: ref(300, 1, undefined, 'Broadside, 5600 K white'), emitterWidth: 1.2, emitterHeight: 0.04 }),
+  prof({ id: 'mat-1x2-bi', name: '1×2 flexible LED mat · bi-colour (≈100 W)', category: 'soft', kind: 'softbox', technology: 'led', ratedPower: 100, color: biColour(2700, 6500), distribution: 'lambertian', defaultBeam: 120, reference: ref(263, 3, undefined, 'With its softbox, 5600 K'), emitterWidth: 0.3, emitterHeight: 0.6 }),
   prof({ id: 'mat-2x2-bi', name: '2×2 flexible LED mat · bi-colour (≈150 W)', category: 'soft', kind: 'softbox', technology: 'led', ratedPower: 150, color: biColour(2700, 6500), distribution: 'lambertian', defaultBeam: 120, reference: ref(230, 3, undefined, 'With its diffusion, 5600 K'), emitterWidth: 0.6, emitterHeight: 0.6 }),
   prof({ id: 'mat-4x4-bi', name: '4×4 flexible LED mat · bi-colour (≈400 W)', category: 'soft', kind: 'softbox', technology: 'led', ratedPower: 400, color: biColour(2700, 6500), distribution: 'lambertian', defaultBeam: 120, reference: ref(600, 3, undefined, 'With its diffusion, 5600 K'), emitterWidth: 1.2, emitterHeight: 1.2 }),
+  prof({ id: 'hmi-fresnel-575', name: '575 W HMI fresnel', category: 'hmi', kind: 'fresnel', technology: 'hmi', ratedPower: 575, color: fixed(5600), distribution: 'beam', defaultBeam: 56, beamRange: [6, 56], reference: ref(591, 7, 56, 'Full flood'), emitterWidth: 0.15, emitterHeight: 0.15, hasBarnDoors: true, minOutput: 0.5 }),
+  prof({ id: 'hmi-open-800', name: '800 W HMI open face', category: 'hmi', kind: 'hmi', technology: 'hmi', ratedPower: 800, color: fixed(5600), distribution: 'beam', defaultBeam: 60, beamRange: [15, 60], reference: ref(1600, 5, 60, 'Full flood'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true, minOutput: 0.5, focusExponent: 0.31 }),
+  prof({ id: 'hmi-fresnel-1200', name: '1.2K HMI fresnel', category: 'hmi', kind: 'fresnel', technology: 'hmi', ratedPower: 1200, color: fixed(5600), distribution: 'beam', defaultBeam: 50, beamRange: [7.5, 50], reference: ref(864, 9, 50, 'Full flood'), emitterWidth: 0.175, emitterHeight: 0.175, hasBarnDoors: true, minOutput: 0.5 }),
   prof({ id: 'hmi-1800-par', name: '1.8K HMI PAR', category: 'hmi', kind: 'hmi', technology: 'hmi', ratedPower: 1800, color: fixed(5600), distribution: 'beam', defaultBeam: 30, reference: ref(40000, 3, 30, 'Medium flood lens'), emitterWidth: 0.4, emitterHeight: 0.4, hasBarnDoors: true, minOutput: 0.5 }),
+  prof({ id: 'hmi-fresnel-2500', name: '2.5K HMI fresnel', category: 'hmi', kind: 'fresnel', technology: 'hmi', ratedPower: 2500, color: fixed(5600), distribution: 'beam', defaultBeam: 59, beamRange: [6, 59], reference: ref(852, 12, 59, 'Full flood'), emitterWidth: 0.25, emitterHeight: 0.25, hasBarnDoors: true, minOutput: 0.5 }),
+  prof({ id: 'hmi-fresnel-4000', name: '4K HMI fresnel', category: 'hmi', kind: 'fresnel', technology: 'hmi', ratedPower: 4000, color: fixed(5600), distribution: 'beam', defaultBeam: 61, beamRange: [6.5, 61], reference: ref(760, 16, 61, 'Full flood'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true, minOutput: 0.5 }),
   prof({ id: 'hmi-4000-par', name: '4K HMI PAR', category: 'hmi', kind: 'hmi', technology: 'hmi', ratedPower: 4000, color: fixed(5600), distribution: 'beam', defaultBeam: 30, reference: ref(75000, 3, 30, 'Medium flood lens'), emitterWidth: 0.55, emitterHeight: 0.55, hasBarnDoors: true, minOutput: 0.5 }),
   prof({ id: 'hmi-9000-par', name: '9K HMI PAR', category: 'hmi', kind: 'hmi', technology: 'hmi', ratedPower: 9000, color: fixed(5600), distribution: 'beam', defaultBeam: 30, reference: ref(14450, 10, 30, 'Medium lens, from a published 6/9 kW head table'), emitterWidth: 0.75, emitterHeight: 0.75, hasBarnDoors: true, minOutput: 0.5 }),
   prof({ id: 'hmi-18000-par', name: '18K HMI PAR', category: 'hmi', kind: 'hmi', technology: 'hmi', ratedPower: 18000, color: fixed(5600), distribution: 'beam', defaultBeam: 50, reference: ref(5700, 15, 50, 'Flood lens, from a published 12/18 kW head table'), emitterWidth: 0.95, emitterHeight: 0.95, hasBarnDoors: true, minOutput: 0.5 }),
   prof({ id: 'tungsten-650', name: '650 W tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 650, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [15, 55], reference: ref(1200, 3, 55, 'Full flood'), emitterWidth: 0.15, emitterHeight: 0.15, hasBarnDoors: true }),
+  prof({ id: 'tungsten-750-open', name: '750 W open face', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 750, color: fixed(3200), distribution: 'beam', defaultBeam: 66, beamRange: [18, 66], reference: ref(269, 4, 66, 'Full flood'), emitterWidth: 0.15, emitterHeight: 0.15, hasBarnDoors: true, focusExponent: 0.75 }),
+  prof({ id: 'ellipsoidal-750', name: '750 W ellipsoidal spot · 36° lens', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 750, color: fixed(3200), distribution: 'beam', defaultBeam: 27, reference: ref(3218, 4.6, 27, '36° lens, 230 V lamp'), emitterWidth: 0.15, emitterHeight: 0.15 }),
   prof({ id: 'tungsten-1k', name: '1K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 1000, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [15, 55], reference: ref(2250, 3, 55, 'Full flood'), emitterWidth: 0.2, emitterHeight: 0.2, hasBarnDoors: true }),
   prof({ id: 'tungsten-2k', name: '2K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 2000, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [15, 55], reference: ref(3800, 3, 55, 'Full flood'), emitterWidth: 0.25, emitterHeight: 0.25, hasBarnDoors: true }),
+  prof({ id: 'tungsten-2k-open', name: '2K open face', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 2000, color: fixed(3200), distribution: 'beam', defaultBeam: 53, beamRange: [20, 53], reference: ref(764, 6, 53, 'Full flood'), emitterWidth: 0.25, emitterHeight: 0.25, hasBarnDoors: true, focusExponent: 0.36 }),
+  prof({ id: 'tungsten-5k', name: '5K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 5000, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [13, 55], reference: ref(11700, 3, 55, 'Full flood; estimate between the 2K and 12K figures'), emitterWidth: 0.3, emitterHeight: 0.3, hasBarnDoors: true }),
+  prof({ id: 'tungsten-10k', name: '10K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 10000, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [13, 55], reference: ref(3880, 8, 55, 'Full flood; estimate: 12K figure scaled by wattage'), emitterWidth: 0.42, emitterHeight: 0.42, hasBarnDoors: true }),
+  prof({ id: 'tungsten-12k', name: '12K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 12000, color: fixed(3200), distribution: 'beam', defaultBeam: 55, beamRange: [13, 55], reference: ref(4656, 8, 55, 'Full flood'), emitterWidth: 0.42, emitterHeight: 0.42, hasBarnDoors: true }),
+  prof({ id: 'tungsten-24k', name: '24K tungsten fresnel', category: 'tungsten', kind: 'fresnel', technology: 'tungsten', ratedPower: 24000, color: fixed(3200), distribution: 'beam', defaultBeam: 56, beamRange: [13, 56], reference: ref(4306, 11, 56, 'Full flood'), emitterWidth: 0.625, emitterHeight: 0.625, hasBarnDoors: true }),
   prof({ id: 'lantern-300-bi', name: 'LED lantern / space light · bi-colour (≈300 W)', category: 'spaceLight', kind: 'spaceLight', technology: 'led', ratedPower: 300, color: biColour(2700, 6500), distribution: 'omni', defaultBeam: 360, reference: ref(110, 3, undefined, '5600 K'), emitterWidth: 0.65, emitterHeight: 0.65 }),
   prof({ id: 'bulb-led-60', name: 'LED household bulb · 60 W equivalent (≈9 W)', category: 'practical', kind: 'practical', technology: 'led', ratedPower: 9, color: fixed(2700), distribution: 'omni', defaultBeam: 360, reference: ref(64, 1, undefined, 'About 800 lm, bare'), emitterWidth: 0.06, emitterHeight: 0.1 }),
   prof({ id: 'bulb-tungsten-100', name: '100 W tungsten household bulb', category: 'practical', kind: 'practical', technology: 'tungsten', ratedPower: 100, color: fixed(2850), distribution: 'omni', defaultBeam: 360, reference: ref(110, 1, undefined, 'About 1,400 lm, bare'), emitterWidth: 0.06, emitterHeight: 0.1 }),
@@ -245,9 +265,9 @@ export function distanceForLux(pm: ResolvedPhotometrics, lux: number): number | 
 /** Exponent of the fresnel focus loss: beam flux ∝ (beam ÷ full flood)^k (Photometry.fresnelFocusExponent). */
 export const FRESNEL_FOCUS_EXPONENT = 0.85;
 /** Fraction of the full-flood beam flux a fresnel lens passes at `beam` (1 at full flood). */
-export function focusFactor(beam: number, range: Range): number {
+export function focusFactor(beam: number, range: Range, exponent = FRESNEL_FOCUS_EXPONENT): number {
   const b = Math.min(Math.max(beam, range[0]), range[1]);
-  return Math.pow(b / range[1], FRESNEL_FOCUS_EXPONENT);
+  return Math.pow(b / range[1], exponent);
 }
 
 export function shiftedKelvin(kelvin: number, mired: number): number {
@@ -309,7 +329,7 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
   const refPeak = reference.lux / Math.max(refFactor, 1e-9);
   let flux = refPeak * solidAngleFactor(refDistribution, refBeam);
   // A fresnel's own reading taken spotted in → the flux at full flood.
-  if (!refModifier && p.beamRange && refDistribution === 'beam') flux /= focusFactor(refBeam, p.beamRange);
+  if (!refModifier && p.beamRange && refDistribution === 'beam') flux /= focusFactor(refBeam, p.beamRange, p.focusExponent);
 
   // 2. Modifier.
   const modifier = fixtureModifier(l);
@@ -324,9 +344,22 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
   if (distribution !== 'beam') beam = nominalBeam(distribution) ?? beam;
   // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
   // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
-  if (distribution === 'grid') flux *= solidAngleFactor('grid', beam) / Math.PI;
+  // The face behind the grid sets that peak: a softbox's own diffuse front (π), or for a grid fitted
+  // straight to a panel, the panel's own shape (π for a diffuse face, narrower for a lensed panel).
+  // A grid straight on a lensed panel can only trim its beam, so it stays a beam no wider than the
+  // panel's own (the grid's soft shape would spread light the lens never sends off axis).
+  if (distribution === 'grid' && modifier?.size === undefined && p.distribution === 'beam') {
+    const trimmed = Math.min(beam, p.defaultBeam);
+    flux *= solidAngleFactor('beam', trimmed) / solidAngleFactor('beam', p.defaultBeam);
+    distribution = 'beam';
+    beam = trimmed;
+  } else if (distribution === 'grid') {
+    const face = modifier?.size !== undefined ? Math.PI : solidAngleFactor(p.distribution, p.defaultBeam);
+    flux *= solidAngleFactor('grid', beam) / face;
+  }
   // Spotting a fresnel lens loses flux.
-  if (distribution === 'beam' && range && (modifier?.focusesLikeFresnel || (!modifier && p.beamRange))) flux *= focusFactor(beam, range);
+  if (distribution === 'beam' && range && modifier?.focusesLikeFresnel) flux *= focusFactor(beam, range);
+  else if (distribution === 'beam' && range && !modifier && p.beamRange) flux *= focusFactor(beam, range, p.focusExponent);
 
   // 3. Filters.
   let kelvin = isAdjustable(p.color) ? Math.min(Math.max(l.colorTemperature, p.color.minKelvin), p.color.maxKelvin) : p.color.minKelvin;

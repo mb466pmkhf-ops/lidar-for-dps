@@ -102,7 +102,37 @@ enum KnownQuirks {
     private static let dxl2Sensor = UnitQuirk(text: "The 8K VV sensor is 40.96 × 21.6 mm (46.3 mm diagonal): use large-format lenses.",
         source: "Panavision Millennium DXL2", url: "https://www.panavision.com/product/panavision-millennium-dXL2-8K-camera/")
 
+    private static let openFaceHarsh = UnitQuirk(text: "No lens, so the light is harsh and spills widely. Spotting moves the lamp in the reflector, and the beam is less even than a fresnel's.",
+        source: "General crew practice")
+    private static let openFaceFigures = UnitQuirk(text: "FrameScan matches the maker's full-spot and full-flood figures. In between, a medium beam can read up to half a stop off.",
+        source: "How FrameScan models it")
+    private static let ellipsoidalHardEdge = UnitQuirk(text: "A hard-edged beam you can cut with the built-in shutters and pattern with a gobo. Focus the barrel for a sharp or soft edge.",
+        source: "General crew practice")
+    private static let ellipsoidalOneLens = UnitQuirk(text: "Uses the 36° lens figure with a 230 V lamp. Other lens tubes change the beam and the throw; FrameScan doesn't offer them yet.",
+        source: "How FrameScan models it")
+    private static let estimateBetween2kAnd12k = UnitQuirk(text: "No published table was found for this size. The output is an estimate between the 2K and 12K published figures.",
+        source: "How FrameScan models it")
+    private static let estimateFrom12k = UnitQuirk(text: "The output is an estimate: the 12K's published figure scaled by wattage. Many 12K heads also take a 10K lamp.",
+        source: "How FrameScan models it")
+    private static let draws5k = UnitQuirk(text: "Draws about 22 A at 230 V (42 A at 120 V): a generator or a heavy-duty distro circuit, never a household socket.",
+        source: "Electrical: current = watts ÷ volts")
+    private static let drawsBigTungsten = UnitQuirk(text: "A 10K draws about 43 A at 230 V, a 12K about 52 A and a 24K over 100 A: generator or studio power only.",
+        source: "Electrical: current = watts ÷ volts")
+    private static let bigHeadsAreHeavy = UnitQuirk(text: "Big heads weigh 25 kg or more. Use a rolling wind-up or crank stand and enough hands to rig it.",
+        source: "General crew practice")
+    private static let softPanelDiffusion = UnitQuirk(text: "The figure is with the standard diffusion. The clear intensifier adds about two thirds of a stop; heavy diffusion takes about a third away.",
+        source: "Maker data sheets for 4×1 and 4×3 soft panels")
+    private static let drawsAbout7A = UnitQuirk(text: "Draws about 7 A at 230 V (13 A at 120 V) at full output: give it its own circuit.",
+        source: "Electrical: current = watts ÷ volts")
+    private static let lensedPanelBeam = UnitQuirk(text: "The lens gives a 45° beam rather than a soft wash, so treat it as a small hard source and diffuse it near faces.",
+        source: "General crew practice")
+    private static let drawsAbout11A = UnitQuirk(text: "Draws about 11 A at 230 V (21 A at 120 V) before ballast losses: give it its own circuit.",
+        source: "Electrical: current = watts ÷ volts")
+    private static let reflectorFigureWorkedOut = UnitQuirk(text: "The reflector figure is worked out from the maker's bare reading with FrameScan's reflector model, not measured with a reflector.",
+        source: "How FrameScan models it")
+
     static let fixtures: [String: [UnitQuirk]] = [
+        "cob-60-bi": [dimmedLedsCanFlicker, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift, reflectorFigureWorkedOut],
         "cob-100-bi": [dimmedLedsCanFlicker, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
         "cob-300-bi": [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
         "cob-300-d": [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes],
@@ -111,21 +141,38 @@ enum KnownQuirks {
         "cob-1200-d": [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes, atFullOutputIt],
         "fresnel-led-200-bi": [dimmedLedsCanFlicker, fanCooledQuietOr, biColourUnitsMix, mixedWhitesCanDrift, theOutputFigureIs2, aFresnelSSoft],
         "fresnel-led-600-d": [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs2, aFresnelSSoft],
+        "panel-small-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, lensedPanelBeam],
         "panel-1x1-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, barePanelsAreMade, barnDoorsOnA],
         "panel-1x1-rgb": [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, barePanelsAreMade, barnDoorsOnA],
         "panel-2x1-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, barePanelsAreMade, barnDoorsOnA],
         "panel-2x1-rgb": [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, barePanelsAreMade, barnDoorsOnA],
+        "panel-4x1-soft-rgb": [dimmedLedsCanFlicker, saturatedColoursGiveFar, softPanelDiffusion, barnDoorsOnA],
+        "panel-2x1-rgb-600": [dimmedLedsCanFlicker, fanCooledQuietOr, saturatedColoursGiveFar, barePanelsAreMade, barnDoorsOnA],
+        "panel-4x3-soft-rgb": [dimmedLedsCanFlicker, fanCooledQuietOr, saturatedColoursGiveFar, softPanelDiffusion, drawsAbout7A],
         "tube-2ft-rgb": [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, batteryRunTimeIs, framescanTreatsTheTube],
         "tube-4ft-rgb": [dimmedLedsCanFlicker, saturatedColoursGiveFar, unitsWithOnlyRed, batteryRunTimeIs, framescanTreatsTheTube],
+        "mat-1x2-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
         "mat-2x2-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
         "mat-4x4-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
+        "hmi-fresnel-575": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft],
+        "hmi-open-800": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, openFaceHarsh],
+        "hmi-fresnel-1200": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft],
         "hmi-1800-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theLampAloneDraws],
+        "hmi-fresnel-2500": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft, drawsAbout11A],
+        "hmi-fresnel-4000": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theOutputFigureIs2, aFresnelSSoft, tooMuchForA],
         "hmi-4000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, tooMuchForA],
         "hmi-9000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
         "hmi-18000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
         "tungsten-650": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd],
+        "tungsten-750-open": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, openFaceHarsh, openFaceFigures],
+        "ellipsoidal-750": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, ellipsoidalHardEdge, ellipsoidalOneLens],
         "tungsten-1k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout8A],
         "tungsten-2k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout17A],
+        "tungsten-2k-open": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, openFaceHarsh, openFaceFigures, drawsAbout17A],
+        "tungsten-5k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, estimateBetween2kAnd12k, draws5k, bigHeadsAreHeavy],
+        "tungsten-10k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, estimateFrom12k, drawsBigTungsten, bigHeadsAreHeavy],
+        "tungsten-12k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsBigTungsten, bigHeadsAreHeavy],
+        "tungsten-24k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsBigTungsten, bigHeadsAreHeavy],
         "lantern-300-bi": [dimmedLedsCanFlicker, fanCooledQuietOr, biColourUnitsMix, mixedWhitesCanDrift, lightsEverythingAroundIt, framescanTreatsTheLantern],
         "bulb-led-60": [householdLedBulbsOften, manyArenTDimmable],
         "bulb-tungsten-100": [about2800K, q100WHouseholdTungsten],
