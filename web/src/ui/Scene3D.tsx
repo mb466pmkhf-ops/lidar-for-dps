@@ -379,6 +379,8 @@ export function Scene3D(p: Props) {
     };
     frame = requestAnimationFrame(tick);
 
+    // Three's raycaster also hits hidden objects (a camera model hidden while looking through it), so skip them.
+    const shown = (obj: THREE.Object3D) => { for (let o: THREE.Object3D | null = obj; o; o = o.parent) if (!o.visible) return false; return true; };
     // Click (not drag) selects.
     let down: { x: number; y: number } | undefined;
     const pd = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
@@ -388,6 +390,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         if (o) { onSelect.current(o.userData.sel); return; }
@@ -402,6 +405,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         const sel = o?.userData.sel as Selection | undefined;
@@ -930,7 +934,10 @@ export function Scene3D(p: Props) {
     if (!eye?.rig || !api.current) return;
     const [kind, id] = eye.key.split(':');
     const now = kind === 'shot' ? p.location.shots.find(s => s.id === id)?.rig : kind === 'camera' ? p.location.cameraPositions.find(c => c.id === id)?.rig : undefined;
-    if (now && JSON.stringify(now) !== JSON.stringify(eye.rig)) eyeLevel(eye.key);
+    if (!now) {
+      // The camera was deleted: stop looking through it, so its own settings stop driving the view.
+      setEye(undefined); api.current.camera.fov = DEFAULT_FOV; api.current.camera.updateProjectionMatrix();
+    } else if (JSON.stringify(now) !== JSON.stringify(eye.rig)) eyeLevel(eye.key);
   }, [p.location, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   // Saves what the frame lines show as this shot's previs frame. The picture is read straight after a
   // fresh render, so the WebGL buffer doesn't need preserveDrawingBuffer. The DOM overlays (tags, frame

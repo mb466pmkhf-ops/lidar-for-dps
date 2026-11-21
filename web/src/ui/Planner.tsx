@@ -79,7 +79,13 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
   const calcPlan = plan && (plan.walls.length || plan.floorPolygons.length) ? plan : undefined;
-  const [selection, setSelection] = useState<Selection>();
+  const [selection, setSelectionState] = useState<Selection>();
+  // Picking a camera or shot makes it the camera whose settings the bar shows, every time (even a re-pick of the
+  // same object, which React would otherwise ignore). Picking anything else keeps the last camera.
+  const setSelection = useCallback((s: Selection | undefined) => {
+    setSelectionState(s);
+    if (s?.kind === 'shot' || s?.kind === 'camera') setCamKey(`${s.kind}:${s.id}`);
+  }, []);
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [lightMenu, setLightMenu] = useState(false);
   const [setMenu, setSetMenu] = useState(false);
@@ -95,7 +101,6 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   // The camera whose settings the readings use: the last shot or camera picked (on the plan, in 3D or in
   // the settings bar). It stays while lights are worked on, so the readings don't jump back and forth.
   const [camKey, setCamKey] = useState<string>();
-  useEffect(() => { if (selection?.kind === 'shot' || selection?.kind === 'camera') setCamKey(`${selection.kind}:${selection.id}`); }, [selection]);
   useEffect(() => { history.current = { past: [], future: [] }; setSelection(undefined); setTool({ kind: 'select' }); setCamKey(undefined); }, [location.id]);
 
   const write = useCallback((next: Location) => {

@@ -109,13 +109,14 @@ function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rate
 
 type Picture = { url: string; w: number; h: number };
 
-/** Whether a shot's camera has moved or changed lens since a frame of it was saved. */
+/** Whether a shot's camera has moved, changed lens or changed its own settings since a frame of it was saved. */
 function rigChanged(a: CameraRig, b: CameraRig): boolean {
   const near = (x: number, y: number, tol: number) => Math.abs(x - y) <= tol;
   return !(near(a.position.x, b.position.x, 0.02) && near(a.position.z, b.position.z, 0.02) && near(a.height, b.height, 0.02)
     && near(a.pan, b.pan, 0.5) && near(a.tilt, b.tilt, 0.5) && near(a.focalLength, b.focalLength, 0.5)
     && a.sensorID === b.sensorID && a.aspect === b.aspect
-    && (a.sensorID !== 'custom' || JSON.stringify(a.customSensor) === JSON.stringify(b.customSensor)));
+    && (a.sensorID !== 'custom' || JSON.stringify(a.customSensor) === JSON.stringify(b.customSensor))
+    && JSON.stringify(a.exposure ?? null) === JSON.stringify(b.exposure ?? null));
 }
 const PICTURE_KEY = 'framescan.sheet.picture';
 /** "T2.8 · ISO 800 · 24 fps · 180° (1/48) · 5600 K": the camera settings in one line. */
@@ -217,6 +218,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         <header className="sheet-head">
           <h2>{title}</h2>
           <p className="mono">{settingsFor ? `${settingsFor}: ` : shots.some(x => x.rig.exposure) ? 'Location settings: ' : ''}{camera}</p>
+          {settingsFor && shots.some(x => !x.rig.exposure) && <p className="mono">Location settings (shots without their own): {cameraLine(cameraExposure(location))}</p>}
           <p className="faint">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}{project.client ? ` · ${project.client}` : ''}</p>
         </header>
         {plan && <img className="sheet-plan" src={plan.url} alt={picture === 'diagram' ? 'Overhead lighting diagram' : 'Lighting plan'} />}
