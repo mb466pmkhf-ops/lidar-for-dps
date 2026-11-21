@@ -53,9 +53,9 @@ struct VirtualCameraView: View {
                             .padding(6)
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        let inShot = FrameCheck.sentence(FrameCheck.unitsInFrame(vp.rig, lights: frameLights, plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) }))
-                        if !inShot.isEmpty {
-                            Text(inShot)
+                        let warning = inShot(vp)
+                        if !warning.isEmpty {
+                            Text(warning)
                                 .font(.fsCaptionStrong)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -128,10 +128,18 @@ struct VirtualCameraView: View {
         if model.loaded { model.applyAlignment(location.primaryScan?.alignmentValue ?? .identity) }
     }
 
-    /// Units in this room's scan, for the in-shot warning (shown whether or not they're drawn).
-    private var frameLights: [LightFixture] {
-        let sid = location?.primaryScan?.id
-        return (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid }
+    /// The scan a camera or shot was placed in (the primary scan when it doesn't say).
+    private func scanID(of vp: VirtualViewpoint) -> UUID? {
+        let own = location?.shots.first { $0.id == vp.id }?.scanID ?? location?.cameraPositions.first { $0.id == vp.id }?.scanID
+        return own ?? location?.primaryScan?.id
+    }
+
+    /// What the in-shot warning says for a viewpoint: units in its own scan (shown whether or not they're
+    /// drawn), checked against that scan's walls.
+    private func inShot(_ vp: VirtualViewpoint) -> String {
+        let sid = scanID(of: vp)
+        let lights = (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid }
+        return FrameCheck.sentence(FrameCheck.unitsInFrame(vp.rig, lights: lights, plan: sid.flatMap { store.floorPlan(ref, scanID: $0) }))
     }
 
     private func updateRigLights() {

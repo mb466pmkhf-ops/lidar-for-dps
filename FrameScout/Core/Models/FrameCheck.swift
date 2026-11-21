@@ -12,6 +12,8 @@ enum FrameCheck {
     static let near = 0.25
     /// How far a stand's legs reach from its column (m), roughly, for a C-stand or combo.
     static let standSpread = 0.4
+    /// A MegaBoom's column stands this far behind the head, as the 3D view draws it (m).
+    static let boomReach = 2.2
 
     typealias Point = LightingCalculator.Point
 
@@ -31,17 +33,22 @@ enum FrameCheck {
         return abs(sx) <= area.width / (2 * rig.focalLength) && abs(sy) <= area.height / (2 * rig.focalLength)
     }
 
-    /// Walls between the lens and the point hide it (doors and windows are treated as wall).
-    private static func hiddenByWall(_ rig: CameraRig, _ p: PlanPoint, plan: FloorPlan?) -> Bool {
+    /// Walls between the lens and the point hide it where the sight line passes between the wall's
+    /// bottom and top (doors and windows are treated as wall).
+    private static func hiddenByWall(_ rig: CameraRig, _ p: Point, plan: FloorPlan?) -> Bool {
         guard let plan else { return false }
         for w in plan.walls {
-            if let hit = LightingCalculator.intersect(rig.position, p, w.a, w.b), hit.0 > 1e-3, hit.0 < 1 - 1e-3 { return true }
+            guard let hit = LightingCalculator.intersect(rig.position, PlanPoint(x: p.x, z: p.z), w.a, w.b),
+                  hit.0 > 1e-3, hit.0 < 1 - 1e-3 else { continue }
+            let y = rig.height + (p.y - rig.height) * hit.0
+            if y >= w.bottom && y <= w.bottom + w.height { return true }
         }
         return false
     }
 
-    /// Points along a unit and its stand(s): the head (and both edges of anything wide), then the stand
-    /// from the floor to just under the head. Rigged, floor and stand-less units have no stand.
+    /// Points along a unit and its stand(s): the head (and both edges of anything wide), a board's whole
+    /// face (tilt and an opened floppy included), a softbox's front, then the stand from the floor to just
+    /// under the head (a MegaBoom's column and arm behind it). Rigged, floor and stand-less units have no stand.
     static func samplePoints(_ l: LightFixture) -> [(part: Part, p: Point)] {
         var out: [(part: Part, p: Point)] = []
         let side = PlanPoint.unit(bearing: l.pan + 90)
@@ -49,11 +56,27 @@ enum FrameCheck {
         func head(_ dx: Double) -> Point { Point(x: l.position.x + side.x * dx, y: l.height, z: l.position.z + side.z * dx) }
         out.append((.unit, head(0)))
         if half > 0.05 { out.append((.unit, head(-half))); out.append((.unit, head(half))) }
+        if GripCatalog.gripKinds.contains(l.kind) {
+            // The face runs lo…hi along its own up, which leans with the board's tilt.
+            let span = l.gripSpan
+            let up = LightingCalculator.direction(bearing: l.pan, tilt: l.tilt + 90)
+            let lo = span.bottom - l.height, hi = span.top - l.height
+            for du in [lo, (lo + hi) / 2, hi] {
+                for dx in (half > 0.05 ? [-half, 0, half] : [0]) where du != 0 { out.append((.unit, head(dx) + up * du)) }
+            }
+        } else if let mod = FixtureLibrary.modifier(id: l.modifierID), mod.id.hasPrefix("softbox") {
+            // Same face as the 3D view: radius size/2, its depth (size/2) plus the mount ahead of the head.
+            let size = mod.size ?? 0.9, r = size / 2
+            let axis = LightingCalculator.direction(bearing: l.pan, tilt: l.tilt)
+            let right = LightingCalculator.direction(bearing: l.pan + 90, tilt: 0)
+            let up = right.cross(axis)
+            let face = head(0) + axis * (0.03 + size * 0.5)
+            out.append((.unit, face))
+            for (a, b) in [(1.0, 0.0), (-1, 0), (0, 1), (0, -1)] { out.append((.unit, face + right * (a * r) + up * (b * r))) }
+        }
         let s = l.supportValue
         if s == .overhead || s == .floor || s == .none { return out }
-        let legs: [Double] = l.gripStandCount == 2 ? [-half, half] : [0]
-        for dx in legs {
-            let at = head(dx)
+        func column(_ at: Point) {
             for t in [0.05, 0.35, 0.65] { out.append((.stand, Point(x: at.x, y: max(0.02, l.height * t), z: at.z))) }
             // The legs spread out round the base.
             for b in [0.0, 120, 240] {
@@ -61,6 +84,17 @@ enum FrameCheck {
                 out.append((.stand, Point(x: at.x + d.x * standSpread, y: 0.02, z: at.z + d.z * standSpread)))
             }
         }
+        if s == .megaBoom {
+            // The column stands behind the head; the arm runs out over the head and on to a counterweight.
+            let back = PlanPoint.unit(bearing: l.pan + 180)
+            let base = head(0)
+            func arm(_ k: Double) -> Point { Point(x: base.x + back.x * k, y: l.height + 0.12, z: base.z + back.z * k) }
+            let c = arm(boomReach)
+            column(Point(x: c.x, y: l.height, z: c.z))
+            for k in [0.5, 1.1, 1.65, boomReach + 0.95] { out.append((.stand, arm(k))) }
+            return out
+        }
+        for dx in (l.gripStandCount == 2 ? [-half, half] : [0]) { column(head(dx)) }
         return out
     }
 
@@ -71,7 +105,7 @@ enum FrameCheck {
         for l in lights where l.kind != .practical && l.role != .practical {
             var part: Part?
             for s in samplePoints(l) {
-                guard pointInFrame(rig, s.p), !hiddenByWall(rig, PlanPoint(x: s.p.x, z: s.p.z), plan: plan) else { continue }
+                guard pointInFrame(rig, s.p), !hiddenByWall(rig, s.p, plan: plan) else { continue }
                 if s.part == .unit { part = .unit; break }
                 part = .stand
             }

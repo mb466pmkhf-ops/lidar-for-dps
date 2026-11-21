@@ -1396,7 +1396,7 @@ do {
 // MARK: Frame check (units and stands in shot)
 do {
     var rig = CameraRig()
-    rig.position = PlanPoint(x: 0, z: 0); rig.pan = 0; rig.focalLength = 35; rig.height = 1.5
+    rig.position = PlanPoint(x: 0, z: 0); rig.pan = 0; rig.focalLength = 35; rig.height = 1.5; rig.sensorID = "arri-minilf-og"
     func light(_ name: String, _ x: Double, _ z: Double, height: Double = 2, kind: LightKind = .fresnel) -> LightFixture {
         var l = LightFixture(name: name, kind: kind, position: PlanPoint(x: x, z: z), pan: 180)
         l.height = height
@@ -1413,6 +1413,24 @@ do {
     var plan = FloorPlan()
     plan.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 2.7, bottom: 0)]
     check(FrameCheck.unitsInFrame(rig, lights: [ahead], plan: plan).isEmpty, "a wall between hides the unit")
+    var low = FloorPlan()
+    low.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 0.9, bottom: 0)]
+    check(FrameCheck.unitsInFrame(rig, lights: [ahead], plan: low).map(\.part) == [.unit], "a low wall doesn't hide a head above it")
+    var board = light("Neg", 0, -3, height: 3.4, kind: .negative)
+    board.width = 1.2; board.boardHeight = 2; board.support = LightSupport.none
+    check(FrameCheck.unitsInFrame(rig, lights: [board], plan: nil).map(\.part) == [.unit], "a board's lower edge is seen with its centre above frame")
+    board.boardHeight = 0.6
+    check(FrameCheck.unitsInFrame(rig, lights: [board], plan: nil).isEmpty, "a short board above frame is clear")
+    var boom = LightFixture(name: "Boom", kind: .fresnel, position: PlanPoint(x: 3, z: -3), pan: 90)
+    boom.height = 2.5; boom.support = .cStand
+    check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).isEmpty, "a C-stand beside the frame is clear")
+    boom.support = .megaBoom
+    check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).map(\.part) == [.stand], "a MegaBoom's column behind the head is seen")
+    var box = LightFixture(name: "Box", kind: .softbox, position: PlanPoint(x: 1.9, z: -3), pan: 270)
+    box.height = 1.5; box.support = LightSupport.none
+    check(FrameCheck.unitsInFrame(rig, lights: [box], plan: nil).isEmpty, "a bare head beside the frame is clear")
+    box.modifierID = "softbox-150"
+    check(FrameCheck.unitsInFrame(rig, lights: [box], plan: nil).map(\.part) == [.unit], "a softbox's front reaching into frame is seen")
     check(FrameCheck.sentence([.init(id: UUID(), name: "Key", part: .unit), .init(id: UUID(), name: "Fill", part: .unit), .init(id: UUID(), name: "Back", part: .stand)])
           == "Key and Fill are in shot; Back's stand is in shot.", "in-frame sentence")
 }

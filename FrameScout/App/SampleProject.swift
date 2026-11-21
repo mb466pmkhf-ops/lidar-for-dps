@@ -87,9 +87,9 @@ enum SampleProject {
         // Fixture types from the library, so readings and draw come from the photometric model. Lit for
         // both shots with nothing in frame (persona audit 2026-11-21): a big soft key from the window side,
         // fill from beside the single's camera, a bounce behind the wide camera, the lamp as a practical.
-        var key = aimed("Key", .softbox, P(-1.4, -1.95), to: P(0.0, 1.8))
+        var key = aimed("Key", .softbox, P(-1.4, -2.05), to: P(0.0, 1.8))
         key.apply(profile: FixtureLibrary.profile(id: "cob-1200-d")!)
-        key.modifierID = "softbox-150"; key.role = .key; key.height = 2.1; key.tilt = -15; key.dimmer = 0.45
+        key.modifierID = "softbox-150"; key.role = .key; key.height = 2.3; key.tilt = -15; key.dimmer = 0.45
         var fill = aimed("Fill", .ledPanel, P(2.4, -1.8), to: sofa)
         fill.apply(profile: FixtureLibrary.profile(id: "panel-1x1-bi")!)
         fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.6; fill.tilt = -10

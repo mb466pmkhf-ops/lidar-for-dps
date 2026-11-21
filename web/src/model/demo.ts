@@ -40,7 +40,7 @@ export function demoBundle(): ProjectBundle {
   };
   // Lit for both shots with nothing in frame (persona audit 2026-11-21): a big soft key from the window
   // side, fill from beside the single's camera, a bounce behind the wide camera, the lamp as a practical.
-  const key = { ...aimed('Key', 'softbox', P(-1.4, -1.95), P(0, 1.8), 'cob-1200-d'), modifierID: 'softbox-150', role: 'key' as const, height: 2.1, tilt: -15, dimmer: 0.45 };
+  const key = { ...aimed('Key', 'softbox', P(-1.4, -2.05), P(0, 1.8), 'cob-1200-d'), modifierID: 'softbox-150', role: 'key' as const, height: 2.3, tilt: -15, dimmer: 0.45 };
   const fill = { ...aimed('Fill', 'ledPanel', P(2.4, -1.8), sofa, 'panel-1x1-bi'), role: 'fill' as const, colorTemperature: 4300, dimmer: 0.3, height: 1.6, tilt: -10 };
   const bounce = { ...aimed('Bounce', 'bounce', P(-2.65, -0.3), sofa), width: 1.2 };
   const lamp = { ...aimed('Lamp', 'practical', P(2.6, 1.9), sofa, 'bulb-tungsten-100'), role: 'practical' as const, height: 1.4 };

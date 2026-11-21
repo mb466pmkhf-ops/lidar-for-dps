@@ -104,8 +104,12 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
           <table className="sheet-table">
             <thead><tr><th>Shot</th><th>Lens</th><th>Lens height</th><th>To subject</th><th>Lit with</th><th>In frame</th><th>Notes</th></tr></thead>
             <tbody>{shots.map(x => {
-              const seen = inFrameSentence(unitsInFrame(x.rig, lights, floorPlan));
-              const lit = looks.find(l => l.id === x.lookID)?.name ?? (look && !x.lookID ? look.name : '');
+              // A shot lit with another saved look is checked against that look's units; the active look
+              // (or none) uses the live units so unsaved changes show.
+              const shotLook = x.lookID ? looks.find(l => l.id.toUpperCase() === x.lookID!.toUpperCase()) : undefined;
+              const units = shotLook && shotLook !== look ? shotLook.lights.filter(l => inScan(l.scanID)) : lights;
+              const seen = inFrameSentence(unitsInFrame(x.rig, units, floorPlan));
+              const lit = shotLook?.name ?? (look && !x.lookID ? look.name : '');
               return <tr key={x.id}>
                 <td>{`Shot ${String(x.number).padStart(2, '0')}`}{x.title ? ` · ${x.title}` : ''}</td>
                 <td className="mono">{focalNumber(x.rig.focalLength)}mm · {Math.round(horizontalFOV(x.rig))}° · {sensorFor(x.rig).name}</td>
