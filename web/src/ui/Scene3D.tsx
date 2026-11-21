@@ -877,7 +877,7 @@ export function Scene3D(p: Props) {
       a.tags.push({ el, at: v(m.point.x, m.point.y + ('meter' in m.source ? 0.1 : 0.2), m.point.z) });
     }
     a.invalidate(3);
-  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key, eye?.x, eye?.z]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Night mode changes the accent colour; redraw so the selection ring follows.
   useEffect(() => {
