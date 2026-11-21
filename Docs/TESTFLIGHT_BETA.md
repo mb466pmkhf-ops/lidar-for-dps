@@ -38,8 +38,9 @@ Connect team, which would also show them your sales and app settings.
    review; then press **Start Testing** instead.)
 4. Add testers by email (Testers → +), or turn on a **public link** limited to 10 testers and send it
    yourself.
-5. After you submit, **Beta App Review** usually takes under a day. Invites go out once it is
-   approved.
+5. After you submit, **Beta App Review** usually takes under a day. If you ticked **Automatically
+   notify testers** when adding the build, invites go out once it is approved. Otherwise open the
+   build under **Status** after approval and click **Notify Testers**.
 6. Testers install the free **TestFlight** app, accept the invite and install FrameScout. Builds
    expire after 90 days; upload a new one to keep the beta going.
 
