@@ -216,6 +216,12 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
     expect(stopsOff(at('mat-1x2-bi', 1), 1944)).toBeLessThan(THIRD);
   });
 
+  it('a grid on a lensed panel keeps its peak times the grid transmission', () => {
+    const bare = photometrics(light('panel-small-bi')).peakIntensity;
+    const gridded = photometrics(light('panel-small-bi', l => { l.modifierID = 'panel-grid-40'; })).peakIntensity;
+    expect(gridded / bare).toBeCloseTo(0.8, 6);
+  });
+
   // An open face loses less than a fresnel when spotted: the 750 W open face matches the maker's
   // spot (1,881 lx at 4 m) and medium (494) to within half a stop each, the best one exponent allows.
   it('the 750 W open face spot and medium, within half a stop', () => {

@@ -676,7 +676,10 @@ extension LightFixture {
         if distribution != .beam { beam = distribution.nominalBeam ?? beam }
         // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
         // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
-        if distribution == .grid { flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / .pi }
+        // The source's own shape sets its peak: π for a diffuse face, narrower for a lensed panel.
+        if distribution == .grid {
+            flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / p.distribution.solidAngleFactor(beamAngle: p.defaultBeam)
+        }
         // Spotting a fresnel lens loses flux.
         if distribution == .beam, let range {
             if modifier?.focusesLikeFresnel == true {
