@@ -220,14 +220,18 @@ export function PlanCanvas(props: Props) {
   // minor one that still can't fit is left out. Selected items and readings always show.
   const labels: { text: string; x: number; y: number; strong: boolean }[] = [];
   // Labels set off from their item (lights, cameras, people) also keep clear of every item's glyph.
-  const glyphs: { x: number; y: number }[] = [];
-  const labelFor = (text: string, p: PlanPoint, dy = -16, strong = false) => {
+  const glyphs: { x: number; y: number; r: number }[] = [];
+  // `keepOut`: how far the item's glyph reaches from its point (cameras turn their lens and matte box
+  // through a full circle, so they keep a wider ring clear).
+  const labelFor = (text: string, p: PlanPoint, dy = -16, strong = false, keepOut = 13) => {
     labels.push({ text, x: sx(p.x), y: sy(p.z) + dy, strong });
-    if (Math.abs(dy) >= 10 && !glyphs.some(g => g.x === sx(p.x) && g.y === sy(p.z))) glyphs.push({ x: sx(p.x), y: sy(p.z) });
+    if (Math.abs(dy) >= 10 && !glyphs.some(g => g.x === sx(p.x) && g.y === sy(p.z))) glyphs.push({ x: sx(p.x), y: sy(p.z), r: keepOut });
     return null;
   };
   const placedLabels = () => {
-    const boxes: { x0: number; x1: number; y0: number; y1: number }[] = glyphs.map(g => ({ x0: g.x - 13, x1: g.x + 13, y0: g.y - 13, y1: g.y + 13 }));
+    const boxes: { x0: number; x1: number; y0: number; y1: number }[] = glyphs.map(g => ({ x0: g.x - g.r, x1: g.x + g.r, y0: g.y - g.r, y1: g.y + g.r }));
+    // The north arrow (and the sun arrow above it) sit in the bottom-right corner: keep labels off them.
+    if (scan?.northOffset !== undefined) boxes.push({ x0: size.w - 100, x1: size.w - 40, y0: size.h - (location.daylight?.isOn ? 190 : 135), y1: size.h - 80 });
     const hits = (b: typeof boxes[number]) => boxes.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
     const out: ReactElement[] = [];
     [...labels].sort((a, b) => Number(b.strong) - Number(a.strong)).forEach((l, i) => {
@@ -279,7 +283,7 @@ export function PlanCanvas(props: Props) {
           <circle r={3} fill="none" stroke="var(--paper)" strokeWidth={1.5} />
           <circle r={body * 1.6} fill="transparent" />
         </g>
-        {labelFor(label, rig.position, 26, sel)}
+        {labelFor(label, rig.position, 30, sel, 24)}
         {sel && rotateHandle(s, rig.position, rig.pan, 1.2)}
       </g>
     );

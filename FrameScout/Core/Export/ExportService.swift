@@ -371,7 +371,7 @@ enum ExportService {
                     String(format: "%.2f", area.height), notes].map(csvField).joined(separator: ",") + "\n"
         }
         for c in location.cameraPositions where c.scanID == nil || c.scanID == scanID { row("CAM_" + c.name, c.rig, c.notes) }
-        for s in location.shots where s.scanID == nil || s.scanID == scanID { row(s.code.replacingOccurrences(of: " ", with: "_"), s.rig, s.notes) }
+        for s in location.shots where s.scanID == nil || s.scanID == scanID { row(s.exportCode, s.rig, s.notes) }
         return csv
     }
 
@@ -442,9 +442,11 @@ enum ExportService {
         var notes: String
 
         init(_ s: Shot) {
-            shot = s.code
+            // Unchanged since the first exports, so tools reading these files keep working.
+            let name = String(format: "SHOT %02d", s.number)
+            shot = name
             title = s.title
-            camera = CameraExport(CameraPosition(name: s.code, rig: s.rig, notes: ""))
+            camera = CameraExport(CameraPosition(name: name, rig: s.rig, notes: ""))
             subject_position_m = s.subject.map { [$0.x, $0.z] }
             subject_distance_m = s.subjectDistance
             notes = s.notes

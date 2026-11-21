@@ -1376,7 +1376,7 @@ do {
           "every sample light stands inside the room")
     let data = try? JSONCoding.encoder.encode(sample)
     let back = data.flatMap { try? JSONCoding.decoder.decode(Project.self, from: $0) }
-    check(back?.locations.first?.lightFixtures.count == 6 && back?.locations.first?.previsCharacters.count == 2, "the sample saves and loads")
+    check(back?.locations.first?.lightFixtures.count == 4 && back?.locations.first?.previsCharacters.count == 2, "the sample saves and loads")
     // Balanced on the stop (DOP review): Maya's face, seen from her single, reads near T5.6.
     if let maya = room.previsCharacters.first(where: { $0.name == "Maya" }),
        let cam = room.shots.first(where: { $0.title.contains("Maya") })?.rig.position {
@@ -1386,6 +1386,35 @@ do {
         let lux = LightingCalculator.reading(at: face, normal: toCam, scene: LightingCalculator.Scene(lights: room.lightFixtures, plan: plan)).lux
         check(abs(exp.stops(forLux: lux)) < 0.5, "Maya reads within half a stop of T\(exp.tStop) on the sample (\(exp.stops(forLux: lux)) stops)")
     } else { check(false, "sample has Maya and her single") }
+    // Persona audit: the sample teaches a clean frame. No unit or stand shows in either shot.
+    for shot in room.shots {
+        let seen = FrameCheck.unitsInFrame(shot.rig, lights: room.lightFixtures, plan: plan)
+        check(seen.isEmpty, "nothing in frame on sample shot \(shot.number): \(FrameCheck.sentence(seen))")
+    }
+}
+
+// MARK: Frame check (units and stands in shot)
+do {
+    var rig = CameraRig()
+    rig.position = PlanPoint(x: 0, z: 0); rig.pan = 0; rig.focalLength = 35; rig.height = 1.5
+    func light(_ name: String, _ x: Double, _ z: Double, height: Double = 2, kind: LightKind = .fresnel) -> LightFixture {
+        var l = LightFixture(name: name, kind: kind, position: PlanPoint(x: x, z: z), pan: 180)
+        l.height = height
+        return l
+    }
+    let ahead = light("Ahead", 0, -3), behind = light("Behind", 0, 3), wide = light("Wide", 3, -1)
+    check(FrameCheck.unitsInFrame(rig, lights: [ahead, behind, wide], plan: nil).map(\.name) == ["Ahead"], "only the unit in front and inside the frame is listed")
+    let high = light("High", 0, -1.5, height: 3.6)
+    check(FrameCheck.unitsInFrame(rig, lights: [high], plan: nil).first?.part == .stand, "a head above frame still shows its stand")
+    var rigged = high; rigged.support = .overhead
+    check(FrameCheck.unitsInFrame(rig, lights: [rigged], plan: nil).isEmpty, "a rigged unit above frame has no stand to see")
+    let lamp = light("Lamp", 0, -3, height: 1.2, kind: .practical)
+    check(FrameCheck.unitsInFrame(rig, lights: [lamp], plan: nil).isEmpty, "practicals are meant to be seen")
+    var plan = FloorPlan()
+    plan.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -5, z: -2), b: PlanPoint(x: 5, z: -2), height: 2.7, bottom: 0)]
+    check(FrameCheck.unitsInFrame(rig, lights: [ahead], plan: plan).isEmpty, "a wall between hides the unit")
+    check(FrameCheck.sentence([.init(id: UUID(), name: "Key", part: .unit), .init(id: UUID(), name: "Fill", part: .unit), .init(id: UUID(), name: "Back", part: .stand)])
+          == "Key and Fill are in shot; Back's stand is in shot.", "in-frame sentence")
 }
 
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")

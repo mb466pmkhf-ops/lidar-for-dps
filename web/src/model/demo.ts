@@ -38,11 +38,11 @@ export function demoBundle(): ProjectBundle {
     l.name = name;
     return l;
   };
-  const key = { ...aimed('Key', 'softbox', P(-1.2, 0.2), sofa, 'cob-600-d'), modifierID: 'softbox-90-grid', role: 'key' as const, height: 2.1, tilt: -25, dimmer: 0.7 };
-  const fill = { ...aimed('Fill', 'ledPanel', P(2.2, -0.6), sofa, 'panel-1x1-bi'), role: 'fill' as const, colorTemperature: 4300, dimmer: 0.3, height: 1.8, tilt: -15 };
-  const back = { ...aimed('Back', 'fresnel', P(-0.9, 2.25), P(0, 1.8), 'fresnel-led-200-bi'), role: 'back' as const, height: 2.4, tilt: -50, beamAngle: 30, dimmer: 0.4, barnDoors: { top: 12, bottom: 90, left: 90, right: 10 } };
-  const bounce = { ...aimed('Bounce', 'bounce', P(1.7, 1.0), sofa), width: 1.2 };
-  const neg = { ...aimed('Neg', 'negative', P(-1.4, 2.0), sofa), width: 1.2 };
+  // Lit for both shots with nothing in frame (persona audit 2026-11-21): a big soft key from the window
+  // side, fill from beside the single's camera, a bounce behind the wide camera, the lamp as a practical.
+  const key = { ...aimed('Key', 'softbox', P(-1.4, -1.95), P(0, 1.8), 'cob-1200-d'), modifierID: 'softbox-150', role: 'key' as const, height: 2.1, tilt: -15, dimmer: 0.45 };
+  const fill = { ...aimed('Fill', 'ledPanel', P(2.4, -1.8), sofa, 'panel-1x1-bi'), role: 'fill' as const, colorTemperature: 4300, dimmer: 0.3, height: 1.6, tilt: -10 };
+  const bounce = { ...aimed('Bounce', 'bounce', P(-2.65, -0.3), sofa), width: 1.2 };
   const lamp = { ...aimed('Lamp', 'practical', P(2.6, 1.9), sofa, 'bulb-tungsten-100'), role: 'practical' as const, height: 1.4 };
 
   const maya = { ...newCharacter('woman', P(0, 1.8), 'Maya', scanID), facing: 330, posture: 'sitting' as const, skinTone: 4 };
@@ -61,7 +61,7 @@ export function demoBundle(): ProjectBundle {
       { id: uuid(), number: 1, title: 'Wide, family on sofa', rig: wide, subject: sofa, subjectHeight: 1.75, scanID, notes: '', createdAt: isoNow() },
       { id: uuid(), number: 2, title: 'Single on Maya', rig: single, subject: P(0, 1.8), subjectHeight: 1.75, scanID, notes: '', createdAt: isoNow() },
     ],
-    lights: [key, fill, back, bounce, neg, lamp],
+    lights: [key, fill, bounce, lamp],
     // Sat on the sofa at its cushion height (placement.ts).
     characters: settlePeople([maya, leo], plan, scanID, [], true),
     meters: [meter],

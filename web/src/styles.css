@@ -111,6 +111,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .readout .v { font-family: var(--mono); font-size: 20px; font-weight: 500; }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--text3); white-space: nowrap; }
 .note { font-size: 13px; color: var(--text3); line-height: 1.5; margin: 8px 0 0; }
+.note.attention { color: var(--text); border-left: 3px solid var(--accent); padding-left: 10px; }
 .quirks { margin: 8px 0 0; font-size: 13px; line-height: 1.5; }
 .quirks summary { cursor: pointer; color: var(--text2); font-weight: 500; }
 .quirks ul { margin: 6px 0 0; padding-left: 18px; }
@@ -189,6 +190,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .scene3d-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .scene3d-frame .lines { position: relative; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.75); box-shadow: 0 0 0 100vmax rgba(0,0,0,.5); }
 .scene3d-frame .lines span { position: absolute; left: 8px; top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.85); }
+.scene3d-frame .lines .in-shot { top: auto; bottom: 6px; right: 8px; font-family: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: var(--radius); }
 @media (max-width: 720px) { .scene3d-hint .how { display: none; } .scene3d-hint { right: 12px; font-size: 12px; } }
 
 /* Home: your rooms as a list, the ways to start a new one as buttons above it. */
@@ -228,6 +230,9 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .btn .txt{} @media (max-width: 900px){ .btn .txt { display: none; } }
 /* Phone width: the sync button keeps its status dot, so the top bar fits without scrolling sideways. */
 @media (max-width: 560px) { .topbar { gap: 8px; padding: 0 12px; } .sync .sync-txt { display: none; } .sync { padding: 0 10px; } }
+/* With no status dot (signed out, this device only) the small screen still shows what the button is. */
+.sync .sync-icon { display: none; }
+@media (max-width: 560px) { .sync .sync-icon { display: inline-flex; } }
 button.meter-row, .meter-row.row { width: 100%; margin: 0; border-radius: 0; }
 .stepper .unit { color: var(--text2); font-size: 14px; margin-left: -6px; min-width: 16px; }
 

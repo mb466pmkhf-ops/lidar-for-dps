@@ -2148,6 +2148,12 @@ struct PlanEditorView: View {
                     StatView(label: "Front", value: UnitsFormatter.distance(clear.front))
                 }
             }
+            let inShot = FrameCheck.unitsInFrame(rig, lights: sceneLights, plan: plan)
+            if !inShot.isEmpty {
+                Label(FrameCheck.sentence(inShot) + " Move them, rig them or turn the camera.", systemImage: "exclamationmark.triangle")
+                    .font(.fsCaption).foregroundStyle(Theme.textPrimary)
+                    .accessibilityLabel(FrameCheck.sentence(inShot))
+            }
             HStack {
                 Button { showRigSheet = true } label: { Label("Details", systemImage: "slider.horizontal.3") }
                     .buttonStyle(HairlineButtonStyle())

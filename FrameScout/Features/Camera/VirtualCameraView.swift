@@ -52,6 +52,17 @@ struct VirtualCameraView: View {
                             .foregroundStyle(Theme.accent)
                             .padding(6)
                     }
+                    .overlay(alignment: .bottomTrailing) {
+                        let inShot = FrameCheck.sentence(FrameCheck.unitsInFrame(vp.rig, lights: frameLights, plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) }))
+                        if !inShot.isEmpty {
+                            Text(inShot)
+                                .font(.fsCaptionStrong)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.cornerSmall))
+                                .padding(6)
+                        }
+                    }
             }
             if !model.loaded {
                 if let error = model.error {
@@ -115,6 +126,12 @@ struct VirtualCameraView: View {
         guard let location else { return }
         model.applyDisplay(location.displaySettings)
         if model.loaded { model.applyAlignment(location.primaryScan?.alignmentValue ?? .identity) }
+    }
+
+    /// Units in this room's scan, for the in-shot warning (shown whether or not they're drawn).
+    private var frameLights: [LightFixture] {
+        let sid = location?.primaryScan?.id
+        return (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid }
     }
 
     private func updateRigLights() {

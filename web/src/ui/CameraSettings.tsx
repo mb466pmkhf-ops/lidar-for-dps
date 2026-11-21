@@ -8,6 +8,11 @@ import { lux as fmtLux, READING_EXTRAS, readingExtra, setReadingExtra, useReadin
 /** The list plus the current value, so a value set on the phone still shows. */
 const withCurrent = (list: number[], v: number) => (list.some(x => Math.abs(x - v) < 0.01) ? list : [...list, v].sort((a, b) => a - b));
 const nearest = (list: number[], v: number) => list.find(x => Math.abs(x - v) < 0.01) ?? v;
+// Stops and ISO: the marked value (T5.6) and the exact third (5.66) are the same setting, so match them
+// within a twentieth of a stop rather than listing both.
+const sameStop = (a: number, b: number) => a > 0 && b > 0 && Math.abs(Math.log2(a / b)) < 0.05;
+const withCurrentStop = (list: number[], v: number) => (list.some(x => sameStop(x, v)) ? list : [...list, v].sort((a, b) => a - b));
+const nearestStop = (list: number[], v: number) => list.find(x => sameStop(x, v)) ?? v;
 const ndLabel = (s: number) => (s === 0 ? 'No ND' : `ND ${(s * 0.3).toFixed(1)}`);
 
 function Stepper({ label, value, options, format, onChange, onStep }: {
@@ -18,8 +23,8 @@ function Stepper({ label, value, options, format, onChange, onStep }: {
       <span className="label">{label}</span>
       <div className="cam-step-row">
         <button className="cam-btn" onClick={() => onStep(-1)} aria-label={`${label} down a third`} title="Down a third of a stop">−</button>
-        <select value={nearest(options, value)} onChange={e => onChange(Number(e.target.value))} aria-label={label}>
-          {withCurrent(options, value).map(v => <option key={v} value={v}>{format(v)}</option>)}
+        <select value={nearestStop(options, value)} onChange={e => onChange(Number(e.target.value))} aria-label={label}>
+          {withCurrentStop(options, value).map(v => <option key={v} value={v}>{format(v)}</option>)}
         </select>
         <button className="cam-btn" onClick={() => onStep(1)} aria-label={`${label} up a third`} title="Up a third of a stop">+</button>
       </div>
