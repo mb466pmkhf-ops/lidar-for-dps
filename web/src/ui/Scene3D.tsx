@@ -375,6 +375,8 @@ export function Scene3D(p: Props) {
     };
     frame = requestAnimationFrame(tick);
 
+    // Three's raycaster also hits hidden objects (a camera model hidden while looking through it), so skip them.
+    const shown = (obj: THREE.Object3D) => { for (let o: THREE.Object3D | null = obj; o; o = o.parent) if (!o.visible) return false; return true; };
     // Click (not drag) selects.
     let down: { x: number; y: number } | undefined;
     const pd = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
@@ -384,6 +386,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         if (o) { onSelect.current(o.userData.sel); return; }
@@ -398,6 +401,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         const sel = o?.userData.sel as Selection | undefined;
