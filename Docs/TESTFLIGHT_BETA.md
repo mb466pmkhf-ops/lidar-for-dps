@@ -34,7 +34,7 @@ Connect team, which would also show them your sales and app settings.
    (you are already a team member) and the build. No review is needed: install it from the
    TestFlight app and run through "What to test" on your iPhone before inviting anyone.
 3. TestFlight → **External Testing → +** → group `DP beta` → add the build, then press
-   **Submit for Review**. (For later builds of an already-approved version Apple may not require a
+   **Submit Review**. (For later builds of an already-approved version Apple may not require a
    review; then press **Start Testing** instead.)
 4. Add testers by email (Testers → +), or turn on a **public link** limited to 10 testers and send it
    yourself.
