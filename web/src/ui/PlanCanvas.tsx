@@ -93,17 +93,19 @@ export function PlanCanvas(props: Props) {
     return () => ro.disconnect();
   }, []);
 
-  const fitted = (): View => {
-    const w = bounds.maxX - bounds.minX, d = bounds.maxZ - bounds.minZ;
-    return { cx: (bounds.minX + bounds.maxX) / 2, cz: (bounds.minZ + bounds.maxZ) / 2, scale: Math.max(20, Math.min((size.w - 80) / w, (size.h - 80) / d)) };
+  // The interactive fit keeps a minimum zoom; the diagram fits everything as it stands now, however big
+  // the room, so a camera moved since the plan opened is still in the picture.
+  const fitted = (b: PlanRect, minScale: number): View => {
+    const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
+    return { cx: (b.minX + b.maxX) / 2, cz: (b.minZ + b.maxZ) / 2, scale: Math.max(minScale, Math.min((size.w - 80) / w, (size.h - 80) / d)) };
   };
-  const fit = () => setView(fitted());
+  const fit = () => setView(fitted(bounds, 20));
   // Fit the room on open and whenever the window resizes, until the user pans or zooms.
   const userMoved = useRef(false);
   useEffect(() => { userMoved.current = false; }, [location.id, plan]);
   useEffect(() => { if (size.w > 0 && !userMoved.current) fit(); }, [location.id, plan, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const v = props.diagram ? fitted() : view ?? { cx: 0, cz: 0, scale: 60 };
+  const v = props.diagram ? fitted(contentBounds(location, plan, lights), 1) : view ?? { cx: 0, cz: 0, scale: 60 };
   const sx = (x: number) => (x - v.cx) * v.scale + size.w / 2;
   const sy = (z: number) => (z - v.cz) * v.scale + size.h / 2;
   const toPlan = (clientX: number, clientY: number): PlanPoint => {

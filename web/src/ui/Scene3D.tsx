@@ -938,7 +938,7 @@ export function Scene3D(p: Props) {
     const done = (text: string) => { setSavedNote(text); window.setTimeout(() => setSavedNote(''), 2500); };
     out.toBlob(b => {
       if (!b) { done('Could not save the frame'); return; }
-      shotFrames.put(shotID, b, lens).then(() => done(`Saved to ${eye.label.split(' · ')[0]}. It prints on the plan sheet.`), () => done('Could not save the frame'));
+      shotFrames.put(shotID, b, lens, eye.rig).then(() => done(`Saved to ${eye.label.split(' · ')[0]}. It prints on the plan sheet.`), () => done('Could not save the frame'));
     }, 'image/jpeg', 0.88);
   };
 
@@ -963,6 +963,7 @@ export function Scene3D(p: Props) {
           </div>
         </div>
       )}
+      <span className="sr-only" role="status">{savedNote}</span>
       <div className="scene3d-hint">
         <span className="what">{note}</span>
         {!tipSeen

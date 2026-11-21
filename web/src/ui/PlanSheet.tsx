@@ -1,7 +1,7 @@
 // The hand-off sheet: the plan as framed on screen, every unit with its settings, the readings,
 // the kit list and the estimated power, on one printable page. Print saves it as a PDF too.
 import { useEffect, useMemo, useState } from 'react';
-import type { ExposureSettings, FloorPlan, LightFixture, Location, Project } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location, Project } from '../model/types';
 import type { MeterPoint } from '../model/calculator';
 import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } from '../model/photometrics';
 import { exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
@@ -107,6 +107,14 @@ function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rate
 }
 
 type Picture = { url: string; w: number; h: number };
+
+/** Whether a shot's camera has moved or changed lens since a frame of it was saved. */
+function rigChanged(a: CameraRig, b: CameraRig): boolean {
+  const near = (x: number, y: number, tol: number) => Math.abs(x - y) <= tol;
+  return !(near(a.position.x, b.position.x, 0.02) && near(a.position.z, b.position.z, 0.02) && near(a.height, b.height, 0.02)
+    && near(a.pan, b.pan, 0.5) && near(a.tilt, b.tilt, 0.5) && near(a.focalLength, b.focalLength, 0.5)
+    && a.sensorID === b.sensorID && a.aspect === b.aspect);
+}
 const PICTURE_KEY = 'framescan.sheet.picture';
 
 export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan: framed, diagram, floorPlan, scanID, onClose }: {
@@ -148,17 +156,19 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const dialogRef = useModal<HTMLElement>(onClose);
   // Previs frames saved from the 3D look-through. They live in this browser only.
   const shotKey = shots.map(x => x.id).join(',');
-  const [frames, setFrames] = useState<Map<string, { url: string; lens: string }>>(new Map());
+  const [frames, setFrames] = useState<Map<string, { url: string; lens: string; rig?: CameraRig; createdAt: string }>>(new Map());
+  // Print waits for the first read, so a quick print doesn't leave the frame pages out.
+  const [framesRead, setFramesRead] = useState(false);
   useEffect(() => {
     let urls: string[] = [], alive = true;
     const load = () => shotFrames.forShots(shotKey ? shotKey.split(',') : []).then(found => {
       if (!alive) return;
       urls.forEach(u => URL.revokeObjectURL(u));
-      const next = new Map<string, { url: string; lens: string }>();
-      for (const [id, f] of found) next.set(id, { url: URL.createObjectURL(f.blob), lens: f.lens });
+      const next = new Map<string, { url: string; lens: string; rig?: CameraRig; createdAt: string }>();
+      for (const [id, f] of found) next.set(id, { url: URL.createObjectURL(f.blob), lens: f.lens, rig: f.rig, createdAt: f.createdAt });
       urls = [...next.values()].map(f => f.url);
       setFrames(next);
-    }).catch(() => undefined);
+    }).catch(() => undefined).finally(() => { if (alive) setFramesRead(true); });
     void load();
     const off = shotFrames.subscribe(() => { void load(); });
     return () => { alive = false; off(); urls.forEach(u => URL.revokeObjectURL(u)); };
@@ -182,7 +192,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
     <div className="scrim sheet-scrim" onClick={onClose}>
       <article className="sheet" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Lighting plan sheet" onClick={ev => ev.stopPropagation()}>
         <div className="sheet-actions">
-          <button className="btn primary small" onClick={() => window.print()}><Icon name="download" /> Print or save PDF</button>
+          <button className="btn primary small" onClick={() => window.print()} disabled={!framesRead} title={framesRead ? undefined : 'Loading the shot frames…'}><Icon name="download" /> Print or save PDF</button>
           {framed && diagram && (
             <select className="sheet-inline-select" value={picture} onChange={ev => choosePicture(ev.target.value as 'framed' | 'diagram')} aria-label="Plan picture">
               <option value="framed">Plan as framed</option>
@@ -210,7 +220,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
             </tr>)}</tbody>
           </table>
         </>}
-        {shots.length > 0 && !shotRows.some(r => frames.has(r.shot.id)) && <p className="faint sheet-print-hide">Look through a shot in 3D and press Save frame to add its picture here, one page per shot.</p>}
+        {shots.length > 0 && !framesRead && <p className="faint sheet-print-hide">Loading the shot frames…</p>}
+        {shots.length > 0 && framesRead && !shotRows.some(r => frames.has(r.shot.id)) && <p className="faint sheet-print-hide">Look through a shot in 3D and press Save frame to add its picture here, one page per shot.</p>}
         <h3>Units</h3>
         <table className="sheet-table">
           <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th><th>On a {pack} Wh pack</th></tr></thead>
@@ -266,7 +277,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
               <h3>{r.name}</h3>
               <img src={f.url} alt={`Previs render of ${r.name}`} />
               <figcaption>
-                <span className="mono">Previs render, not a photograph · {f.lens}</span>
+                <span className="mono">Previs render, not a photograph · {f.lens} · saved {new Date(f.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                {f.rig && rigChanged(f.rig, r.shot.rig) && <span><strong>The shot has changed since this frame was saved.</strong> The details below are the shot as it is now; save the frame again to match.</span>}
                 <span className="mono">{r.lens} · lens at {r.height}{r.toSubject ? ` · ${r.toSubject} to subject` : ''}</span>
                 {r.lit && <span>Lit with {r.lit}</span>}
                 <span>{r.seen || 'No units or grip in frame (estimate).'}</span>

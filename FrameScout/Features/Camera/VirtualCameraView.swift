@@ -211,8 +211,10 @@ struct VirtualCameraView: View {
                     HStack {
                         Button { saveFrame(vp) } label: { Label("Save frame to \(vp.label)", systemImage: "photo.badge.plus") }
                             .font(.fsCaptionStrong)
+                            .disabled(frameBlocker(vp) != nil)
                             .accessibilityHint("Saves this view as the shot's picture. A render of the plan, not a photograph.")
                         Spacer()
+                        if let why = frameBlocker(vp), savedNote.isEmpty { Text(why).font(.fsCaption).foregroundStyle(Theme.textSecondary) }
                         if !savedNote.isEmpty { Text(savedNote).font(.fsCaption).foregroundStyle(Theme.textSecondary) }
                     }
                 }
@@ -249,7 +251,16 @@ struct VirtualCameraView: View {
 
     /// Saves what the look-through shows as the shot's picture (a previs frame, kept with the location's
     /// photos on this iPhone and on the shot list and print sheet).
+    /// Why a frame can't be saved yet: the room is still loading, or the shot belongs to a scan other
+    /// than the one shown here (its frame would show the wrong room).
+    private func frameBlocker(_ vp: VirtualViewpoint) -> String? {
+        if !model.loaded { return "Loading the room…" }
+        if scanID(of: vp) != location?.primaryScan?.id { return "This shot is in another scan of the location" }
+        return nil
+    }
+
     private func saveFrame(_ vp: VirtualViewpoint) {
+        if let why = frameBlocker(vp) { savedNote = why; return }
         guard let image = model.lookSnapshot(), let jpeg = image.jpegData(compressionQuality: 0.85) else {
             savedNote = "Couldn't capture the view"; return
         }

@@ -1,7 +1,11 @@
 // Previs frames saved from the 3D look-through, one per shot. They are renders of the plan, not
 // photographs, and they stay in this browser (IndexedDB) like listing photos: only the plan syncs.
 // A separate database, so the projects store and its upgrade path are untouched.
-export interface ShotFrame { shotID: string; blob: Blob; lens: string; createdAt: string }
+import type { CameraRig } from '../model/types';
+
+/** `rig` is the shot's camera as it was when the frame was saved, so the sheet can say when the shot
+ *  has changed since (older frames have none). */
+export interface ShotFrame { shotID: string; blob: Blob; lens: string; createdAt: string; rig?: CameraRig }
 
 const DB = 'framescan-frames';
 const STORE = 'frames';
@@ -29,8 +33,8 @@ function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<
 const listeners = new Set<() => void>();
 
 export const shotFrames = {
-  put: (shotID: string, blob: Blob, lens: string) =>
-    run('readwrite', s => { s.put({ shotID, blob, lens, createdAt: new Date().toISOString() }); })
+  put: (shotID: string, blob: Blob, lens: string, rig?: CameraRig) =>
+    run('readwrite', s => { s.put({ shotID, blob, lens, rig, createdAt: new Date().toISOString() }); })
       .then(() => { listeners.forEach(f => f()); }),
   get: (shotID: string) => run<ShotFrame>('readonly', s => s.get(shotID) as IDBRequest<ShotFrame>),
   forShots: async (ids: string[]) => {
