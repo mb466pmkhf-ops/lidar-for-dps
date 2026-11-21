@@ -9,7 +9,10 @@ import { eyeHeight } from './characters';
 import { keyLux } from './exposure';
 import { newLight } from './factory';
 
-export type LightingSetup = 'threePoint' | 'softSide' | 'beauty' | 'hardSingle' | 'keyAndEdge';
+export type LightingSetup = 'threePoint' | 'softSide' | 'beauty' | 'hardSingle' | 'keyAndEdge' | 'interview' | 'loop' | 'rembrandt' | 'butterfly' | 'moonlight';
+/** How the setups are grouped in the menus: everyday starting points, the classic portrait patterns, and jobs. */
+export type SetupGroup = 'start' | 'classic' | 'job';
+export const SETUP_GROUP_LABEL: Record<SetupGroup, string> = { start: 'Starting points', classic: 'Classic patterns', job: 'For the job' };
 
 interface Spec {
   name: string; role: LightRole;
@@ -22,28 +25,55 @@ interface Spec {
   stopsUnderKey: number;
   rim?: boolean;
   kind?: LightKind; width?: number;
+  /** Gels and diffusion the unit carries (photometrics.ts filters). */
+  filters?: string[];
 }
 
-export const LIGHTING_SETUPS: { id: LightingSetup; label: string; summary: string; specs: Spec[] }[] = [
-  { id: 'threePoint', label: 'Three-point', summary: 'Key, fill 2 stops under, back light', specs: [
+/** Key to fill as people say it on set: one stop under is 2:1, two stops 4:1. Key only: no ratio. */
+export function ratioLabel(stopsUnder: number): string {
+  const r = Math.pow(2, stopsUnder);
+  return `${Number.isInteger(r) ? r : r.toFixed(1)}:1`;
+}
+
+export const LIGHTING_SETUPS: { id: LightingSetup; label: string; summary: string; why: string; group: SetupGroup; specs: Spec[] }[] = [
+  { id: 'threePoint', label: 'Three-point', summary: 'Key, fill 2 stops under (4:1), back light', group: 'start', why: 'The textbook start: the key shapes the face, the fill keeps the shadow side readable at 4:1, the back light lifts them off the background.', specs: [
     { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d', 'cob-1200-d'], modifier: 'softbox-90-grid', offset: 45, distance: 2.2, rise: 0.6, stopsUnderKey: 0 },
     { name: 'Fill', role: 'fill', profiles: ['panel-1x1-bi', 'panel-2x1-bi'], offset: -40, distance: 2.5, rise: 0.3, stopsUnderKey: 2 },
     { name: 'Back', role: 'back', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d'], offset: 160, distance: 2.4, rise: 1.0, stopsUnderKey: 0, rim: true },
   ] },
-  { id: 'softSide', label: 'Soft side light', summary: 'Big soft key from the side, neg fill', specs: [
+  { id: 'softSide', label: 'Soft side light', summary: 'Big soft key from the side, neg fill', group: 'start', why: 'Reads like a big window beside them: soft wrap on the lit side, and the neg keeps the far side dark for contrast.', specs: [
     { name: 'Key', role: 'key', profiles: ['cob-300-d', 'cob-600-d', 'cob-1200-d'], modifier: 'softbox-150', offset: 80, distance: 2.0, rise: 0.4, stopsUnderKey: 0 },
     { name: 'Neg', role: 'fill', profiles: [], offset: -80, distance: 1.2, rise: 0, stopsUnderKey: 0, kind: 'negative', width: 1.2 },
   ] },
-  { id: 'beauty', label: 'Soft front (beauty)', summary: 'Soft key near the lens, gentle fill', specs: [
+  { id: 'beauty', label: 'Soft front (beauty)', summary: 'Soft key near the lens, fill 1 stop under (2:1)', group: 'start', why: 'Light close to the lens fills every line and the fill from below takes out shadows under the eyes: flat and flattering.', specs: [
     { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d'], modifier: 'softbox-90', offset: 20, distance: 1.8, rise: 0.5, stopsUnderKey: 0 },
     { name: 'Fill', role: 'fill', profiles: ['mat-2x2-bi', 'mat-4x4-bi'], offset: -10, distance: 2.0, rise: -0.4, stopsUnderKey: 1 },
   ] },
-  { id: 'hardSingle', label: 'Hard single source', summary: 'One fresnel high from the side, no fill', specs: [
+  { id: 'hardSingle', label: 'Hard single source', summary: 'One fresnel high from the side, no fill', group: 'start', why: 'One hard source and nothing else: crisp shadows and a low-key, dramatic face.', specs: [
     { name: 'Key', role: 'key', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d'], offset: 60, distance: 2.6, rise: 1.0, stopsUnderKey: 0 },
   ] },
-  { id: 'keyAndEdge', label: 'Key and edge', summary: 'Soft key, hard edge 1 stop over', specs: [
+  { id: 'keyAndEdge', label: 'Key and edge', summary: 'Soft key, hard edge 1 stop over', group: 'start', why: 'A soft key for the face and a hard edge from behind on the other side, a stop hot, to cut them out of a dark background.', specs: [
     { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d', 'cob-1200-d'], modifier: 'softbox-90', offset: 50, distance: 2.0, rise: 0.5, stopsUnderKey: 0 },
     { name: 'Edge', role: 'edge', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d'], offset: -135, distance: 2.4, rise: 0.9, stopsUnderKey: -1, rim: true },
+  ] },
+  { id: 'loop', label: 'Loop', summary: 'Key 35° off and a little high, fill 2 stops under (4:1)', group: 'classic', why: 'The most-used portrait pattern: the key 30–45° off the nose and a little above casts a small loop of shadow from the nose towards the cheek.', specs: [
+    { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d', 'cob-1200-d'], modifier: 'softbox-90-grid', offset: 35, distance: 2.0, rise: 0.5, stopsUnderKey: 0 },
+    { name: 'Fill', role: 'fill', profiles: ['panel-1x1-bi', 'panel-2x1-bi'], offset: -30, distance: 2.4, rise: 0.2, stopsUnderKey: 2 },
+  ] },
+  { id: 'rembrandt', label: 'Rembrandt', summary: 'Hard key 50° off and high, no fill', group: 'classic', why: 'Key high and well to the side, so the nose shadow meets the cheek shadow and leaves a small triangle of light under the far eye.', specs: [
+    { name: 'Key', role: 'key', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d'], offset: 50, distance: 2.4, rise: 0.9, stopsUnderKey: 0 },
+  ] },
+  { id: 'butterfly', label: 'Butterfly', summary: 'Key above the lens, fill from below 1 stop under (2:1)', group: 'classic', why: 'Also called Paramount: the key straight in front and high puts a small butterfly shadow under the nose and shapes the cheekbones; the fill under the lens opens the eyes.', specs: [
+    { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d'], modifier: 'softbox-90', offset: 0, distance: 1.8, rise: 0.8, stopsUnderKey: 0 },
+    { name: 'Fill', role: 'fill', profiles: ['mat-2x2-bi', 'mat-4x4-bi'], offset: 15, distance: 1.3, rise: -0.6, stopsUnderKey: 1 },
+  ] },
+  { id: 'interview', label: 'Interview', summary: 'Soft key, neg on the far side, hair light 1 stop under', group: 'job', why: 'The usual sit-down: a soft key on the side they look towards, a neg to keep shape on the other side, and a hair light to separate them. Add a second camera beside the first for the profile.', specs: [
+    { name: 'Key', role: 'key', profiles: ['cob-100-bi', 'cob-300-d', 'cob-600-d'], modifier: 'softbox-90', offset: 40, distance: 1.8, rise: 0.5, stopsUnderKey: 0 },
+    { name: 'Neg', role: 'fill', profiles: [], offset: -70, distance: 1.0, rise: 0, stopsUnderKey: 0, kind: 'negative', width: 1.2 },
+    { name: 'Hair', role: 'back', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d'], offset: 160, distance: 2.0, rise: 1.1, stopsUnderKey: 1, rim: true },
+  ] },
+  { id: 'moonlight', label: 'Moonlight', summary: 'Hard blue side light from high, 1 stop under', group: 'job', why: 'Night interior: one hard source through full CTB from high to the side, a stop under the set stop so it reads as night, nothing filling the dark side.', specs: [
+    { name: 'Moon', role: 'key', profiles: ['fresnel-led-200-bi', 'fresnel-led-600-d', 'hmi-1800-par'], offset: 75, distance: 3.0, rise: 1.2, stopsUnderKey: 1, filters: ['ctb-full'] },
   ] },
 ];
 
@@ -111,6 +141,7 @@ export function buildSetup(id: LightingSetup, person: PrevisCharacter, camera: P
       const light = applyProfile({ ...newLight(profile.kind, pos, pan, person.scanID), name }, profile);
       light.role = spec.role;
       if (spec.modifier && modifiersFor(profile).some(m => m.id === spec.modifier)) light.modifierID = spec.modifier;
+      if (spec.filters?.length) light.filterIDs = [...spec.filters];
       light.height = Math.max(0.4, face.y + spec.rise);
       light.tilt = -Math.atan2(light.height - face.y, d) * 180 / Math.PI;
       // Back light: metered facing the unit (rim), the others towards camera.
@@ -126,3 +157,6 @@ export function buildSetup(id: LightingSetup, person: PrevisCharacter, camera: P
   }
   return { lights, notes };
 }
+
+/** How far under the set stop the setup's key sits (0 for all but night looks). */
+export const keyStopsUnder = (id: LightingSetup) => LIGHTING_SETUPS.find(s => s.id === id)!.specs[0].stopsUnderKey;

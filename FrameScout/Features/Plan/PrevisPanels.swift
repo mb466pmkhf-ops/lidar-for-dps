@@ -43,8 +43,12 @@ struct CharacterPanel: View {
             }
             if let onLight {
                 Menu {
-                    ForEach(LightingSetup.allCases) { setup in
-                        Button { onLight(setup) } label: { Text("\(setup.label) — \(setup.summary)") }
+                    ForEach(LightingSetup.Group.allCases, id: \.self) { group in
+                        Section(group.label) {
+                            ForEach(LightingSetup.allCases.filter { $0.group == group }) { setup in
+                                Button { onLight(setup) } label: { Text("\(setup.label) — \(setup.summary)") }
+                            }
+                        }
                     }
                     if let onPreset, !presets.isEmpty {
                         Section("My presets") {

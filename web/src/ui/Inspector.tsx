@@ -17,7 +17,7 @@ import {
 } from '../model/photometrics';
 import { exposureTime, fStop, keyLux, meterStop, speedLabel, stopLabel, stopsDelta, stopsForLux } from '../model/exposure';
 import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
-import { LIGHTING_SETUPS, buildSetup, type LightingSetup } from '../model/setups';
+import { LIGHTING_SETUPS, SETUP_GROUP_LABEL, buildSetup, type LightingSetup, type SetupGroup } from '../model/setups';
 import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type LightingPreset } from '../model/presets';
 import { usePresets } from './presetStore';
 import { ManagePresetsDialog, SavePresetDialog } from './PresetDialog';
@@ -517,7 +517,7 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
     const built = buildSetup(id, c, camera, p.exposure, p.plan, p.windowTransmission);
     if (!built.lights.length) return;
     p.edit(loc => ({ ...loc, lights: [...(loc.lights ?? []), ...built.lights] }));
-    setSetupNote({ id: c.id, text: `${label}${camera ? '' : ' (no camera yet: lit from where they face)'}. ${built.notes.join(' · ')}. Undo removes it.` });
+    setSetupNote({ id: c.id, text: `${label}${camera ? '' : ' (no camera yet: lit from where they face)'}. ${LIGHTING_SETUPS.find(x => x.id === id)?.why ?? ''} ${built.notes.join(' · ')}. Undo removes it.` });
   };
   const presets = usePresets();
   const [dialog, setDialog] = useState<'save' | 'manage'>();
@@ -546,9 +546,14 @@ function CharacterInspector(p: InspectorProps & { character: PrevisCharacter }) 
         </div>
       </section>
       <Panel title="Light this person">
-        <div className="chips">
-          {LIGHTING_SETUPS.map(s => <button key={s.id} className="chip" title={s.summary} onClick={() => lightWith(s.id, s.label)}>{s.label}</button>)}
-        </div>
+        {(Object.keys(SETUP_GROUP_LABEL) as SetupGroup[]).map(g => (
+          <div key={g}>
+            <div className="label" style={{ margin: '8px 0 6px' }}>{SETUP_GROUP_LABEL[g]}</div>
+            <div className="chips">
+              {LIGHTING_SETUPS.filter(s => s.group === g).map(s => <button key={s.id} className="chip" title={`${s.summary}. ${s.why}`} onClick={() => lightWith(s.id, s.label)}>{s.label}</button>)}
+            </div>
+          </div>
+        ))}
         {presets.length > 0 && <>
           <div className="label" style={{ margin: '12px 0 6px' }}>My presets</div>
           <div className="chips">

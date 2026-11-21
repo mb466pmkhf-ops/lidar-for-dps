@@ -236,6 +236,7 @@ struct PlanEditorView: View {
     @State private var showSaveMeasurement = false
     @State private var showLayers = false
     @State private var showStage = false
+    @State private var showKit = false
     @State private var showExposure = false
     @State private var showAlignment = false
     @State private var showFixturePicker = false
@@ -333,6 +334,9 @@ struct PlanEditorView: View {
                 StageSheet(location: Binding(get: { self.location ?? location }, set: { v in edit { $0.studio = v.studio; $0.daylight = v.daylight } }),
                            plan: plan.isEmpty ? nil : plan, scan: scan)
             }
+        }
+        .sheet(isPresented: $showKit) {
+            KitSheet(lights: kitLights) { showKit = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { shareKitList() } }
         }
         .sheet(isPresented: $showExposure) {
             ExposureSheet(exposure: Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } }))
@@ -1531,7 +1535,7 @@ struct PlanEditorView: View {
         edit { $0.lightFixtures.append(contentsOf: result.lights) }
         selection = .light(result.lights[0].id)
         notice = "\(setup.label) for \(person.name)\(camera == nil ? " (no camera yet: lit from where they face)" : ""). "
-            + result.notes.joined(separator: " · ") + ". Undo removes it."
+            + setup.why + " " + result.notes.joined(separator: " · ") + ". Undo removes it."
     }
 
     /// Places one of the user's own presets round a person (or at the window nearest them).
@@ -1626,12 +1630,17 @@ struct PlanEditorView: View {
         } catch {}
     }
 
-    /// Units, modifiers, gels, grip, stands and estimated power as plain text, for the gaffer.
+    /// Units in this scan, for the kit list.
+    private var kitLights: [LightFixture] { (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == scan?.id } }
+
+    /// Units, modifiers, gels, grip, stands, estimated power and circuits, and the user's day rates, as
+    /// plain text for the gaffer.
     private func shareKitList() {
         guard let location else { return }
-        let lights = location.lightFixtures.filter { $0.scanID == nil || $0.scanID == scan?.id }
+        let lights = kitLights
         let title = "\(store.project(ref.projectID)?.name ?? "") — \(location.name)"
-        let text = KitList(lights: lights).text(title: title)
+        let rates = KitRates(json: UserDefaults.standard.string(forKey: KitRates.defaultsKey))
+        let text = KitList(lights: lights).text(title: title, lights: lights, rates: rates)
         let name = location.name.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name) – kit list.txt")
         do {
@@ -1832,7 +1841,7 @@ struct PlanEditorView: View {
             Button { openAlignment() } label: { Label("Level and align scan…", systemImage: "level") }
         }
         Button { shareDiagram() } label: { Label("Share diagram (PNG)", systemImage: "square.and.arrow.up") }
-        Button { shareKitList() } label: { Label("Share kit list and power", systemImage: "list.bullet.rectangle") }
+        Button { showKit = true } label: { Label("Kit, power and rates…", systemImage: "list.bullet.rectangle") }
         Button { zoom = 1; pinchBase = 1; pan = .zero; panBase = .zero; fittedBounds = contentBounds() } label: { Label("Fit to screen", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
         if location?.primaryScan != nil {
             Button { router.start(.virtualCamera(ref, cameraID: nil)) } label: { Label("3D walkthrough", systemImage: "cube") }
