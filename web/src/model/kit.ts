@@ -164,8 +164,8 @@ export const money = (v: number, currency: string) => `${currency}${v.toLocaleSt
 export const MAX_RATE = 1e9;
 
 /** A typed day rate, with either decimal mark. The last mark is the decimal one ("12,50", "1,250.50",
- *  "1.250,50"), except a lone mark followed by exactly three digits, or the same mark used more than
- *  once, which groups thousands ("1,250", "1.250.000"). Undefined for anything that isn't a rate. */
+ *  "1.250,50", "0.125"), except a mark used more than once, or a lone comma before exactly three digits
+ *  after a whole part, which group thousands ("1.250.000", "1,250"). Undefined for anything that isn't a rate. */
 export function parseRate(text: string): number | undefined {
   const t = text.replace(/\s/g, '');
   if (!/^\d*[.,\d]*$/.test(t) || !/\d/.test(t)) return undefined;
@@ -174,7 +174,10 @@ export function parseRate(text: string): number | undefined {
   if (last < 0) n = t;
   else {
     const mark = t[last], marks = [...t].filter(c => c === '.' || c === ',');
-    const grouping = marks.every(c => c === mark) && (marks.length > 1 || t.length - last - 1 === 3);
+    // A lone comma before exactly three digits groups thousands ("1,250"), unless the whole part is
+    // zero ("0,125"). A lone point is always the decimal mark ("0.125", "1.250").
+    const lead = t.slice(0, last).replace(/^0+/, '');
+    const grouping = marks.every(c => c === mark) && (marks.length > 1 || (mark === ',' && t.length - last - 1 === 3 && lead !== ''));
     n = grouping ? t.replace(/[.,]/g, '') : t.slice(0, last).replace(/[.,]/g, '') + '.' + t.slice(last + 1);
   }
   const v = Number(n);

@@ -1297,7 +1297,8 @@ do {
     check(KitRates(json: #"{"framescanRates":1,"currency":"€","items":{"C-stand":8}}"#)?.items["C-stand"] == 8, "rates from the web paste in")
     check(KitRates.parse("12.5") == 12.5 && KitRates.parse("12,50") == 12.5 && KitRates.parse("1,250") == 1250
           && KitRates.parse("1,250.50") == 1250.5 && KitRates.parse("1.250,50") == 1250.5 && KitRates.parse("1.250.000") == 1_250_000
-          && KitRates.parse(" 0 ") == 0 && KitRates.parse("12.") == 12, "typed rates read with either decimal mark, as on the web")
+          && KitRates.parse(" 0 ") == 0 && KitRates.parse("12.") == 12
+          && KitRates.parse("0.125") == 0.125 && KitRates.parse("0,125") == 0.125 && KitRates.parse("1.250") == 1.25, "typed rates read with either decimal mark, as on the web")
     check(KitRates.parse("") == nil && KitRates.parse("-3") == nil && KitRates.parse("abc") == nil && KitRates.parse("1e20") == nil
           && KitRates.parse("99999999999") == nil, "typed rates refuse anything that isn't a rate")
     check(KitRates(json: #"{"framescanRates":1,"items":{"a":1e20,"c":3}}"#) == KitRates(currency: "£", items: ["c": 3]), "rates drop absurd amounts")

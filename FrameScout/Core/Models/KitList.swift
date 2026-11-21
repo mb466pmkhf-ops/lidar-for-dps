@@ -194,8 +194,8 @@ struct KitRates: Equatable {
     static let maxRate = 1e9
 
     /// A typed day rate, with either decimal mark. The last mark is the decimal one ("12,50",
-    /// "1,250.50", "1.250,50"), except a lone mark followed by exactly three digits, or the same mark
-    /// used more than once, which groups thousands ("1,250", "1.250.000"). Same rule as the web.
+    /// "1,250.50", "1.250,50", "0.125"), except a mark used more than once, or a lone comma before
+    /// exactly three digits after a whole part, which group thousands ("1.250.000", "1,250"). Same rule as the web.
     static func parse(_ text: String) -> Double? {
         let digit: (Character) -> Bool = { ("0"..."9").contains($0) }
         let t = text.filter { !$0.isWhitespace }
@@ -205,7 +205,10 @@ struct KitRates: Equatable {
         if let lastIndex = t.lastIndex(where: { $0 == "." || $0 == "," }) {
             let mark = t[lastIndex]
             let after = t.distance(from: lastIndex, to: t.endIndex) - 1
-            let grouping = marks.allSatisfy { $0 == mark } && (marks.count > 1 || after == 3)
+            // A lone comma before exactly three digits groups thousands ("1,250"), unless the whole part
+            // is zero ("0,125"). A lone point is always the decimal mark ("0.125", "1.250").
+            let lead = t[..<lastIndex].drop { $0 == "0" }
+            let grouping = marks.allSatisfy { $0 == mark } && (marks.count > 1 || (mark == "," && after == 3 && !lead.isEmpty))
             if grouping { n = t.filter(digit) }
             else { n = String(t[..<lastIndex].filter(digit)) + "." + String(t[t.index(after: lastIndex)...]) }
         }
