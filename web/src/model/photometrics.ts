@@ -346,7 +346,14 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
   // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
   // The face behind the grid sets that peak: a softbox's own diffuse front (π), or for a grid fitted
   // straight to a panel, the panel's own shape (π for a diffuse face, narrower for a lensed panel).
-  if (distribution === 'grid') {
+  // A grid straight on a lensed panel can only trim its beam, so it stays a beam no wider than the
+  // panel's own (the grid's soft shape would spread light the lens never sends off axis).
+  if (distribution === 'grid' && modifier?.size === undefined && p.distribution === 'beam') {
+    const trimmed = Math.min(beam, p.defaultBeam);
+    flux *= solidAngleFactor('beam', trimmed) / solidAngleFactor('beam', p.defaultBeam);
+    distribution = 'beam';
+    beam = trimmed;
+  } else if (distribution === 'grid') {
     const face = modifier?.size !== undefined ? Math.PI : solidAngleFactor(p.distribution, p.defaultBeam);
     flux *= solidAngleFactor('grid', beam) / face;
   }

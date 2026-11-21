@@ -217,9 +217,16 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
   });
 
   it('a grid on a lensed panel keeps its peak times the grid transmission', () => {
-    const bare = photometrics(light('panel-small-bi')).peakIntensity;
-    const gridded = photometrics(light('panel-small-bi', l => { l.modifierID = 'panel-grid-40'; })).peakIntensity;
+    const bare_ = photometrics(light('panel-small-bi'));
+    const gridded_ = photometrics(light('panel-small-bi', l => { l.modifierID = 'panel-grid-40'; }));
+    const bare = bare_.peakIntensity, gridded = gridded_.peakIntensity;
     expect(gridded / bare).toBeCloseTo(0.8, 6);
+    // …and never sends more light off axis than the bare panel.
+    for (const deg of [10, 20, 30, 45, 60]) {
+      const t = deg * Math.PI / 180;
+      expect(relativeIntensity(gridded_.distribution, t, gridded_.beamAngle) * gridded)
+        .toBeLessThanOrEqual(relativeIntensity(bare_.distribution, t, bare_.beamAngle) * bare + 1e-9);
+    }
   });
 
   // A softbox's grid sits on the softbox's diffuse front, not on the unit's reflector beam.
