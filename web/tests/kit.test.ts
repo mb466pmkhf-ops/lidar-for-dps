@@ -81,6 +81,9 @@ describe('your day rates', () => {
     expect(parseRate('1.250.000')).toBe(1250000);
     expect(parseRate(' 0 ')).toBe(0);
     expect(parseRate('12.')).toBe(12);
+    expect(parseRate('0.125')).toBe(0.125);
+    expect(parseRate('0,125')).toBe(0.125);
+    expect(parseRate('1.250')).toBe(1.25);
     expect(parseRate('')).toBeUndefined();
     expect(parseRate('-3')).toBeUndefined();
     expect(parseRate('abc')).toBeUndefined();
