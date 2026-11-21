@@ -222,6 +222,13 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
     expect(gridded / bare).toBeCloseTo(0.8, 6);
   });
 
+  // A softbox's grid sits on the softbox's diffuse front, not on the unit's reflector beam.
+  it('a gridded softbox keeps the softbox peak times the grid share', () => {
+    const soft = photometrics(light('cob-300-d', l => { l.modifierID = 'softbox-90'; })).peakIntensity;
+    const gridded = photometrics(light('cob-300-d', l => { l.modifierID = 'softbox-90-grid'; })).peakIntensity;
+    expect(gridded / soft).toBeCloseTo(0.4 / 0.5, 6);
+  });
+
   // An open face loses less than a fresnel when spotted: the 750 W open face matches the maker's
   // spot (1,881 lx at 4 m) and medium (494) to within half a stop each, the best one exponent allows.
   it('the 750 W open face spot and medium, within half a stop', () => {

@@ -344,8 +344,12 @@ export function photometrics(l: LightFixture): ResolvedPhotometrics {
   if (distribution !== 'beam') beam = nominalBeam(distribution) ?? beam;
   // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
   // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
-  // The source's own shape sets its peak: π for a diffuse face, narrower for a lensed panel.
-  if (distribution === 'grid') flux *= solidAngleFactor('grid', beam) / solidAngleFactor(p.distribution, p.defaultBeam);
+  // The face behind the grid sets that peak: a softbox's own diffuse front (π), or for a grid fitted
+  // straight to a panel, the panel's own shape (π for a diffuse face, narrower for a lensed panel).
+  if (distribution === 'grid') {
+    const face = modifier?.size !== undefined ? Math.PI : solidAngleFactor(p.distribution, p.defaultBeam);
+    flux *= solidAngleFactor('grid', beam) / face;
+  }
   // Spotting a fresnel lens loses flux.
   if (distribution === 'beam' && range && modifier?.focusesLikeFresnel) flux *= focusFactor(beam, range);
   else if (distribution === 'beam' && range && !modifier && p.beamRange) flux *= focusFactor(beam, range, p.focusExponent);

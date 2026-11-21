@@ -676,9 +676,11 @@ extension LightFixture {
         if distribution != .beam { beam = distribution.nominalBeam ?? beam }
         // A grid only takes light away: on its axis it passes the modifier's transmission of the diffuse
         // face's peak, and off axis less, so the flux is that peak spread over the grid's narrower shape.
-        // The source's own shape sets its peak: π for a diffuse face, narrower for a lensed panel.
+        // The face behind the grid sets that peak: a softbox's own diffuse front (π), or for a grid fitted
+        // straight to a panel, the panel's own shape (π for a diffuse face, narrower for a lensed panel).
         if distribution == .grid {
-            flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / p.distribution.solidAngleFactor(beamAngle: p.defaultBeam)
+            let face = modifier?.size != nil ? Double.pi : p.distribution.solidAngleFactor(beamAngle: p.defaultBeam)
+            flux *= BeamDistribution.grid.solidAngleFactor(beamAngle: beam) / face
         }
         // Spotting a fresnel lens loses flux.
         if distribution == .beam, let range {
