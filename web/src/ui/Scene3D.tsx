@@ -291,6 +291,8 @@ export function Scene3D(p: Props) {
       renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
+      // Looking through a camera: fit its lens and frame lines to the new shape of the view.
+      if (eyeRef.current) lookRef.current(eyeRef.current.key);
     };
     api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], roomLights, invalidate };
     applyQuality();
@@ -926,6 +928,8 @@ export function Scene3D(p: Props) {
     const t = v(a.centre.x, 1.4, a.centre.z); moveTo(t.clone().add(v(0, 0.2, a.span * 0.45)), t);
   };
   lookRef.current = eyeLevel;
+  /** Counts frame saves, so a slower encode of an older save never overwrites a newer one. */
+  const saveSeq = useRef(0);
   // Asked from the camera's details ("Look through it"): once the view is ready.
   useEffect(() => { if (p.lookThrough) eyeLevel(p.lookThrough.key); }, [p.lookThrough?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   // If the camera being looked through is edited (lens, sensor, position), follow it so the view, the
@@ -943,6 +947,7 @@ export function Scene3D(p: Props) {
   // fresh render, so the WebGL buffer doesn't need preserveDrawingBuffer. The DOM overlays (tags, frame
   // lines) are not in it. It is a render of the plan, labelled as such wherever it's shown.
   const saveFrame = () => {
+    const seq = ++saveSeq.current;
     const a = api.current;
     if (!a || !eye?.key.startsWith('shot:')) return;
     const shotID = eye.key.slice(5);
@@ -957,6 +962,7 @@ export function Scene3D(p: Props) {
     const done = (text: string) => { setSavedNote(text); window.setTimeout(() => setSavedNote(''), 2500); };
     out.toBlob(b => {
       if (!b) { done('Could not save the frame'); return; }
+      if (seq !== saveSeq.current) return; // a later save is on its way; keep that one, not this older picture
       shotFrames.put(shotID, b, lens, eye.rig).then(() => done(`Saved to ${eye.label.split(' · ')[0]}. It prints on the plan sheet.`), () => done('Could not save the frame'));
     }, 'image/jpeg', 0.88);
   };
