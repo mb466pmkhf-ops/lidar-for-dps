@@ -123,12 +123,12 @@ struct KitSheet: View {
         Binding(get: {
             if let d = drafts[item] { return d }
             guard let v = rates.items[item] else { return "" }
-            return v.rounded() == v ? String(Int(v)) : String(v)
+            if v.rounded() == v, let whole = Int(exactly: v) { return String(whole) }
+            return String(v)
         }, set: { text in
             drafts[item] = text
             var r = rates
-            let v = Double(text.replacingOccurrences(of: ",", with: "."))
-            if let v, v >= 0, v.isFinite { r.items[item] = v } else { r.items.removeValue(forKey: item) }
+            if let v = KitRates.parse(text) { r.items[item] = v } else { r.items.removeValue(forKey: item) }
             setRates(r)
         })
     }

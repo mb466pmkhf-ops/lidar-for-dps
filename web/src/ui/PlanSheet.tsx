@@ -7,7 +7,7 @@ import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } fro
 import { exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
 import { gripLabel, isGrip } from '../model/grip';
 import { lightSupport, lightSupportInfo } from '../model/rigging';
-import { BATTERY_SIZES, SUPPLIES, amps, circuitPlan, emptyRates, kitCost, kitList, kitText, money, parseRates, ratesJSON, runTimeLabel, supplyByID, type KitLine, type Rates } from '../model/kit';
+import { BATTERY_SIZES, SUPPLIES, amps, circuitPlan, emptyRates, kitCost, kitList, kitText, money, parseRate, parseRates, ratesJSON, runTimeLabel, supplyByID, type KitLine, type Rates } from '../model/kit';
 import { metres, pct, reading as fmtReading, watts } from './format';
 import { Icon } from './icons';
 import { activeLook, looksOf } from '../model/looks';
@@ -71,28 +71,28 @@ function store(key: string, v: string) { try { localStorage.setItem(key, v); } c
 
 /** Day rates the user types in for each kit line. FrameScan has no prices of its own; lines left blank
  *  are listed as having no rate rather than guessed. */
-function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rates; onChange(r: Rates): void }) {
+function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rates; onChange(update: (r: Rates) => Rates): void }) {
   const [note, setNote] = useState('');
   // Bumped on paste so the typed-in fields show the pasted rates.
   const [ver, setVer] = useState(0);
-  const set = (item: string, text: string) => {
-    const items = { ...rates.items };
-    const v = Number(text.replace(/,/g, ''));
-    if (text.trim() === '' || !(v >= 0) || !Number.isFinite(v)) delete items[item]; else items[item] = v;
-    onChange({ ...rates, items });
-  };
+  const set = (item: string, text: string) => onChange(cur => {
+    const items = { ...cur.items };
+    const v = parseRate(text);
+    if (v === undefined) delete items[item]; else items[item] = v;
+    return { ...cur, items };
+  });
   const copy = () => { void navigator.clipboard?.writeText(ratesJSON(rates)).then(() => setNote('Rates copied')).catch(() => setNote("Couldn't copy")); };
   const paste = () => {
     void navigator.clipboard?.readText().then(t => {
       const r = parseRates(t);
-      if (r) { onChange({ currency: r.currency, items: { ...rates.items, ...r.items } }); setVer(v => v + 1); setNote('Rates pasted'); } else setNote('Nothing to paste: copy rates from FrameScan first');
+      if (r) { onChange(cur => ({ currency: r.currency, items: { ...cur.items, ...r.items } })); setVer(v => v + 1); setNote('Rates pasted'); } else setNote('Nothing to paste: copy rates from FrameScan first');
     }).catch(() => setNote("Couldn't read the clipboard"));
   };
   return (
     <details className="sheet-rates-edit">
       <summary>Type your day rates</summary>
       <p className="faint">Type what you pay a day for each item, from your rental house or your own kit. They stay on this computer and are only used on this sheet and the copied kit list.</p>
-      <label className="sheet-rate-row"><span>Currency</span><input value={rates.currency} maxLength={4} onChange={ev => onChange({ ...rates, currency: ev.target.value })} aria-label="Currency symbol" /></label>
+      <label className="sheet-rate-row"><span>Currency</span><input value={rates.currency} maxLength={4} onChange={ev => { const currency = ev.target.value; onChange(cur => ({ ...cur, currency })); }} aria-label="Currency symbol" /></label>
       {lines.map(l => (
         <label key={`${l.item}-${ver}`} className="sheet-rate-row"><span>{l.item}</span>
           <input inputMode="decimal" defaultValue={rates.items[l.item] ?? ''} placeholder="Day rate" onChange={ev => set(l.item, ev.target.value)} aria-label={`Day rate for ${l.item}`} /></label>
@@ -139,7 +139,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const [supplyID, setSupplyID] = useState(() => supplyByID(stored(SUPPLY_KEY) ?? undefined).id);
   const [pack, setPack] = useState(() => { const v = Number(stored(PACK_KEY)); return BATTERY_SIZES.includes(v) ? v : BATTERY_SIZES[0]; });
   const [rates, setRatesState] = useState<Rates>(() => parseRates(stored(RATES_KEY)) ?? emptyRates());
-  const setRates = (r: Rates) => { setRatesState(r); store(RATES_KEY, ratesJSON(r)); };
+  // Updates go through the latest rates, so a paste that lands after an edit keeps the edit.
+  const setRates = (update: (r: Rates) => Rates) => setRatesState(cur => { const next = update(cur); store(RATES_KEY, ratesJSON(next)); return next; });
   const circuits = useMemo(() => circuitPlan(lights, supplyByID(supplyID)), [lights, supplyID]);
   const cost = kitCost(kit, rates);
   const kitLines = [...kit.units, ...kit.modifiers, ...kit.gels, ...kit.grip, ...kit.stands];
