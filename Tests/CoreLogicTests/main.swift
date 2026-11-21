@@ -1465,6 +1465,10 @@ do {
     check(FrameCheck.unitsInFrame(lens50, lights: [close], plan: nil).map(\.part) == [.unit], "a board filling the frame between its sample rows is seen")
     close.position = PlanPoint(x: 3, z: -1)
     check(FrameCheck.unitsInFrame(lens50, lights: [close], plan: nil).isEmpty, "the same board off to the side is clear")
+    close.position = PlanPoint(x: 0, z: -1)
+    var post = FloorPlan()
+    post.walls = [PlanSegment(kind: .wall, a: PlanPoint(x: -0.05, z: -0.5), b: PlanPoint(x: 0.05, z: -0.5), height: 3, bottom: 0)]
+    check(FrameCheck.unitsInFrame(lens50, lights: [close], plan: post).map(\.part) == [.unit], "a narrow post hiding a board's centre doesn't hide its sides")
     var boom = LightFixture(name: "Boom", kind: .fresnel, position: PlanPoint(x: 3, z: -3), pan: 90)
     boom.height = 2.5; boom.support = .cStand
     check(FrameCheck.unitsInFrame(rig, lights: [boom], plan: nil).isEmpty, "a C-stand beside the frame is clear")

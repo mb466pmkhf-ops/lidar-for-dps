@@ -48,10 +48,11 @@ export function pointInFrame(rig: CameraRig, p: P3): boolean {
 }
 
 /** A flat face (corners in order) against the frame: the part of it the camera sees, clipped to the
- *  frame's edges, as one world point in the middle of that part. Undefined when none of it is in frame.
- *  Catches a board that fills the frame between its sample rows (one close to the lens). */
-export function faceInFrame(rig: CameraRig, corners: P3[]): P3 | undefined {
-  if (!(rig.focalLength > 0) || corners.length < 3) return undefined;
+ *  frame's edges, as world points spread over that part (its middle, and its corners and edge middles
+ *  drawn a little in), so a post or wall hiding one spot doesn't hide the lot. Empty when none of it is
+ *  in frame. Catches a board that fills the frame between its sample rows (one close to the lens). */
+export function faceInFrame(rig: CameraRig, corners: P3[]): P3[] {
+  if (!(rig.focalLength > 0) || corners.length < 3) return [];
   const c = cameraBasis(rig);
   let poly = corners.map(p => toCamera(rig, c, p));
   const planes: ((q: P3) => number)[] = [
@@ -68,14 +69,20 @@ export function faceInFrame(rig: CameraRig, corners: P3[]): P3 | undefined {
       }
     }
     poly = out;
-    if (!poly.length) return undefined;
+    if (!poly.length) return [];
   }
   const m = poly.reduce((s, q) => ({ x: s.x + q.x / poly.length, y: s.y + q.y / poly.length, z: s.z + q.z / poly.length }), { x: 0, y: 0, z: 0 });
-  return {
-    x: rig.position.x + c.right.x * m.x + c.up.x * m.y + c.f.x * m.z,
-    y: rig.height + c.right.y * m.x + c.up.y * m.y + c.f.y * m.z,
-    z: rig.position.z + c.right.z * m.x + c.up.z * m.y + c.f.z * m.z,
-  };
+  const toward = (q: P3, k: number) => ({ x: q.x + (m.x - q.x) * k, y: q.y + (m.y - q.y) * k, z: q.z + (m.z - q.z) * k });
+  const spots = [m];
+  poly.forEach((q, i) => {
+    const b = poly[(i + 1) % poly.length];
+    spots.push(toward(q, 0.1), toward({ x: (q.x + b.x) / 2, y: (q.y + b.y) / 2, z: (q.z + b.z) / 2 }, 0.1));
+  });
+  return spots.map(q => ({
+    x: rig.position.x + c.right.x * q.x + c.up.x * q.y + c.f.x * q.z,
+    y: rig.height + c.right.y * q.x + c.up.y * q.y + c.f.y * q.z,
+    z: rig.position.z + c.right.z * q.x + c.up.z * q.y + c.f.z * q.z,
+  }));
 }
 
 /** A board's face as four corners: its width along the level right, bottom to top along its own up
@@ -175,8 +182,7 @@ export function unitsInFrame(rig: CameraRig, lights: LightFixture[], plan?: Floo
     }
     if (part !== 'unit') {
       const corners = boardCorners(l);
-      const seen = corners && faceInFrame(rig, corners);
-      if (seen && !hiddenByWall(rig, seen, plan)) part = 'unit';
+      if (corners && faceInFrame(rig, corners).some(p => !hiddenByWall(rig, p, plan))) part = 'unit';
     }
     if (part) result.push({ id: l.id, name: l.name, part });
   }

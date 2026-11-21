@@ -44,10 +44,11 @@ enum FrameCheck {
     }
 
     /// A flat face (corners in order) against the frame: the part of it the camera sees, clipped to the
-    /// frame's edges, as one world point in the middle of that part. Nil when none of it is in frame.
-    /// Catches a board that fills the frame between its sample rows (one close to the lens).
-    static func faceInFrame(_ rig: CameraRig, corners: [Point]) -> Point? {
-        guard rig.focalLength > 0, corners.count >= 3 else { return nil }
+    /// frame's edges, as world points spread over that part (its middle, and its corners and edge middles
+    /// drawn a little in), so a post or wall hiding one spot doesn't hide the lot. Empty when none of it is
+    /// in frame. Catches a board that fills the frame between its sample rows (one close to the lens).
+    static func faceInFrame(_ rig: CameraRig, corners: [Point]) -> [Point] {
+        guard rig.focalLength > 0, corners.count >= 3 else { return [] }
         let c = basis(rig)
         var poly = corners.map { toCamera(rig, c, $0) }
         let planes: [(Point) -> Double] = [
@@ -61,11 +62,18 @@ enum FrameCheck {
                 if (da >= 0) != (db >= 0) { out.append(a + (b - a) * (da / (da - db))) }
             }
             poly = out
-            if poly.isEmpty { return nil }
+            if poly.isEmpty { return [] }
         }
         let n = Double(poly.count)
         let m = poly.reduce(Point(x: 0, y: 0, z: 0)) { $0 + $1 * (1 / n) }
-        return Point(x: rig.position.x, y: rig.height, z: rig.position.z) + c.right * m.x + c.up * m.y + c.f * m.z
+        func toward(_ q: Point, _ k: Double) -> Point { q + (m - q) * k }
+        var spots = [m]
+        for i in poly.indices {
+            let q = poly[i], b = poly[(i + 1) % poly.count]
+            spots.append(toward(q, 0.1)); spots.append(toward((q + b) * 0.5, 0.1))
+        }
+        let lens = Point(x: rig.position.x, y: rig.height, z: rig.position.z)
+        return spots.map { lens + c.right * $0.x + c.up * $0.y + c.f * $0.z }
     }
 
     /// A board's face as four corners: its width along the level right, bottom to top along its own up
@@ -159,8 +167,8 @@ enum FrameCheck {
                 if s.part == .unit { part = .unit; break }
                 part = .stand
             }
-            if part != .unit, let corners = boardCorners(l), let seen = faceInFrame(rig, corners: corners),
-               !hiddenByWall(rig, seen, plan: plan) {
+            if part != .unit, let corners = boardCorners(l),
+               faceInFrame(rig, corners: corners).contains(where: { !hiddenByWall(rig, $0, plan: plan) }) {
                 part = .unit
             }
             if let part { result.append(Intrusion(id: l.id, name: l.name, part: part)) }
