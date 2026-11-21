@@ -84,6 +84,8 @@ export type RoomSurfaces = 'off' | 'dark' | 'typical' | 'light';
 export interface ExposureSettings {
   iso: number; frameRate: number; shutterAngle: number; shutterSeconds?: number;
   tStop: number; lensTransmission: number; ndStops: number;
+  /** White balance set on the camera (Kelvin); absent = not set, colour is then judged against 5600 K. */
+  whiteBalance?: number;
 }
 
 export interface SensorFormat { id: string; manufacturer: string; name: string; width: number; height: number }
@@ -93,6 +95,8 @@ export interface CameraRig {
   sensorID: string; customSensor?: SensorFormat; aspect: FrameAspect;
   /** Tripod, dolly… (see model/rigging.ts); absent picks one from the lens height. */
   support?: string;
+  /** This camera's own settings; absent = it shoots at the location's (Location.exposure). */
+  exposure?: ExposureSettings;
   [key: string]: unknown;
 }
 export interface CameraPosition {

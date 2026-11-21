@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location, Project } from '../model/types';
 import type { MeterPoint } from '../model/calculator';
 import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } from '../model/photometrics';
-import { exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
+import { colourSummary } from '../model/colour';
+import { cameraExposure, DEFAULT_WHITE_BALANCE, exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
 import { gripLabel, isGrip } from '../model/grip';
 import { lightSupport, lightSupportInfo } from '../model/rigging';
 import { BATTERY_SIZES, SUPPLIES, amps, circuitPlan, emptyRates, kitCost, kitList, kitText, money, parseRate, parseRates, ratesJSON, runTimeLabel, supplyByID, type KitLine, type Rates } from '../model/kit';
@@ -117,6 +118,10 @@ function rigChanged(a: CameraRig, b: CameraRig): boolean {
     && (a.sensorID !== 'custom' || JSON.stringify(a.customSensor) === JSON.stringify(b.customSensor)));
 }
 const PICTURE_KEY = 'framescan.sheet.picture';
+/** "T2.8 · ISO 800 · 24 fps · 180° (1/48) · 5600 K": the camera settings in one line. */
+const cameraLine = (e: ExposureSettings) => [stopLabel(e.tStop), `ISO ${e.iso}`, `${trim(e.frameRate)} fps`,
+  e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`,
+  e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : '', e.whiteBalance ? `${Math.round(e.whiteBalance)} K` : ''].filter(Boolean).join(' · ');
 
 export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan: framed, diagram, floorPlan, scanID, onClose }: {
   project: Project; location: Location; lights: LightFixture[]; meters: MeterPoint[]; readings: Map<string, number>;
@@ -130,7 +135,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const shots = location.shots.filter(x => inScan(x.scanID)).sort((a, b) => a.number - b.number);
   const title = `${project.name} — ${location.name}${look ? ` · ${look.name}` : ''}`;
   const [copied, setCopied] = useState(false);
-  const camera = [stopLabel(e.tStop), `ISO ${e.iso}`, `${trim(e.frameRate)} fps`, e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`, e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : ''].filter(Boolean).join(' · ');
+  const camera = cameraLine(e);
+  const colour = useMemo(() => new Map(colourSummary(lights, e.whiteBalance ?? DEFAULT_WHITE_BALANCE).rows.map(r => [r.id, r])), [lights, e.whiteBalance]);
   // Which plan picture the sheet shows: the plan as framed on screen, or the clean overhead diagram.
   const [picture, setPicture] = useState<'framed' | 'diagram'>(() => (stored(PICTURE_KEY) === 'diagram' && diagram ? 'diagram' : 'framed'));
   const plan = picture === 'diagram' && diagram ? diagram : framed ?? diagram;
@@ -187,6 +193,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
       toSubject: x.subject ? metres(planDist(x.rig.position, x.subject)) : '',
       seen: inFrameSentence(unitsInFrame(x.rig, units, floorPlan)),
       lit: shotLook?.name ?? (look && !x.lookID ? look.name : ''),
+      settings: x.rig.exposure ? cameraLine(cameraExposure(location, x.rig)) : '',
     };
   });
   return (
@@ -207,7 +214,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         </div>
         <header className="sheet-head">
           <h2>{title}</h2>
-          <p className="mono">{camera}</p>
+          <p className="mono">{shots.some(x => x.rig.exposure) ? 'Location settings: ' : ''}{camera}</p>
           <p className="faint">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}{project.client ? ` · ${project.client}` : ''}</p>
         </header>
         {plan && <img className="sheet-plan" src={plan.url} alt={picture === 'diagram' ? 'Overhead lighting diagram' : 'Lighting plan'} />}
@@ -217,16 +224,17 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
             <thead><tr><th>Shot</th><th>Lens</th><th>Lens height</th><th>To subject</th><th>Lit with</th><th>In frame</th><th>Notes</th></tr></thead>
             <tbody>{shotRows.map(r => <tr key={r.shot.id}>
               <td>{r.name}</td><td className="mono">{r.lens}</td><td className="mono">{r.height}</td><td className="mono">{r.toSubject}</td>
-              <td>{r.lit}</td><td>{r.seen || 'Clear'}</td><td>{r.shot.notes}</td>
+              <td>{r.lit}</td><td>{r.seen || 'Clear'}</td><td>{[r.settings, r.shot.notes].filter(Boolean).join(' · ')}</td>
             </tr>)}</tbody>
           </table>
         </>}
         {shots.length > 0 && !framesRead && <p className="faint sheet-print-hide">Loading the shot frames…</p>}
         {shots.length > 0 && framesRead && !shotRows.some(r => frames.has(r.shot.id)) && <p className="faint sheet-print-hide">Look through a shot in 3D and press Save frame to add its picture here, one page per shot.</p>}
         <h3>Units</h3>
+        {colour.size > 0 && <p className="faint">Colour shows how each unit reads on a camera balanced to {Math.round(e.whiteBalance ?? DEFAULT_WHITE_BALANCE)} K{e.whiteBalance ? '' : ' (no white balance set, so daylight is assumed)'}. Worked out from the settings, not measured.</p>}
         <table className="sheet-table">
           <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th><th>On a {pack} Wh pack</th></tr></thead>
-          <tbody>{lights.map(l => { const r = unitRow(l); return <tr key={l.id}><td>{r.name}</td><td>{r.unit}</td><td>{r.shaping}</td><td className="mono">{r.output}</td><td className="mono">{r.colour}</td><td className="mono">{r.height}</td><td>{r.stand}</td><td className="mono">{packTime(l, pack)}</td></tr>; })}</tbody>
+          <tbody>{lights.map(l => { const r = unitRow(l); return <tr key={l.id}><td>{r.name}</td><td>{r.unit}</td><td>{r.shaping}</td><td className="mono">{r.output}</td><td className="mono">{r.colour}{colour.get(l.id)?.shift && <span className="sheet-sub">{colour.get(l.id)!.shift!.label}</span>}</td><td className="mono">{r.height}</td><td>{r.stand}</td><td className="mono">{packTime(l, pack)}</td></tr>; })}</tbody>
         </table>
         {meters.length > 0 && <>
           <h3>Readings at {stopLabel(e.tStop)}</h3>

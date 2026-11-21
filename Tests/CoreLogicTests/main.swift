@@ -1496,5 +1496,33 @@ do {
           == "Key and Fill are in shot; Back's stand is in shot.", "in-frame sentence")
 }
 
+
+// Colour at the camera's white balance (same figures as web/tests/colour.test.ts).
+do {
+    let t = ColourBalance.shift(kelvin: 3200, whiteBalance: 5600)
+    check(t.tone == .warm && Int(t.mired.rounded()) == 134 && t.label == "reads warm, about ⅞ CTO", "tungsten on a daylight camera reads about ⅞ CTO warm")
+    check(ColourBalance.shift(kelvin: 5600, whiteBalance: 3200).label == "reads cool, about full CTB", "daylight on a tungsten camera reads full CTB cool")
+    check(ColourBalance.shift(kelvin: 5300, whiteBalance: 5600).tone == .match && ColourBalance.shift(kelvin: 5600, whiteBalance: 5600).label == "reads white", "a near match reads white")
+    check(ColourBalance.shift(kelvin: 5000, whiteBalance: 5600).label == "reads warm, about ⅛ CTO", "5000 K on 5600 K is about ⅛ CTO")
+    check(ColourBalance.shift(kelvin: 2000, whiteBalance: 6500).label == "reads warm, about 2× full CTO", "big shifts in whole gels")
+    var off = LightFixture(name: "Off", kind: .fresnel, position: P(2, 0)); off.isOn = false
+    let sum = ColourBalance.summary([LightFixture(name: "Key", kind: .fresnel, position: P(0, 0)), LightFixture(name: "Bounce", kind: .bounce, position: P(1, 0)), off], whiteBalance: 5600)
+    check(sum.rows.map(\.name) == ["Key"] && sum.line.hasPrefix("At 5600 K: 1 "), "colour summary lists only lights that are on and give light")
+
+    // Settings per camera: a rig's own settings win, and they survive a JSON round trip.
+    var loc = Location(name: "L")
+    loc.exposureSettings.iso = 800
+    var rig = CameraRig()
+    check(loc.exposure(for: rig).iso == 800 && loc.exposure(for: nil).iso == 800, "a camera without its own settings uses the location's")
+    var own = ExposureSettings(); own.iso = 1600; own.whiteBalance = 3200
+    rig.exposure = own
+    check(loc.exposure(for: rig).iso == 1600, "a camera's own settings win")
+    let data = try! JSONEncoder().encode(rig)
+    let back = try! JSONDecoder().decode(CameraRig.self, from: data)
+    check(back.exposure?.whiteBalance == 3200 && back.exposure?.iso == 1600, "own settings and white balance round-trip")
+    let old = try! JSONDecoder().decode(CameraRig.self, from: #"{"position":{"x":0,"z":0},"height":1.5,"pan":0,"tilt":0,"focalLength":32,"sensorID":"ff","aspect":"sensor"}"#.data(using: .utf8)!)
+    check(old.exposure == nil, "an older rig without settings still loads")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

@@ -119,6 +119,8 @@ struct CameraRig: Codable, Hashable {
     var aspect: FrameAspect = .sensor
     /// Tripod, dolly…; nil picks one from the lens height (`CameraSupport.automatic`).
     var support: CameraSupport? = nil
+    /// This camera's own settings; nil = it shoots at the location's (`Location.exposureSettings`).
+    var exposure: ExposureSettings? = nil
 
     var sensor: SensorFormat { SensorLibrary.format(id: sensorID, custom: customSensor) }
 

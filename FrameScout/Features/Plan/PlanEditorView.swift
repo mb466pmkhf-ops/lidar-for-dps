@@ -220,6 +220,9 @@ struct PlanEditorView: View {
     @State private var scanID: UUID?
     @State private var tool: PlanTool = .select
     @State private var selection: PlanSelection?
+    /// The camera whose settings the readings use: the last shot or camera picked. It stays while lights
+    /// are worked on, so the readings don't jump between settings.
+    @State private var cameraKey: PlanSelection?
     @State private var layout: PlanLayout = .plan
     @State private var addItem: PlanAddItem = .light("cob-600-d")
     /// Named frame sizes and rags show after "Frames and rags…"; the four basic boards come first.
@@ -283,10 +286,43 @@ struct PlanEditorView: View {
         return store.floorPlan(ref, scanID: scan.id) ?? .empty
     }
     private var display: SceneDisplay { location?.displaySettings ?? SceneDisplay() }
-    private var exposure: ExposureSettings { location?.exposureSettings ?? ExposureSettings() }
-    /// Camera settings for this location: every camera here shares them, and every reading follows them.
+    /// The shot or camera whose settings the readings use, when it is in this scan.
+    private var activeCamera: (name: String, rig: CameraRig)? {
+        guard let location, let key = cameraKey else { return nil }
+        switch key {
+        case .camera(let id):
+            return location.cameraPositions.first { $0.id == id && inScan($0.scanID) }.map { ($0.name, $0.rig) }
+        case .shot(let id):
+            return location.shots.first { $0.id == id && inScan($0.scanID) }.map { ($0.code, $0.rig) }
+        default: return nil
+        }
+    }
+    /// The active camera's own settings when it has them, else the location's.
+    private var exposure: ExposureSettings { location?.exposure(for: activeCamera?.rig) ?? ExposureSettings() }
+    /// Every reading follows these. A camera with its own settings keeps them; the rest share the location's.
     private var exposureBinding: Binding<ExposureSettings> {
-        Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } })
+        Binding(get: { exposure }, set: { v in
+            let key = activeCamera?.rig.exposure != nil ? cameraKey : nil
+            edit { loc in
+                if let key { Self.setRigExposure(&loc, key, v) } else { loc.exposureSettings = v }
+            }
+        })
+    }
+    /// On: the active camera gets its own copy of the location's settings. Off: it goes back to them.
+    private var ownSettingsBinding: Binding<Bool> {
+        Binding(get: { activeCamera?.rig.exposure != nil }, set: { on in
+            guard let key = cameraKey else { return }
+            edit { loc in Self.setRigExposure(&loc, key, on ? loc.exposureSettings : nil) }
+        })
+    }
+    private static func setRigExposure(_ loc: inout Location, _ key: PlanSelection, _ value: ExposureSettings?) {
+        switch key {
+        case .camera(let id):
+            if let i = loc.cameraPositions.firstIndex(where: { $0.id == id }) { loc.cameraPositions[i].rig.exposure = value }
+        case .shot(let id):
+            if let i = loc.shots.firstIndex(where: { $0.id == id }) { loc.shots[i].rig.exposure = value }
+        default: break
+        }
     }
 
     /// iPhone turned sideways with a 3D room to show: the 3D view fills the screen.
@@ -339,7 +375,8 @@ struct PlanEditorView: View {
             KitSheet(lights: kitLights) { showKit = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { shareKitList() } }
         }
         .sheet(isPresented: $showExposure) {
-            ExposureSheet(exposure: Binding(get: { exposure }, set: { v in edit { $0.exposureSettings = v } }))
+            ExposureSheet(exposure: exposureBinding, cameraName: activeCamera?.name,
+                          ownSettings: activeCamera == nil ? nil : ownSettingsBinding, lights: kitLights)
         }
         .sheet(isPresented: $showAlignment) {
             AlignmentSheet(model: scene3D, alignment: Binding(get: { scan?.alignmentValue ?? .identity }, set: { setAlignment($0) }))
@@ -409,7 +446,13 @@ struct PlanEditorView: View {
             if shows3D { load3D() }
         }
         .onChange(of: location) { _, _ in sync3D() }
-        .onChange(of: selection) { _, _ in sync3D() }
+        .onChange(of: selection) { _, s in
+            switch s {
+            case .camera?, .shot?: cameraKey = s
+            default: break
+            }
+            sync3D()
+        }
         .onChange(of: scene3D.loaded) { _, _ in scene3D.showPlanEdits(plan); sync3D() }
         // Changing the camera settings shows what they do: back to the as-shot picture.
         .onChange(of: exposure) { _, _ in look3D = "stop" }

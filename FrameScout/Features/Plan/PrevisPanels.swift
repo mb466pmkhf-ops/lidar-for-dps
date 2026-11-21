@@ -628,16 +628,24 @@ struct ExposureQuickBar: View {
 /// Camera settings that turn lux into stops.
 struct ExposureSheet: View {
     @Binding var exposure: ExposureSettings
+    /// The shot or camera the readings use, when one is picked on the plan.
+    var cameraName: String? = nil
+    /// Whether that camera has its own settings (off = it shares the location's).
+    var ownSettings: Binding<Bool>? = nil
+    /// Units in this scan, for the colour read-out.
+    var lights: [LightFixture] = []
     @AppStorage(ReadingExtra.key) private var readingExtra = ReadingExtra.off
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
+                if let cameraName, let ownSettings { whoseSection(cameraName, ownSettings) }
                 summarySection
                 sensitivitySection
                 shutterSection
                 lensSection
+                colourSection
                 readingsSection
             }
             .fsScreen()
@@ -658,6 +666,47 @@ struct ExposureSheet: View {
             }
         } footer: {
             Text("An incident reading of \(key) on a subject exposes it correctly at these settings. Each doubling of the light is one stop.")
+        }
+    }
+
+    private func whoseSection(_ name: String, _ own: Binding<Bool>) -> some View {
+        Section {
+            Toggle("Own settings for \(name)", isOn: own)
+        } footer: {
+            Text(own.wrappedValue
+                 ? "Changes here apply to \(name) only. Its readings use them while it is the camera picked on the plan."
+                 : "\(name) shoots at the location's settings. Changes here apply to every camera without its own.")
+        }
+    }
+
+    private var whiteBalanceOptions: [Double] {
+        var v = ColourBalance.presets
+        if let wb = exposure.whiteBalance, !v.contains(wb) { v.append(wb); v.sort() }
+        return v
+    }
+
+    private var colourSection: some View {
+        let wb = exposure.whiteBalance ?? ColourBalance.defaultWhiteBalance
+        let summary = ColourBalance.summary(lights, whiteBalance: wb)
+        return Section {
+            Picker("White balance", selection: $exposure.whiteBalance) {
+                Text("Not set").tag(Double?.none)
+                ForEach(whiteBalanceOptions, id: \.self) { v in
+                    Text("\(Int(v)) K").tag(Double?.some(v))
+                }
+            }
+            ForEach(summary.rows) { row in
+                LabeledContent {
+                    Text(row.rgb ? "set by hue" : row.shift?.label ?? "")
+                } label: {
+                    Text(row.name)
+                    Text(row.rgb ? "RGB colour" : "\(Int((row.kelvin ?? 0).rounded())) K").font(.fsMono)
+                }
+            }
+        } header: {
+            Text("Colour")
+        } footer: {
+            Text("\(summary.line). Worked out from each unit's colour temperature, gels and dimming against this white balance\(exposure.whiteBalance == nil ? " (none set, so daylight is assumed)" : ""), so it is an estimate.")
         }
     }
 
