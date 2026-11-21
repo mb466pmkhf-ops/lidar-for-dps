@@ -28,6 +28,8 @@ struct ScoutReportData {
         case .viewfinder: return 0
         case .camera, .library: return 1
         case .scan: return 2
+        // Renders of the plan come after the real location's photos.
+        case .previs: return 3
         }
     }
 }

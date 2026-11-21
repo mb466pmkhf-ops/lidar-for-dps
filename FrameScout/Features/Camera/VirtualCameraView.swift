@@ -18,6 +18,8 @@ struct VirtualCameraView: View {
     @State private var rigLightsOn = true
     /// Same picture choice as the plan's 3D view: "stop" as shot at the camera settings, "fit" fitted.
     @AppStorage("framescan.3d.look") private var look3D = "stop"
+    /// Shown for a moment after a frame is saved onto a shot.
+    @State private var savedNote = ""
 
     private var location: Location? { store.location(ref) }
 
@@ -205,6 +207,15 @@ struct VirtualCameraView: View {
         VStack(spacing: 8) {
             if let vp = selected {
                 LensPicker(focalLength: Binding(get: { vp.rig.focalLength }, set: { v in update(vp) { $0.focalLength = v } }), sensor: vp.rig.sensor, aspect: vp.rig.aspect)
+                if vp.kind == .shot {
+                    HStack {
+                        Button { saveFrame(vp) } label: { Label("Save frame to \(vp.label)", systemImage: "photo.badge.plus") }
+                            .font(.fsCaptionStrong)
+                            .accessibilityHint("Saves this view as the shot's picture. A render of the plan, not a photograph.")
+                        Spacer()
+                        if !savedNote.isEmpty { Text(savedNote).font(.fsCaption).foregroundStyle(Theme.textSecondary) }
+                    }
+                }
                 HStack(spacing: 14) {
                     compactSlider("H", value: vp.rig.height, range: 0.1...4, format: { UnitsFormatter.distance($0) }) { v in update(vp) { $0.height = v } }
                     compactSlider("Pan", value: vp.rig.pan, range: 0...360, format: { String(format: "%.0f°", $0) }) { v in update(vp) { $0.pan = v } }
@@ -234,6 +245,21 @@ struct VirtualCameraView: View {
             }
             Slider(value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: set), in: range)
         }
+    }
+
+    /// Saves what the look-through shows as the shot's picture (a previs frame, kept with the location's
+    /// photos on this iPhone and on the shot list and print sheet).
+    private func saveFrame(_ vp: VirtualViewpoint) {
+        guard let image = model.lookSnapshot(), let jpeg = image.jpegData(compressionQuality: 0.85) else {
+            savedNote = "Couldn't capture the view"; return
+        }
+        guard let photo = store.addPhoto(jpeg, to: ref, source: .previs, caption: "\(vp.label) · previs frame",
+                                         lensDescription: "Previs render · \(vp.rig.lensSummary)") else { savedNote = "Couldn't save"; return }
+        store.updateLocation(ref) { loc in
+            if let i = loc.shots.firstIndex(where: { $0.id == vp.id }) { loc.shots[i].photoID = photo.id }
+        }
+        savedNote = "Saved to \(vp.label)"
+        Task { try? await Task.sleep(for: .seconds(2.5)); savedNote = "" }
     }
 
     private func update(_ vp: VirtualViewpoint, _ mutate: @escaping (inout CameraRig) -> Void) {

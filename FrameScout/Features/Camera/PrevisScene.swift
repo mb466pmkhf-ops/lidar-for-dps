@@ -697,6 +697,15 @@ final class VirtualSceneModel: ObservableObject {
 
     func attach(_ view: SCNView) { orbitView = view }
 
+    /// The view looking through a camera or shot, for saving its frame.
+    private(set) weak var lookView: SCNView?
+    func attachLook(_ view: SCNView) { lookView = view }
+    /// What the look-through shows right now, at the view's size. Nil before it is on screen.
+    func lookSnapshot() -> UIImage? {
+        guard let v = lookView, v.bounds.width > 0 else { return nil }
+        return v.snapshot()
+    }
+
     /// Three-quarter view over the whole room.
     func resetView() {
         setOrbit(target: worldPoint(roomCentre), yaw: 0.6, pitch: 0.75, distance: roomSpan * 1.35, animated: true)
@@ -1412,7 +1421,7 @@ struct SceneKitContainer: UIViewRepresentable {
         view.autoenablesDefaultLighting = false
         view.pointOfView = orbit ? model.orbitCameraNode : model.cameraNode
         view.allowsCameraControl = false
-        if orbit { model.attach(view) }
+        if orbit { model.attach(view) } else { model.attachLook(view) }
         let c = context.coordinator
         c.view = view
         if !orbit { model.wallFader.restore() }
