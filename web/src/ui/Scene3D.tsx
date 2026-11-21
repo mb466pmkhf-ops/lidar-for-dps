@@ -934,7 +934,10 @@ export function Scene3D(p: Props) {
     if (!eye?.rig || !api.current) return;
     const [kind, id] = eye.key.split(':');
     const now = kind === 'shot' ? p.location.shots.find(s => s.id === id)?.rig : kind === 'camera' ? p.location.cameraPositions.find(c => c.id === id)?.rig : undefined;
-    if (now && JSON.stringify(now) !== JSON.stringify(eye.rig)) eyeLevel(eye.key);
+    if (!now) {
+      // The camera was deleted: stop looking through it, so its own settings stop driving the view.
+      setEye(undefined); api.current.camera.fov = DEFAULT_FOV; api.current.camera.updateProjectionMatrix();
+    } else if (JSON.stringify(now) !== JSON.stringify(eye.rig)) eyeLevel(eye.key);
   }, [p.location, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   // Saves what the frame lines show as this shot's previs frame. The picture is read straight after a
   // fresh render, so the WebGL buffer doesn't need preserveDrawingBuffer. The DOM overlays (tags, frame
