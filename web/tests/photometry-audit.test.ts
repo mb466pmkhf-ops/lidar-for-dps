@@ -223,9 +223,8 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
     expect(gridded / bare).toBeCloseTo(0.8, 6);
     // …and never sends more light off axis than the bare panel.
     for (const deg of [10, 20, 30, 45, 60]) {
-      const t = deg * Math.PI / 180;
-      expect(relativeIntensity(gridded_.distribution, t, gridded_.beamAngle) * gridded)
-        .toBeLessThanOrEqual(relativeIntensity(bare_.distribution, t, bare_.beamAngle) * bare + 1e-9);
+      expect(relativeIntensity(gridded_.distribution, deg, gridded_.beamAngle) * gridded)
+        .toBeLessThanOrEqual(relativeIntensity(bare_.distribution, deg, bare_.beamAngle) * bare + 1e-9);
     }
   });
 
