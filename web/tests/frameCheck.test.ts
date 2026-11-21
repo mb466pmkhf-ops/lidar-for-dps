@@ -39,6 +39,9 @@ describe('frame check (units and stands in shot)', () => {
     const board = { ...light('Neg', 0, -1, 2, 'negative'), width: 1.2, boardHeight: 2.4, support: 'none' as const };
     expect(unitsInFrame(lens50, [board]).map(i => i.part)).toEqual(['unit']);
     expect(unitsInFrame(lens50, [{ ...board, position: { x: 3, z: -1 } }])).toEqual([]);
+    // A narrow post in the middle hides the centre, not the sides.
+    const post = { walls: [{ id: 'p', kind: 'wall', a: { x: -0.05, z: -0.5 }, b: { x: 0.05, z: -0.5 }, height: 3, bottom: 0, isOpen: false }] } as unknown as FloorPlan;
+    expect(unitsInFrame(lens50, [board], post).map(i => i.part)).toEqual(['unit']);
   });
   it("sees a MegaBoom's column behind the head", () => {
     const boom = { ...newLight('fresnel', { x: 3, z: -3 }, 90), name: 'Boom', height: 2.5 };
