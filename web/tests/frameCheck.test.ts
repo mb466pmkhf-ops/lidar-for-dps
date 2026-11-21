@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { demoBundle } from '../src/model/demo';
-import { inFrameSentence, unitsInFrame } from '../src/model/frameCheck';
+import { inFrameSentence, samplePoints, unitsInFrame } from '../src/model/frameCheck';
+import { applyProfile, profileByID } from '../src/model/photometrics';
 import { newLight } from '../src/model/factory';
 import type { CameraRig, FloorPlan, LightFixture, LightKind } from '../src/model/types';
 
@@ -43,6 +44,12 @@ describe('frame check (units and stands in shot)', () => {
     const boom = { ...newLight('fresnel', { x: 3, z: -3 }, 90), name: 'Boom', height: 2.5 };
     expect(unitsInFrame(rig, [{ ...boom, support: 'cStand' as const }])).toEqual([]);
     expect(unitsInFrame(rig, [{ ...boom, support: 'megaBoom' as const }]).map(i => i.part)).toEqual(['stand']);
+  });
+  it("puts a softbox's front where the 3D view draws it: further out on an HMI than on a COB", () => {
+    const reach = (l: LightFixture) => Math.max(...samplePoints(l).filter(s => s.part === 'unit').map(s => s.p.x - l.position.x));
+    const at = (id: string) => ({ ...applyProfile(newLight('softbox', { x: 0, z: 0 }, 90), profileByID(id)!), modifierID: 'softbox-150', tilt: 0 });
+    expect(reach(at('hmi-1800-par'))).toBeCloseTo(0.07 + 0.75, 6);
+    expect(reach(at('cob-1200-d'))).toBeCloseTo(0.03 + 0.75, 6);
   });
   it("sees a softbox's front when the head is out of frame", () => {
     const box = { ...newLight('softbox', { x: 1.9, z: -3 }, 270), name: 'Box', height: 1.5, support: 'none' as const };

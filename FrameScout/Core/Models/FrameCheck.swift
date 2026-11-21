@@ -113,12 +113,14 @@ enum FrameCheck {
                 for dx in (half > 0.05 ? [-half, 0, half] : [0]) where du != 0 { out.append((.unit, head(dx) + up * du)) }
             }
         } else if let mod = FixtureLibrary.modifier(id: l.modifierID), mod.id.hasPrefix("softbox") {
-            // Same face as the 3D view: radius size/2, its depth (size/2) plus the mount ahead of the head.
+            // Same face as the 3D view: radius size/2, its depth (size/2) plus the mount ahead of the head,
+            // which sits further out on a fresnel, HMI or tungsten body than on a COB.
             let size = mod.size ?? 0.9, r = size / 2
             let axis = LightingCalculator.direction(bearing: l.pan, tilt: l.tilt)
             let right = LightingCalculator.direction(bearing: l.pan + 90, tilt: 0)
             let up = right.cross(axis)
-            let face = head(0) + axis * (0.03 + size * 0.5)
+            let mount = [.hmi, .fresnel, .tungsten].contains(l.profile.category) ? 0.07 : 0.03
+            let face = head(0) + axis * (mount + size * 0.5)
             out.append((.unit, face))
             for (a, b) in [(1.0, 0.0), (-1, 0), (0, 1), (0, -1)] { out.append((.unit, face + right * (a * r) + up * (b * r))) }
         }

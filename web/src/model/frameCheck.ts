@@ -7,7 +7,7 @@ import { direction, intersect, unitBearing } from './calculator';
 import { imageArea } from './camera';
 import { gripStandCount, lightSupport } from './rigging';
 import { gripSpan, isGrip } from './grip';
-import { modifierByID } from './photometrics';
+import { fixtureProfile, modifierByID } from './photometrics';
 
 export type FramePart = 'unit' | 'stand';
 export interface FrameIntrusion { id: string; name: string; part: FramePart }
@@ -127,11 +127,13 @@ export function samplePoints(l: LightFixture): { part: FramePart; p: P3 }[] {
   } else {
     const mod = modifierByID(l.modifierID);
     if (mod?.id.startsWith('softbox')) {
-      // Same face as the 3D view: radius size/2, its depth (size/2) plus the mount ahead of the head.
+      // Same face as the 3D view: radius size/2, its depth (size/2) plus the mount ahead of the head,
+      // which sits further out on a fresnel, HMI or tungsten body than on a COB.
       const size = mod.size ?? 0.9, r = size / 2;
       const axis = direction(l.pan, l.tilt), right = direction(l.pan + 90, 0);
       const up = { x: right.y * axis.z - right.z * axis.y, y: right.z * axis.x - right.x * axis.z, z: right.x * axis.y - right.y * axis.x };
-      const face = along(head(0), axis, 0.03 + size * 0.5);
+      const mount = ['hmi', 'fresnel', 'tungsten'].includes(fixtureProfile(l).category) ? 0.07 : 0.03;
+      const face = along(head(0), axis, mount + size * 0.5);
       out.push({ part: 'unit', p: face });
       for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) out.push({ part: 'unit', p: along(along(face, right, a * r), up, b * r) });
     }
