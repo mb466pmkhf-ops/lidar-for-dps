@@ -390,10 +390,6 @@ final class WallFader {
     }
 }
 
-/// The 3D scene for a location: the scan (or geometry built from its plan) plus everything placed
-/// on the plan. Scan, cameras, lights and people sit under one `world` node, so a levelling or
-/// alignment correction moves them together and they stay where they are in the room.
-@MainActor
 /// Tint a frame gel puts on the cloth, so a gelled frame reads at a glance. Drawing only.
 private func gelTint(_ f: LightFilter) -> UIColor? {
     let id = f.id
@@ -406,6 +402,10 @@ private func gelTint(_ f: LightFilter) -> UIColor? {
     return nil
 }
 
+/// The 3D scene for a location: the scan (or geometry built from its plan) plus everything placed
+/// on the plan. Scan, cameras, lights and people sit under one `world` node, so a levelling or
+/// alignment correction moves them together and they stay where they are in the room.
+@MainActor
 final class VirtualSceneModel: ObservableObject {
     @Published var loaded = false
     @Published var error: String?

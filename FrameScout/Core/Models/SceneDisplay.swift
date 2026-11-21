@@ -32,7 +32,7 @@ struct SceneDisplay: Codable, Hashable {
     var wallOpacityValue: Double { wallOpacity ?? 1 }
     var luxMapOn: Bool { showLuxMap ?? false }
     var roomSurfacesValue: RoomSurfaces { roomSurfaces.flatMap(RoomSurfaces.init(rawValue:)) ?? .typical }
-    var hazeValue: HazeLevel { haze.flatMap(HazeLevel.init(rawValue:)) ?? .none }
+    var hazeValue: HazeLevel { haze.flatMap(HazeLevel.init(rawValue:)) ?? HazeLevel.none }
 
     func isHidden(item key: String) -> Bool { hiddenItems?.contains(key) ?? false }
     func isHidden(group: SceneGroup) -> Bool { hiddenGroups?.contains(group.rawValue) ?? false }
