@@ -205,6 +205,11 @@ struct CameraRigForm: View {
     var subjectDistance: Double? = nil
     var clearances: PlanGeometry.Clearances? = nil
     var ceilingHeight: Double? = nil
+    /// A shot's subject mark and height: focus sits on their eyes unless a distance is set.
+    var subject: PlanPoint? = nil
+    var subjectHeight: Double? = nil
+    /// The stop this camera shoots at (its own settings, else the location's), for the depth of field.
+    var tStop: Double? = nil
 
     var body: some View {
         Section("Lens") {
@@ -221,6 +226,23 @@ struct CameraRigForm: View {
             }
             .pickerStyle(.segmented)
             FOVReadout(rig: rig)
+        }
+
+        Section("Focus") {
+            if let f = DepthOfField.focus(rig, subject: subject, subjectHeight: subjectHeight) {
+                SliderRow(title: f.from == .subject ? "Focus · on the subject's eyes" : "Focus",
+                          value: Binding(get: { f.metres }, set: { rig.focusDistance = $0 }),
+                          range: DepthOfField.minFocus...max(20, f.metres), step: 0.05, format: { UnitsFormatter.distance($0) })
+                if let tStop {
+                    Text("\(DepthOfField.label(DepthOfField.limits(rig, tStop: tStop, focusM: f.metres), length: { UnitsFormatter.distance($0) })) at \(ExposureSettings.stopLabel(tStop)). Estimate: T-stop taken as f-stop, circle of confusion \(String(format: "%.3f", DepthOfField.circleOfConfusion(rig))) mm (frame diagonal ÷ 1500). Shown as blur in the 3D camera view.")
+                        .font(.fsCaption).foregroundStyle(Theme.textSecondary)
+                }
+                if f.from == .set {
+                    Button(subject != nil ? "Focus on the subject" : "Clear focus") { rig.focusDistance = nil }
+                }
+            } else {
+                Button("Set a focus distance") { rig.focusDistance = 3 }
+            }
         }
 
         Section("Placement") {

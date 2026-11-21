@@ -128,6 +128,8 @@ struct CameraRig: Codable, Hashable {
     var support: CameraSupport? = nil
     /// This camera's own settings; nil = it shoots at the location's (`Location.exposureSettings`).
     var exposure: ExposureSettings? = nil
+    /// Where the lens is focused (m from the sensor); nil = on the shot's subject, if it has one (`DepthOfField`).
+    var focusDistance: Double? = nil
 
     var sensor: SensorFormat { SensorLibrary.format(id: sensorID, custom: customSensor) }
 

@@ -1527,5 +1527,28 @@ do {
     check(old.exposure == nil, "an older rig without settings still loads")
 }
 
+do {
+    // Depth of field: a published table gives 50 mm, f/2.8, 3 m, CoC 0.030 → 2.73–3.33 m (same as focus.test.ts).
+    let d = DepthOfField.limits(focalMm: 50, fNumber: 2.8, focusM: 3, cocMm: 0.03)
+    check(abs(d.near - 2.73) < 0.005 && abs(d.far - 3.33) < 0.005 && abs(d.hyperfocal - 29.81) < 0.05, "depth of field matches a published table")
+    check(DepthOfField.limits(focalMm: 24, fNumber: 8, focusM: 10, cocMm: 0.03).far == .infinity, "past the hyperfocal distance it is sharp to infinity")
+    var rig = CameraRig(); rig.focalLength = 50; rig.sensorID = "arri-minilf-og"
+    check(abs(DepthOfField.circleOfConfusion(rig) - 0.0298) < 0.0005, "circle of confusion is the diagonal / 1500")
+    check(abs(DepthOfField.blurDiameter(focalMm: 50, fNumber: 2, focusM: 3, distM: 3)) < 1e-9, "no blur at the focus distance")
+    rig.position = P(0, 0); rig.height = 1.5
+    let s = DepthOfField.focus(rig, subject: P(3, 4), subjectHeight: 1.75)
+    check(s?.from == .subject && abs((s?.metres ?? 0) - (25 + pow(1.75 * 0.94 - 1.5, 2)).squareRoot()) < 1e-9, "focus defaults to the subject's eyes")
+    check(DepthOfField.focus(rig) == nil, "no subject and no focus set: no focus")
+    rig.focusDistance = 0.05
+    check(DepthOfField.focus(rig)?.metres == DepthOfField.minFocus, "focus never closer than the minimum")
+    check(DepthOfField.label(d) == "Focus 3.0 m · sharp 2.7 m–3.3 m", "the label reads like the desktop's")
+    let back = try! JSONDecoder().decode(CameraRig.self, from: try! JSONEncoder().encode(rig))
+    check(back.focusDistance == 0.05, "focus distance round-trips")
+    var display = SceneDisplay(); display.haze = "heavy"
+    check(display.hazeValue == .heavy && SceneDisplay().hazeValue == .none, "haze level reads back, none by default")
+    display.haze = "fog machine"
+    check(display.hazeValue == .none, "an unknown haze level is no haze")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

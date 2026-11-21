@@ -235,7 +235,9 @@ struct ShotEditorSheet: View {
                     ShotFields(shot: shot, ref: ref, update: update)
                     CameraRigForm(rig: Binding(get: { shot.rig }, set: { v in update { $0.rig = v } }),
                                   subjectDistance: shot.subjectDistance,
-                                  ceilingHeight: store.location(ref)?.primaryScan?.stats.ceilingHeight)
+                                  ceilingHeight: store.location(ref)?.primaryScan?.stats.ceilingHeight,
+                                  subject: shot.subject, subjectHeight: shot.subjectHeight,
+                                  tStop: store.location(ref)?.exposure(for: shot.rig).tStop)
                 }
             }
             .fsScreen()

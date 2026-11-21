@@ -92,6 +92,10 @@ ExportService ──► location/project package folder ──► ZipWriter ─�
   location; a shot or camera can carry its own (`CameraRig.exposure`), and readings use the last camera picked.
 - `Core/Models/ColourBalance.swift` (web `model/colour.ts`) — how each unit's colour reads at the camera's white
   balance, in CTO/CTB terms (estimate from the settings).
+- `Core/Models/DepthOfField.swift` (web `model/focus.ts`) — focus distance (`CameraRig.focusDistance`, else the shot
+  subject's eyes), thin-lens near/far limits with CoC = frame diagonal ÷ 1500, and the haze levels (`SceneDisplay.haze`).
+  The 3D look-through blurs by the blur-circle size (web `ui/scene3d/dof.ts`, iPhone SceneKit's physical DOF) and haze
+  adds beams plus an even veil. All estimates: the T-stop stands in for the f-stop.
 - `Core/Models/LightingSetups.swift` — one-tap starting setups round a person (three-point, soft side, soft front):
   units placed relative to the camera inside the walls, the smallest suitable fixture picked and its output solved
   for the camera's key level (fill and back by stop ratios).

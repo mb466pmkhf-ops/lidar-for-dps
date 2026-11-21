@@ -5,6 +5,7 @@ import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location, Pr
 import type { MeterPoint } from '../model/calculator';
 import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } from '../model/photometrics';
 import { colourSummary } from '../model/colour';
+import { depthOfFieldFor, focusFor, focusLabel } from '../model/focus';
 import { cameraExposure, DEFAULT_WHITE_BALANCE, exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
 import { gripLabel, isGrip } from '../model/grip';
 import { lightSupport, lightSupportInfo } from '../model/rigging';
@@ -109,14 +110,14 @@ function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rate
 
 type Picture = { url: string; w: number; h: number };
 
-/** Whether a shot's camera has moved, changed lens or changed its own settings since a frame of it was saved. */
+/** Whether a shot's camera has moved, changed lens, focus or its own settings since a frame of it was saved. */
 function rigChanged(a: CameraRig, b: CameraRig): boolean {
   const near = (x: number, y: number, tol: number) => Math.abs(x - y) <= tol;
   return !(near(a.position.x, b.position.x, 0.02) && near(a.position.z, b.position.z, 0.02) && near(a.height, b.height, 0.02)
     && near(a.pan, b.pan, 0.5) && near(a.tilt, b.tilt, 0.5) && near(a.focalLength, b.focalLength, 0.5)
     && a.sensorID === b.sensorID && a.aspect === b.aspect
     && (a.sensorID !== 'custom' || JSON.stringify(a.customSensor) === JSON.stringify(b.customSensor))
-    && JSON.stringify(a.exposure ?? null) === JSON.stringify(b.exposure ?? null));
+    && JSON.stringify(a.exposure ?? null) === JSON.stringify(b.exposure ?? null) && (a.focusDistance ?? null) === (b.focusDistance ?? null));
 }
 const PICTURE_KEY = 'framescan.sheet.picture';
 /** "T2.8 · ISO 800 · 24 fps · 180° (1/48) · 5600 K": the camera settings in one line. */
@@ -205,6 +206,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
       seen: inFrameSentence(unitsInFrame(x.rig, units, floorPlan)),
       lit: shotLook?.name ?? (look && !x.lookID ? look.name : ''),
       settings: x.rig.exposure ? shotSettings(cameraExposure(location, x.rig), units) : '',
+      focus: (() => { const f = focusFor(x.rig, x.subject, x.subjectHeight); return f ? `${focusLabel(depthOfFieldFor(x.rig, cameraExposure(location, x.rig).tStop, f.metres), metres)} (estimate)` : ''; })(),
     };
   });
   return (
@@ -301,6 +303,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
                 <span className="mono">Previs render, not a photograph · {f.lens} · saved {new Date(f.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
                 {f.rig && rigChanged(f.rig, r.shot.rig) && <span><strong>The shot has changed since this frame was saved.</strong> The details below are the shot as it is now; save the frame again to match.</span>}
                 <span className="mono">{r.lens} · lens at {r.height}{r.toSubject ? ` · ${r.toSubject} to subject` : ''}</span>
+                {r.focus && <span className="mono">{r.focus}</span>}
                 {r.lit && <span>Lit with {r.lit}</span>}
                 <span>{r.seen || 'No units or grip in frame (estimate).'}</span>
                 {r.shot.notes && <span>{r.shot.notes}</span>}
