@@ -84,26 +84,21 @@ enum SampleProject {
         func aimed(_ name: String, _ kind: LightKind, _ at: PlanPoint, to target: PlanPoint) -> LightFixture {
             LightFixture(name: name, kind: kind, position: at, pan: PlanGeometry.bearing(from: at, to: target), scanID: scanID)
         }
-        // Fixture types from the library, so readings and draw come from the photometric model.
-        var key = aimed("Key", .softbox, P(-1.2, 0.2), to: sofa)
-        key.apply(profile: FixtureLibrary.profile(id: "cob-600-d")!)
-        key.modifierID = "softbox-90-grid"; key.role = .key; key.height = 2.1; key.tilt = -25; key.dimmer = 0.7
-        var fill = aimed("Fill", .ledPanel, P(2.2, -0.6), to: sofa)
+        // Fixture types from the library, so readings and draw come from the photometric model. Lit for
+        // both shots with nothing in frame (persona audit 2026-11-21): a big soft key from the window side,
+        // fill from beside the single's camera, a bounce behind the wide camera, the lamp as a practical.
+        var key = aimed("Key", .softbox, P(-1.4, -2.05), to: P(0.0, 1.8))
+        key.apply(profile: FixtureLibrary.profile(id: "cob-1200-d")!)
+        key.modifierID = "softbox-150"; key.role = .key; key.height = 2.3; key.tilt = -15; key.dimmer = 0.45
+        var fill = aimed("Fill", .ledPanel, P(2.4, -1.8), to: sofa)
         fill.apply(profile: FixtureLibrary.profile(id: "panel-1x1-bi")!)
-        fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.8; fill.tilt = -15
-        // Behind the sofa, so it rims Maya without reaching her face.
-        var back = aimed("Back", .fresnel, P(-0.9, 2.25), to: P(0.0, 1.8))
-        back.apply(profile: FixtureLibrary.profile(id: "fresnel-led-200-bi")!)
-        back.role = .back; back.height = 2.4; back.tilt = -50; back.beamAngle = 30; back.dimmer = 0.4
-        back.barnDoors = BarnDoors(top: 12, bottom: 90, left: 90, right: 10)
-        var bounce = aimed("Bounce", .bounce, P(1.7, 1.0), to: sofa)
+        fill.role = .fill; fill.colorTemperature = 4300; fill.dimmer = 0.3; fill.height = 1.6; fill.tilt = -10
+        var bounce = aimed("Bounce", .bounce, P(-2.65, -0.3), to: sofa)
         bounce.width = 1.2
-        var neg = aimed("Neg", .negative, P(-1.4, 2.0), to: sofa)
-        neg.width = 1.2
         var lamp = aimed("Lamp", .practical, P(2.6, 1.9), to: sofa)
         lamp.apply(profile: FixtureLibrary.profile(id: "bulb-tungsten-100")!)
         lamp.role = .practical; lamp.height = 1.4
-        location.lightFixtures = [key, fill, back, bounce, neg, lamp]
+        location.lightFixtures = [key, fill, bounce, lamp]
         var maya = PrevisCharacter(name: "Maya", type: .woman, position: P(0.0, 1.8), facing: 330, scanID: scanID)
         maya.posture = .sitting; maya.skinTone = .tone4
         var leo = PrevisCharacter(name: "Leo", type: .boy, position: P(0.9, 1.8), facing: 340, scanID: scanID)

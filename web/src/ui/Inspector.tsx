@@ -1,5 +1,6 @@
 // Right-hand panel. Simple things first (output, colour, where it's aimed, what it gives at each
 // meter), the rest under "More". Same labels as the phone so a crew sees one tool.
+import { inFrameSentence, unitsInFrame } from '../model/frameCheck';
 import { CAMERA_SUPPORTS, LIGHT_SUPPORTS, automaticCameraSupport, automaticLightSupport, cameraSupportInfo, cameraSupportWarning, lightSupportInfo, lightSupportWarning } from '../model/rigging';
 import { useState, type ReactNode } from 'react';
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, LightMeter, LightRole, Location, PlanObject, PlanSegment, PrevisCharacter, RoomSurfaces, ScanRecord } from '../model/types';
@@ -658,6 +659,7 @@ function CameraInspector(p: InspectorProps) {
               onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, name: e.target.value } : x)) }), false)} /></div>
           : <div style={{ fontSize: 18, fontWeight: 400 }}>{title}</div>}
         <p className="mono muted">{focalNumber(rig.focalLength)}mm · {Math.round(horizontalFOV(rig))}° horizontal · {stopLabel(p.exposure.tStop)} · ISO {p.exposure.iso}</p>
+        <FrameClear rig={rig} lights={p.lights} plan={p.plan} />
         <div className="actions" style={{ marginTop: 12 }}>
           {p.lookThrough && <button className="btn small primary" onClick={() => p.lookThrough!(s)} title="Open the 3D view through this camera's lens, with its frame lines"><Icon name="camera" /> Look through it</button>}
           {cam && <button className="btn small danger" onClick={remove}><Icon name="trash" /> Delete</button>}
@@ -706,6 +708,13 @@ function CameraInspector(p: InspectorProps) {
       </Panel>
     </div>
   );
+}
+
+/** Whether any unit, board or stand shows in this camera's frame (frameCheck.ts). */
+function FrameClear({ rig, lights, plan }: { rig: CameraRig; lights: LightFixture[]; plan?: FloorPlan }) {
+  const seen = unitsInFrame(rig, lights, plan);
+  if (!seen.length) return <p className="note">Frame clear: no units or stands in shot.</p>;
+  return <p className="note attention" role="status">{inFrameSentence(seen)} Move them, rig them or turn the camera. Checked from the plan; set pieces in the way aren't counted.</p>;
 }
 
 /** "Things to know" about a fixture type or recording format, collapsed by default. */

@@ -189,7 +189,7 @@ export function App() {
           <Icon name={night ? 'sun' : 'moon'} /> <span className="txt">{night ? 'Day' : 'Night'}</span>
         </button>
         <button className="sync" onClick={() => setSyncOpen(true)} title={workspace.saveError ?? (workspace.state.kind === 'error' ? workspace.state.message : 'Sync settings')} aria-label={sync.text}>
-          <span className={'dot ' + sync.dot} /> <span className="sync-txt">{sync.text}</span>
+          {sync.dot ? <span className={'dot ' + sync.dot} /> : <span className="sync-icon" aria-hidden="true"><Icon name="cloud" /></span>} <span className="sync-txt">{sync.text}</span>
         </button>
       </header>
       {view === 'home' ? (

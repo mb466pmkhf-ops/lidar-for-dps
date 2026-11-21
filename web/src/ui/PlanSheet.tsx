@@ -1,7 +1,7 @@
 // The hand-off sheet: the plan as framed on screen, every unit with its settings, the readings,
 // the kit list and the estimated power, on one printable page. Print saves it as a PDF too.
 import { useMemo, useState } from 'react';
-import type { ExposureSettings, LightFixture, Location, Project } from '../model/types';
+import type { ExposureSettings, FloorPlan, LightFixture, Location, Project } from '../model/types';
 import type { MeterPoint } from '../model/calculator';
 import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } from '../model/photometrics';
 import { exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
@@ -10,7 +10,11 @@ import { lightSupport, lightSupportInfo } from '../model/rigging';
 import { amps, kitList, kitText, type KitLine } from '../model/kit';
 import { metres, pct, reading as fmtReading, watts } from './format';
 import { Icon } from './icons';
-import { activeLook } from '../model/looks';
+import { activeLook, looksOf } from '../model/looks';
+import { horizontalFOV, sensorFor } from '../model/camera';
+import { focalNumber } from '../model/lenses';
+import { planDist } from '../model/calculator';
+import { inFrameSentence, unitsInFrame } from '../model/frameCheck';
 import { useModal } from './useModal';
 
 /** The on-screen plan as a standalone SVG, with the day-theme colours written in so it prints light. */
@@ -54,12 +58,16 @@ const Lines = ({ title, lines }: { title: string; lines: KitLine[] }) => lines.l
   <div className="sheet-kit"><h4>{title}</h4><ul>{lines.map(l => <li key={l.item}><span className="mono">{l.qty} ×</span> {l.item}</li>)}</ul></div>
 ) : null;
 
-export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan, onClose }: {
+export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan, floorPlan, scanID, onClose }: {
   project: Project; location: Location; lights: LightFixture[]; meters: MeterPoint[]; readings: Map<string, number>;
-  exposure: ExposureSettings; plan?: { url: string; w: number; h: number }; onClose(): void;
+  exposure: ExposureSettings; plan?: { url: string; w: number; h: number }; floorPlan?: FloorPlan; scanID?: string; onClose(): void;
 }) {
   const kit = useMemo(() => kitList(lights), [lights]);
-  const look = activeLook(location, location.primaryScanID ?? location.scans[location.scans.length - 1]?.id);
+  const scan = scanID ?? location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
+  const look = activeLook(location, scan);
+  const looks = looksOf(location, scan);
+  const inScan = (id?: string) => !id || !scan || id.toUpperCase() === scan.toUpperCase();
+  const shots = location.shots.filter(x => inScan(x.scanID)).sort((a, b) => a.number - b.number);
   const title = `${project.name} — ${location.name}${look ? ` · ${look.name}` : ''}`;
   const [copied, setCopied] = useState(false);
   const camera = [stopLabel(e.tStop), `ISO ${e.iso}`, `${trim(e.frameRate)} fps`, e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`, e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : ''].filter(Boolean).join(' · ');
@@ -91,6 +99,29 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
           <p className="faint">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}{project.client ? ` · ${project.client}` : ''}</p>
         </header>
         {plan && <img className="sheet-plan" src={plan.url} alt="Lighting plan" />}
+        {shots.length > 0 && <>
+          <h3>Shots</h3>
+          <table className="sheet-table">
+            <thead><tr><th>Shot</th><th>Lens</th><th>Lens height</th><th>To subject</th><th>Lit with</th><th>In frame</th><th>Notes</th></tr></thead>
+            <tbody>{shots.map(x => {
+              // A shot lit with another saved look is checked against that look's units; the active look
+              // (or none) uses the live units so unsaved changes show.
+              const shotLook = x.lookID ? looks.find(l => l.id.toUpperCase() === x.lookID!.toUpperCase()) : undefined;
+              const units = shotLook && shotLook !== look ? shotLook.lights.filter(l => inScan(l.scanID)) : lights;
+              const seen = inFrameSentence(unitsInFrame(x.rig, units, floorPlan));
+              const lit = shotLook?.name ?? (look && !x.lookID ? look.name : '');
+              return <tr key={x.id}>
+                <td>{`Shot ${String(x.number).padStart(2, '0')}`}{x.title ? ` · ${x.title}` : ''}</td>
+                <td className="mono">{focalNumber(x.rig.focalLength)}mm · {Math.round(horizontalFOV(x.rig))}° · {sensorFor(x.rig).name}</td>
+                <td className="mono">{metres(x.rig.height)}{x.rig.tilt ? ` · tilt ${x.rig.tilt > 0 ? '+' : ''}${Math.round(x.rig.tilt)}°` : ''}</td>
+                <td className="mono">{x.subject ? metres(planDist(x.rig.position, x.subject)) : ''}</td>
+                <td>{lit}</td>
+                <td>{seen || 'Clear'}</td>
+                <td>{x.notes}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </>}
         <h3>Units</h3>
         <table className="sheet-table">
           <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th></tr></thead>

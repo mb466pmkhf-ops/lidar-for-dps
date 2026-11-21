@@ -160,7 +160,10 @@ struct Shot: Identifiable, Codable, Hashable {
     /// The named look this shot is lit with (see `Looks.swift`).
     var lookID: UUID? = nil
 
-    var code: String { String(format: "SHOT %02d", number) }
+    /// "Shot 01", as people read it (LOOK.md: no all-capitals).
+    var code: String { String(format: "Shot %02d", number) }
+    /// "SHOT_01": the name exports have always used for this shot's camera (Unreal, CSV, JSON).
+    var exportCode: String { String(format: "SHOT_%02d", number) }
 
     var subjectDistance: Double? { subject.map { rig.position.distance(to: $0) } }
 }

@@ -52,6 +52,17 @@ struct VirtualCameraView: View {
                             .foregroundStyle(Theme.accent)
                             .padding(6)
                     }
+                    .overlay(alignment: .bottomTrailing) {
+                        let warning = inShot(vp)
+                        if !warning.isEmpty {
+                            Text(warning)
+                                .font(.fsCaptionStrong)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.cornerSmall))
+                                .padding(6)
+                        }
+                    }
             }
             if !model.loaded {
                 if let error = model.error {
@@ -115,6 +126,20 @@ struct VirtualCameraView: View {
         guard let location else { return }
         model.applyDisplay(location.displaySettings)
         if model.loaded { model.applyAlignment(location.primaryScan?.alignmentValue ?? .identity) }
+    }
+
+    /// The scan a camera or shot was placed in (the primary scan when it doesn't say).
+    private func scanID(of vp: VirtualViewpoint) -> UUID? {
+        let own = location?.shots.first { $0.id == vp.id }?.scanID ?? location?.cameraPositions.first { $0.id == vp.id }?.scanID
+        return own ?? location?.primaryScan?.id
+    }
+
+    /// What the in-shot warning says for a viewpoint: units in its own scan (shown whether or not they're
+    /// drawn), checked against that scan's walls.
+    private func inShot(_ vp: VirtualViewpoint) -> String {
+        let sid = scanID(of: vp)
+        let lights = (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid }
+        return FrameCheck.sentence(FrameCheck.unitsInFrame(vp.rig, lights: lights, plan: sid.flatMap { store.floorPlan(ref, scanID: $0) }))
     }
 
     private func updateRigLights() {

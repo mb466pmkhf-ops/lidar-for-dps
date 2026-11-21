@@ -11,6 +11,7 @@
 // calculator's one bounce off the room (D-019) is shown as a few soft lights at the brightest walls,
 // floor or ceiling, not surface by surface. So it is a preview of the look, and the readings stay the
 // figures to work from.
+import { inFrameSentence, unitsInFrame } from '../model/frameCheck';
 import { useEffect, useRef, useState } from 'react';
 import { useTip } from './tips';
 import * as THREE from 'three';
@@ -172,7 +173,7 @@ export function Scene3D(p: Props) {
   }, [exposureKey]);
   // Looking through a camera: its frame lines are drawn over the view.
   const [tipSeen, hideTip] = useTip('3d-gestures');
-  const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string }>();
+  const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string; rig: CameraRig }>();
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
   const [noLight, setNoLight] = useState(false);
@@ -906,7 +907,7 @@ export function Scene3D(p: Props) {
       const area = imageArea(cam.rig), ratio = area.width / area.height, view = a.camera.aspect;
       const lensV = fieldOfView(area.height, cam.rig.focalLength);
       const fov = view >= ratio ? lensV : 2 * Math.atan(Math.tan(rad(fieldOfView(area.width, cam.rig.focalLength)) / 2) / view) * 180 / Math.PI;
-      setEye({ key: `${cam.kind}:${cam.id}`, x: position.x, z: position.z, ratio, label: `${cam.name} · ${Math.round(cam.rig.focalLength)} mm` });
+      setEye({ key: `${cam.kind}:${cam.id}`, x: position.x, z: position.z, ratio, label: `${cam.name} · ${Math.round(cam.rig.focalLength)} mm`, rig: cam.rig });
       moveTo(at, at.clone().add(dir.multiplyScalar(2)), fov / 0.92); // a little air round the frame lines
       return;
     }
@@ -917,6 +918,7 @@ export function Scene3D(p: Props) {
   // Asked from the camera's details ("Look through it"): once the view is ready.
   useEffect(() => { if (p.lookThrough) eyeLevel(p.lookThrough.key); }, [p.lookThrough?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const cameraCount = p.location.cameraPositions.length + p.location.shots.length;
+  const inShot = eye ? inFrameSentence(unitsInFrame(eye.rig, p.lights, p.plan)) : '';
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
 
   const what = p.location.daylight?.isOn ? 'Units, grip, sun and sky through the windows, and a rough bounce off the room.' : 'Units, grip and a rough bounce off the room; no daylight.';
@@ -931,6 +933,7 @@ export function Scene3D(p: Props) {
         <div className="scene3d-frame" aria-hidden="true">
           <div className="lines" style={{ aspectRatio: String(eye.ratio), ...(eye.ratio >= (api.current?.camera.aspect ?? 1.6) ? { width: '92%' } : { height: '92%' }) }}>
             <span>{eye.label}</span>
+            {inShot && <span className="in-shot">{inShot}</span>}
           </div>
         </div>
       )}
