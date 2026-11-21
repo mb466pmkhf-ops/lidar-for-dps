@@ -176,6 +176,12 @@ describe('library against published manufacturer data (estimates, within ⅓ sto
   it('HMIs at 30° and with the spot lens', () => {
     expect(stopsOff(luxAt('hmi-1800-par', 10), 2120 * Math.pow(40 / 30, 1.7))).toBeLessThan(THIRD);
     expect(stopsOff(luxAt('hmi-4000-par', 10), 6500)).toBeLessThan(THIRD);
+    // ARRI M90 (6/9 kW) medium 30°: 14,450 lx at 10 m, 3,610 at 20 m, 1,600 at 30 m.
+    expect(stopsOff(luxAt('hmi-9000-par', 20), 3610)).toBeLessThan(THIRD);
+    expect(stopsOff(luxAt('hmi-9000-par', 30), 1600)).toBeLessThan(THIRD);
+    // ARRIMAX 18/12 flood 50°: 5,700 lx at 15 m, 3,210 at 20 m, 1,420 at 30 m.
+    expect(stopsOff(luxAt('hmi-18000-par', 20), 3210)).toBeLessThan(THIRD);
+    expect(stopsOff(luxAt('hmi-18000-par', 30), 1420)).toBeLessThan(THIRD);
     expect(stopsOff(luxAt('hmi-1800-par', 10, l => { l.modifierID = 'par-spot'; }), 11250 * Math.pow(15 / 12, 1.7))).toBeLessThan(THIRD);
   });
 

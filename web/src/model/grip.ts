@@ -36,6 +36,7 @@ export const GRIP_SIZES: GripSize[] = [
   { id: 'frame-6x6', name: '6×6 frame', width: r2(6 * foot), height: r2(6 * foot), stands: 1, kinds: ['bounce', 'negative', 'flag', 'diffusion'] },
   { id: 'frame-8x8', name: '8×8 frame', width: r2(8 * foot), height: r2(8 * foot), stands: 2, kinds: ['bounce', 'negative', 'flag', 'diffusion'] },
   { id: 'frame-12x12', name: '12×12 frame', width: r2(12 * foot), height: r2(12 * foot), stands: 2, kinds: ['bounce', 'negative', 'flag', 'diffusion'] },
+  { id: 'frame-20x20', name: '20×20 frame', width: r2(20 * foot), height: r2(20 * foot), stands: 2, kinds: ['bounce', 'negative', 'flag', 'diffusion'] },
 ];
 
 export interface Drape {

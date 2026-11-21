@@ -324,6 +324,8 @@ check(stopsOff(fixtureUnit("tungsten-1k", beam: 55).illuminanceOnAxis(at: 4), 12
 check(stopsOff(fixtureUnit("cob-600-d", modifier: "none").illuminanceOnAxis(at: 3), 2600) < 1.0 / 3
       && stopsOff(fixtureUnit("cob-1200-d", modifier: "none").illuminanceOnAxis(at: 3), 6380) < 1.0 / 3, "bare COBs vs published")
 check(stopsOff(fixtureUnit("hmi-4000-par").illuminanceOnAxis(at: 10), 6500) < 1.0 / 3, "4 kW HMI at 30° vs published")
+check(stopsOff(fixtureUnit("hmi-9000-par").illuminanceOnAxis(at: 20), 3610) < 1.0 / 3, "9 kW HMI at 30° vs published")
+check(stopsOff(fixtureUnit("hmi-18000-par").illuminanceOnAxis(at: 30), 1420) < 1.0 / 3, "18 kW HMI flood vs published")
 var refAtSpot = LightFixture(name: "T", kind: .fresnel, position: P(0, 0)); refAtSpot.apply(profile: FixtureLibrary.profile(id: "tungsten-1k")!)
 refAtSpot.photometricOverride = PhotometricReference(lux: 5000, distance: 3, beamAngle: 20, provenance: .manual); refAtSpot.beamAngle = 20
 check(abs(refAtSpot.photometrics.illuminanceOnAxis(at: 3) - 5000) < 1e-6, "a reading entered at spot on a fresnel round-trips")
@@ -1160,7 +1162,7 @@ do {
     check(Swift.zip(cats, cats.dropFirst()).allSatisfy { order.firstIndex(of: $0)! <= order.firstIndex(of: $1)! }, "fixtures listed family by family")
     check(Swift.zip(FixtureLibrary.profiles, FixtureLibrary.profiles.dropFirst()).allSatisfy { $0.category != $1.category || $0.ratedPower <= $1.ratedPower },
           "fixtures listed small to large within a family")
-    check(SensorLibrary.manufacturers == ["ARRI", "Blackmagic", "Canon", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
+    check(SensorLibrary.manufacturers == ["ARRI", "Blackmagic", "Canon", "Panavision", "RED", "Sony", ""], "camera makers listed A to Z, generic formats last")
     check(SensorLibrary.format(id: "no-such-camera").id == SensorLibrary.defaultID, "unknown camera falls back to the default format")
 }
 
