@@ -3,10 +3,11 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReadingExtra } from './format';
 import { CameraSettingsBar } from './CameraSettings';
-import type { FloorPlan, LightKind, Location, PlanPoint, Project } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, LightKind, Location, PlanPoint, Project } from '../model/types';
 import { KIND_INFO, applyProfile, profileByID } from '../model/photometrics';
 import { bearingFrom, buildScene, meterPoints, reading, DEFAULT_WINDOW_TRANSMISSION, planDist } from '../model/calculator';
-import { withDefaults } from '../model/exposure';
+import { cameraExposure, DEFAULT_WHITE_BALANCE, withDefaults } from '../model/exposure';
+import { colourSummary } from '../model/colour';
 import { environment } from '../model/stage';
 import { eyeHeight } from '../model/characters';
 import { carryPeople, settlePeople } from '../model/placement';
@@ -78,7 +79,13 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const scanID = location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
   const plan = scanID ? plans[scanID.toUpperCase()] ?? plans[scanID] : undefined;
   const calcPlan = plan && (plan.walls.length || plan.floorPolygons.length) ? plan : undefined;
-  const [selection, setSelection] = useState<Selection>();
+  const [selection, setSelectionState] = useState<Selection>();
+  // Picking a camera or shot makes it the camera whose settings the bar shows, every time (even a re-pick of the
+  // same object, which React would otherwise ignore). Picking anything else keeps the last camera.
+  const setSelection = useCallback((s: Selection | undefined) => {
+    setSelectionState(s);
+    if (s?.kind === 'shot' || s?.kind === 'camera') setCamKey(`${s.kind}:${s.id}`);
+  }, []);
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [lightMenu, setLightMenu] = useState(false);
   const [setMenu, setSetMenu] = useState(false);
@@ -91,7 +98,10 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   const planRef = useRef(plan);
   planRef.current = plan;
 
-  useEffect(() => { history.current = { past: [], future: [] }; setSelection(undefined); setTool({ kind: 'select' }); }, [location.id]);
+  // The camera whose settings the readings use: the last shot or camera picked (on the plan, in 3D or in
+  // the settings bar). It stays while lights are worked on, so the readings don't jump back and forth.
+  const [camKey, setCamKey] = useState<string>();
+  useEffect(() => { history.current = { past: [], future: [] }; setSelection(undefined); setTool({ kind: 'select' }); setCamKey(undefined); }, [location.id]);
 
   const write = useCallback((next: Location) => {
     commit({ ...project, locations: project.locations.map(l => (l.id === next.id ? next : l)) });
@@ -160,9 +170,33 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     return () => { window.removeEventListener('pointerdown', onDown, true); window.removeEventListener('focusin', onFocus); };
   });
 
-  const inScan = (id?: string) => !id || !scanID || id === scanID;
+  const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase(); // as Scene3D: ids may differ in case
   const lights = useMemo(() => (location.lights ?? []).filter(l => inScan(l.scanID)), [location.lights, scanID]); // eslint-disable-line react-hooks/exhaustive-deps
-  const exposure = withDefaults(location.exposure);
+  const cams = [
+    ...location.shots.filter(x => inScan(x.scanID)).sort((a, b) => a.number - b.number).map(x => ({ key: `shot:${x.id}`, name: `Shot ${String(x.number).padStart(2, '0')}`, rig: x.rig })),
+    ...location.cameraPositions.filter(c => inScan(c.scanID)).map(c => ({ key: `camera:${c.id}`, name: c.name, rig: c.rig })),
+  ];
+  const activeCam = cams.find(c => c.key === camKey);
+  const exposure = cameraExposure(location, activeCam?.rig);
+  const colour = useMemo(() => colourSummary(lights, exposure.whiteBalance ?? DEFAULT_WHITE_BALANCE), [lights, exposure.whiteBalance]);
+  const editRig = (key: string, f: (r: CameraRig) => CameraRig) => {
+    const [kind, id] = key.split(':');
+    edit(loc => kind === 'shot'
+      ? { ...loc, shots: loc.shots.map(x => (x.id === id ? { ...x, rig: f(x.rig) } : x)) }
+      : { ...loc, cameraPositions: loc.cameraPositions.map(c => (c.id === id ? { ...c, rig: f(c.rig) } : c)) });
+  };
+  const changeExposure = (patch: Partial<ExposureSettings>) => {
+    if (activeCam?.rig.exposure) editRig(activeCam.key, r => ({ ...r, exposure: { ...withDefaults(r.exposure), ...patch } }));
+    else edit(loc => ({ ...loc, exposure: { ...withDefaults(loc.exposure), ...patch } }));
+  };
+  const setOwn = (own: boolean) => {
+    if (!activeCam) return;
+    editRig(activeCam.key, r => {
+      if (own) return { ...r, exposure: withDefaults(r.exposure ?? location.exposure) };
+      const { exposure: _drop, ...rest } = r; // eslint-disable-line @typescript-eslint/no-unused-vars
+      return rest as CameraRig;
+    });
+  };
   const windowTransmission = location.display?.windowTransmission ?? DEFAULT_WINDOW_TRANSMISSION;
   const scan = location.scans.find(s => s.id === scanID);
   // Sun, sky and an LED wall, when the location has them (stage.ts).
@@ -469,13 +503,14 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         )}
       </div>
       <aside className="inspector" aria-label="Details">
-        <CameraSettingsBar exposure={exposure} onChange={patch => edit(loc => ({ ...loc, exposure: { ...withDefaults(loc.exposure), ...patch } }))} />
+        <CameraSettingsBar exposure={exposure} onChange={changeExposure} colour={colour}
+          camera={{ options: cams.map(c => ({ key: c.key, name: c.name, own: !!c.rig.exposure })), key: activeCam?.key, own: !!activeCam?.rig.exposure, pick: k => setCamKey(k || undefined), setOwn }} />
         <Inspector location={location} plan={calcPlan} lights={lights} scene={scene} meters={meters} readings={readings} exposure={exposure}
           selection={selection} windowTransmission={windowTransmission} environment={env} scan={scan} edit={edit} editPlan={editPlan} select={setSelection}
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })}
-          lookThrough={s => { setView(true); setLookThrough(l => ({ key: `${s.kind}:${s.id}`, n: (l?.n ?? 0) + 1 })); }} />
+          lookThrough={s => { setView(true); setCamKey(`${s.kind}:${s.id}`); setLookThrough(l => ({ key: `${s.kind}:${s.id}`, n: (l?.n ?? 0) + 1 })); }} />
       </aside>
-      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} plan={sheet.plan} diagram={sheet.diagram} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
+      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} settingsFor={activeCam?.rig.exposure ? `${activeCam.name}'s own settings` : undefined} plan={sheet.plan} diagram={sheet.diagram} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
     </>
   );
 }

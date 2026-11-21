@@ -88,7 +88,10 @@ ExportService ──► location/project package folder ──► ZipWriter ─�
   `LightFixture.photometrics` (a pure function of the stored unit settings).
 - `Core/Models/LightingCalculator.swift` — readings at a point (walls, windows, grip, one bounce), the
   exposure-map grid, the target solver ("Set to key"), and meter points (placed meters and people's faces).
-- `Core/Models/Exposure.swift` — ISO / shutter / T-stop / ND ↔ key lux and stops.
+- `Core/Models/Exposure.swift` — ISO / shutter / T-stop / ND / white balance ↔ key lux and stops. Settings live on the
+  location; a shot or camera can carry its own (`CameraRig.exposure`), and readings use the last camera picked.
+- `Core/Models/ColourBalance.swift` (web `model/colour.ts`) — how each unit's colour reads at the camera's white
+  balance, in CTO/CTB terms (estimate from the settings).
 - `Core/Models/LightingSetups.swift` — one-tap starting setups round a person (three-point, soft side, soft front):
   units placed relative to the camera inside the walls, the smallest suitable fixture picked and its output solved
   for the camera's key level (fill and back by stop ratios).

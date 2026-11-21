@@ -23,10 +23,12 @@ struct ExposureSettings: Codable, Hashable {
     /// Fraction of light the lens passes. T = f / √transmission.
     var lensTransmission: Double = 0.85
     var ndStops: Double = 0
+    /// White balance set on the camera (Kelvin); nil = not set, colour is then judged at 5600 K.
+    var whiteBalance: Double? = nil
 
     init() {}
 
-    enum CodingKeys: String, CodingKey { case iso, frameRate, shutterAngle, shutterSeconds, tStop, lensTransmission, ndStops }
+    enum CodingKeys: String, CodingKey { case iso, frameRate, shutterAngle, shutterSeconds, tStop, lensTransmission, ndStops, whiteBalance }
 
     /// Tolerates settings saved by older or newer versions with keys missing.
     init(from decoder: Decoder) throws {
@@ -38,6 +40,7 @@ struct ExposureSettings: Codable, Hashable {
         tStop = try c.decodeIfPresent(Double.self, forKey: .tStop) ?? tStop
         lensTransmission = try c.decodeIfPresent(Double.self, forKey: .lensTransmission) ?? lensTransmission
         ndStops = try c.decodeIfPresent(Double.self, forKey: .ndStops) ?? ndStops
+        whiteBalance = try c.decodeIfPresent(Double.self, forKey: .whiteBalance)
     }
 
     /// Exposure time per frame (s).
@@ -74,6 +77,7 @@ struct ExposureSettings: Codable, Hashable {
     var summary: String {
         var s = "ISO \(Int(iso)) · \(shutterSeconds == nil ? "\(Self.trim(shutterAngle))° @ \(Self.trim(frameRate))" : Self.speedLabel(exposureTime)) · \(Self.stopLabel(tStop, prefix: "T"))"
         if ndStops > 0 { s += " · ND \(String(format: "%.1f", ndStops * 0.3))" }
+        if let whiteBalance { s += " · \(Int(whiteBalance.rounded())) K" }
         return s
     }
 
@@ -135,6 +139,9 @@ extension Location {
         get { exposure ?? ExposureSettings() }
         set { exposure = newValue }
     }
+
+    /// The settings `rig` shoots at: its own when it has them, else the location's.
+    func exposure(for rig: CameraRig?) -> ExposureSettings { rig?.exposure ?? exposureSettings }
 }
 
 /// Readings always lead with the T-stop an incident meter would show at the camera's ISO, shutter and

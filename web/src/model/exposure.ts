@@ -5,6 +5,11 @@ import type { ExposureSettings } from './types';
 export const METER_CALIBRATION = 250;
 export const defaultExposure = (): ExposureSettings => ({ iso: 800, frameRate: 24, shutterAngle: 180, tStop: 2.8, lensTransmission: 0.85, ndStops: 0 });
 export const withDefaults = (e?: Partial<ExposureSettings>): ExposureSettings => ({ ...defaultExposure(), ...(e ?? {}) });
+/** White balance used to judge colour when none is set: daylight. */
+export const DEFAULT_WHITE_BALANCE = 5600;
+/** The settings a camera shoots at: its own when it has them, else the location's. */
+export const cameraExposure = (location: { exposure?: ExposureSettings }, rig?: { exposure?: ExposureSettings }) =>
+  withDefaults(rig?.exposure ?? location.exposure);
 
 export const exposureTime = (e: ExposureSettings) =>
   e.shutterSeconds !== undefined ? Math.max(e.shutterSeconds, 1e-5) : Math.max(e.shutterAngle, 1) / 360 / Math.max(e.frameRate, 1);

@@ -2,7 +2,9 @@
 // shows on every reading at once. Same steps as ExposureQuickBar / ExposureSheet on the iPhone.
 import { useState } from 'react';
 import type { ExposureSettings } from '../model/types';
-import { exposureTime, frameRates, isoSteps, keyLux, shutterAngles, speedLabel, steppedISO, steppedStop, stopLabel, thirdStops, trim } from '../model/exposure';
+import type { ColourSummary } from '../model/colour';
+import { WB_PRESETS } from '../model/colour';
+import { DEFAULT_WHITE_BALANCE, exposureTime, frameRates, isoSteps, keyLux, shutterAngles, speedLabel, steppedISO, steppedStop, stopLabel, thirdStops, trim } from '../model/exposure';
 import { lux as fmtLux, READING_EXTRAS, readingExtra, setReadingExtra, useReadingExtra, type ReadingExtra } from './format';
 
 /** The list plus the current value, so a value set on the phone still shows. */
@@ -36,14 +38,29 @@ const OPEN_KEY = 'framescan.camera.open';
 
 /** Folded by default to one line: the stop you work at (with its steps) and a summary of the rest.
  *  Opening it shows every setting; the choice is remembered on this device. */
-export function CameraSettingsBar({ exposure: e, onChange }: { exposure: ExposureSettings; onChange(patch: Partial<ExposureSettings>): void }) {
+export interface CameraChoice {
+  options: { key: string; name: string; own: boolean }[];
+  /** The camera the readings use; absent = the location's settings. */
+  key?: string;
+  own: boolean;
+  pick(key: string): void;
+  setOwn(own: boolean): void;
+}
+
+const wbLabel = (k?: number) => (k ? `${Math.round(k)} K` : 'WB not set');
+
+export function CameraSettingsBar({ exposure: e, onChange, camera, colour }: {
+  exposure: ExposureSettings; onChange(patch: Partial<ExposureSettings>): void; camera?: CameraChoice; colour?: ColourSummary;
+}) {
   useReadingExtra();
   const extra = readingExtra();
   const [open, setOpen] = useState(() => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } });
   const toggle = () => { const next = !open; setOpen(next); try { localStorage.setItem(OPEN_KEY, next ? '1' : '0'); } catch { /* private mode */ } };
   // A 180° shutter is the norm, so the line only names the shutter when it's something else.
   const shutter = e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : Math.abs(e.shutterAngle - 180) > 0.01 ? `${trim(e.shutterAngle)}°` : '';
-  const summary = [`ISO ${e.iso}`, `${trim(e.frameRate)} fps`, shutter, e.ndStops ? ndLabel(e.ndStops) : ''].filter(Boolean).join(' · ');
+  const active = camera?.options.find(o => o.key === camera.key);
+  const whose = active && camera?.own ? active.name : '';
+  const summary = [whose, `ISO ${e.iso}`, `${trim(e.frameRate)} fps`, shutter, e.ndStops ? ndLabel(e.ndStops) : '', e.whiteBalance ? wbLabel(e.whiteBalance) : ''].filter(Boolean).join(' · ');
   const stop = (
     <Stepper label="T-stop" value={e.tStop} options={thirdStops} format={v => stopLabel(v)}
       onChange={v => onChange({ tStop: v })} onStep={d => onChange({ tStop: steppedStop(e.tStop, d) })} />
@@ -66,6 +83,23 @@ export function CameraSettingsBar({ exposure: e, onChange }: { exposure: Exposur
         <button className="btn ghost small cam-head-btn" onClick={toggle} aria-expanded={true}><h3>Camera settings ▾</h3></button>
         <span className="mono muted" title="Incident reading that exposes a subject correctly at these settings">key ≈ {fmtLux(keyLux(e))}</span>
       </div>
+      {camera && camera.options.length > 0 && (
+        <div className="cam-whose">
+          <label className="cam-step"><span className="label">Settings for</span>
+            <select value={camera.key ?? ''} onChange={x => camera.pick(x.target.value)}>
+              <option value="">The location (every camera)</option>
+              {camera.options.map(o => <option key={o.key} value={o.key}>{o.name}{o.own ? ' · own settings' : ''}</option>)}
+            </select>
+          </label>
+          {active && (
+            <label className="cam-own">
+              <input type="checkbox" checked={camera.own} onChange={x => camera.setOwn(x.target.checked)} />
+              <span>{camera.own ? `${active.name} has its own settings` : `Give ${active.name} its own settings`}</span>
+            </label>
+          )}
+          {active && !camera.own && <p className="faint small">{active.name} shoots at the location's settings. Changes here apply to every camera that has none of its own.</p>}
+        </div>
+      )}
       <div className="cam-grid">
         {stop}
         <Stepper label="ISO" value={e.iso} options={isoSteps} format={v => String(v)}
@@ -89,6 +123,20 @@ export function CameraSettingsBar({ exposure: e, onChange }: { exposure: Exposur
             {withCurrent([0, 1, 2, 3, 4, 5, 6, 7, 8], e.ndStops).map(v => <option key={v} value={v}>{ndLabel(v)}</option>)}
           </select>
         </label>
+      </div>
+      <div className="cam-colour">
+        <label className="cam-step"><span className="label">White balance</span>
+          <select value={e.whiteBalance ?? ''} onChange={x => onChange({ whiteBalance: x.target.value ? Number(x.target.value) : undefined })}>
+            <option value="">Not set (judged at {DEFAULT_WHITE_BALANCE} K)</option>
+            {withCurrent(WB_PRESETS, e.whiteBalance ?? WB_PRESETS[0]).map(v => <option key={v} value={v}>{v} K</option>)}
+          </select>
+        </label>
+        {colour && colour.rows.length > 0 && (
+          <details className="cam-colour-list">
+            <summary title="From each unit's colour temperature, gels and dimming against this white balance (estimate)">{colour.line}</summary>
+            <ul>{colour.rows.map(r => <li key={r.id}><span>{r.name}</span> <span className="mono">{r.rgb ? 'RGB colour' : `${Math.round(r.kelvin!)} K`}</span> <span className={'tone ' + (r.shift?.tone ?? 'rgb')}>{r.rgb ? 'set by hue' : r.shift!.label}</span></li>)}</ul>
+          </details>
+        )}
       </div>
       <div className="cam-readings" role="group" aria-label="After the stop, show">
         <span className="label">Readings</span>
