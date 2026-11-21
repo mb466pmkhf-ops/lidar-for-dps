@@ -140,6 +140,13 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const title = `${project.name} — ${location.name}${look ? ` · ${look.name}` : ''}`;
   const [copied, setCopied] = useState(false);
   const camera = cameraLine(e);
+  // A shot with its own white balance gets its own colour read-out: the same unit reads differently at 3200 K and 5600 K.
+  const sheetWB = e.whiteBalance ?? DEFAULT_WHITE_BALANCE;
+  const shotSettings = (own: ExposureSettings) => {
+    const wb = own.whiteBalance ?? DEFAULT_WHITE_BALANCE;
+    const line = wb === sheetWB ? '' : colourSummary(lights, wb).line;
+    return line ? `${cameraLine(own)} · ${line}` : cameraLine(own);
+  };
   const colour = useMemo(() => new Map(colourSummary(lights, e.whiteBalance ?? DEFAULT_WHITE_BALANCE).rows.map(r => [r.id, r])), [lights, e.whiteBalance]);
   // Which plan picture the sheet shows: the plan as framed on screen, or the clean overhead diagram.
   const [picture, setPicture] = useState<'framed' | 'diagram'>(() => (stored(PICTURE_KEY) === 'diagram' && diagram ? 'diagram' : 'framed'));
@@ -197,7 +204,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
       toSubject: x.subject ? metres(planDist(x.rig.position, x.subject)) : '',
       seen: inFrameSentence(unitsInFrame(x.rig, units, floorPlan)),
       lit: shotLook?.name ?? (look && !x.lookID ? look.name : ''),
-      settings: x.rig.exposure ? cameraLine(cameraExposure(location, x.rig)) : '',
+      settings: x.rig.exposure ? shotSettings(cameraExposure(location, x.rig)) : '',
       focus: (() => { const f = focusFor(x.rig, x.subject, x.subjectHeight); return f ? `${focusLabel(depthOfFieldFor(x.rig, cameraExposure(location, x.rig).tStop, f.metres), metres)} (estimate)` : ''; })(),
     };
   });

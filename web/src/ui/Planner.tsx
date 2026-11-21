@@ -170,7 +170,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
     return () => { window.removeEventListener('pointerdown', onDown, true); window.removeEventListener('focusin', onFocus); };
   });
 
-  const inScan = (id?: string) => !id || !scanID || id === scanID;
+  const inScan = (id?: string) => !id || !scanID || id.toUpperCase() === scanID.toUpperCase(); // as Scene3D: ids may differ in case
   const lights = useMemo(() => (location.lights ?? []).filter(l => inScan(l.scanID)), [location.lights, scanID]); // eslint-disable-line react-hooks/exhaustive-deps
   const cams = [
     ...location.shots.filter(x => inScan(x.scanID)).sort((a, b) => a.number - b.number).map(x => ({ key: `shot:${x.id}`, name: `Shot ${String(x.number).padStart(2, '0')}`, rig: x.rig })),
