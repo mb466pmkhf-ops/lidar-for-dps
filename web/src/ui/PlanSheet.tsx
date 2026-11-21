@@ -1,6 +1,6 @@
 // The hand-off sheet: the plan as framed on screen, every unit with its settings, the readings,
 // the kit list and the estimated power, on one printable page. Print saves it as a PDF too.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ExposureSettings, FloorPlan, LightFixture, Location, Project } from '../model/types';
 import type { MeterPoint } from '../model/calculator';
 import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } from '../model/photometrics';
@@ -16,6 +16,7 @@ import { focalNumber } from '../model/lenses';
 import { planDist } from '../model/calculator';
 import { inFrameSentence, unitsInFrame } from '../model/frameCheck';
 import { useModal } from './useModal';
+import { shotFrames } from '../sync/shotFrames';
 
 /** The on-screen plan as a standalone SVG, with the day-theme colours written in so it prints light. */
 export function planSnapshot(svg: SVGSVGElement): { url: string; w: number; h: number } {
@@ -105,9 +106,12 @@ function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rate
   );
 }
 
-export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan, floorPlan, scanID, onClose }: {
+type Picture = { url: string; w: number; h: number };
+const PICTURE_KEY = 'framescan.sheet.picture';
+
+export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan: framed, diagram, floorPlan, scanID, onClose }: {
   project: Project; location: Location; lights: LightFixture[]; meters: MeterPoint[]; readings: Map<string, number>;
-  exposure: ExposureSettings; plan?: { url: string; w: number; h: number }; floorPlan?: FloorPlan; scanID?: string; onClose(): void;
+  exposure: ExposureSettings; plan?: Picture; diagram?: Picture; floorPlan?: FloorPlan; scanID?: string; onClose(): void;
 }) {
   const kit = useMemo(() => kitList(lights), [lights]);
   const scan = scanID ?? location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
@@ -118,13 +122,17 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const title = `${project.name} — ${location.name}${look ? ` · ${look.name}` : ''}`;
   const [copied, setCopied] = useState(false);
   const camera = [stopLabel(e.tStop), `ISO ${e.iso}`, `${trim(e.frameRate)} fps`, e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`, e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : ''].filter(Boolean).join(' · ');
+  // Which plan picture the sheet shows: the plan as framed on screen, or the clean overhead diagram.
+  const [picture, setPicture] = useState<'framed' | 'diagram'>(() => (stored(PICTURE_KEY) === 'diagram' && diagram ? 'diagram' : 'framed'));
+  const plan = picture === 'diagram' && diagram ? diagram : framed ?? diagram;
+  const choosePicture = (v: 'framed' | 'diagram') => { setPicture(v); store(PICTURE_KEY, v); };
   const savePNG = () => {
     if (!plan) return;
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas'); c.width = plan.w * 2; c.height = plan.h * 2;
       const g = c.getContext('2d')!; g.scale(2, 2); g.drawImage(img, 0, 0);
-      const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `${title.replace(/[^\w\- ]+/g, '')} plan.png`; a.click();
+      const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `${title.replace(/[^\w\- ]+/g, '')} ${picture === 'diagram' ? 'diagram' : 'plan'}.png`; a.click();
     };
     img.src = plan.url;
   };
@@ -137,12 +145,50 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
   const kitLines = [...kit.units, ...kit.modifiers, ...kit.gels, ...kit.grip, ...kit.stands];
   const copy = () => { void navigator.clipboard?.writeText(kitText(kit, title, lights, rates)).then(() => setCopied(true)).catch(() => setCopied(false)); };
   const dialogRef = useModal<HTMLElement>(onClose);
+  // Previs frames saved from the 3D look-through. They live in this browser only.
+  const shotKey = shots.map(x => x.id).join(',');
+  const [frames, setFrames] = useState<Map<string, { url: string; lens: string }>>(new Map());
+  useEffect(() => {
+    let urls: string[] = [], alive = true;
+    const load = () => shotFrames.forShots(shotKey ? shotKey.split(',') : []).then(found => {
+      if (!alive) return;
+      urls.forEach(u => URL.revokeObjectURL(u));
+      const next = new Map<string, { url: string; lens: string }>();
+      for (const [id, f] of found) next.set(id, { url: URL.createObjectURL(f.blob), lens: f.lens });
+      urls = [...next.values()].map(f => f.url);
+      setFrames(next);
+    }).catch(() => undefined);
+    void load();
+    const off = shotFrames.subscribe(() => { void load(); });
+    return () => { alive = false; off(); urls.forEach(u => URL.revokeObjectURL(u)); };
+  }, [shotKey]);
+  const shotRows = shots.map(x => {
+    // A shot lit with another saved look is checked against that look's units; the active look
+    // (or none) uses the live units so unsaved changes show.
+    const shotLook = x.lookID ? looks.find(l => l.id.toUpperCase() === x.lookID!.toUpperCase()) : undefined;
+    const units = shotLook && shotLook !== look ? shotLook.lights.filter(l => inScan(l.scanID)) : lights;
+    return {
+      shot: x,
+      name: `Shot ${String(x.number).padStart(2, '0')}${x.title ? ` · ${x.title}` : ''}`,
+      lens: `${focalNumber(x.rig.focalLength)}mm · ${Math.round(horizontalFOV(x.rig))}° · ${sensorFor(x.rig).name}`,
+      height: `${metres(x.rig.height)}${x.rig.tilt ? ` · tilt ${x.rig.tilt > 0 ? '+' : ''}${Math.round(x.rig.tilt)}°` : ''}`,
+      toSubject: x.subject ? metres(planDist(x.rig.position, x.subject)) : '',
+      seen: inFrameSentence(unitsInFrame(x.rig, units, floorPlan)),
+      lit: shotLook?.name ?? (look && !x.lookID ? look.name : ''),
+    };
+  });
   return (
     <div className="scrim sheet-scrim" onClick={onClose}>
       <article className="sheet" role="dialog" aria-modal="true" ref={dialogRef} aria-label="Lighting plan sheet" onClick={ev => ev.stopPropagation()}>
         <div className="sheet-actions">
           <button className="btn primary small" onClick={() => window.print()}><Icon name="download" /> Print or save PDF</button>
-          <button className="btn small" onClick={savePNG} disabled={!plan}>Plan as PNG</button>
+          {framed && diagram && (
+            <select className="sheet-inline-select" value={picture} onChange={ev => choosePicture(ev.target.value as 'framed' | 'diagram')} aria-label="Plan picture">
+              <option value="framed">Plan as framed</option>
+              <option value="diagram">Clean diagram</option>
+            </select>
+          )}
+          <button className="btn small" onClick={savePNG} disabled={!plan}>{picture === 'diagram' && diagram ? 'Diagram' : 'Plan'} as PNG</button>
           <button className="btn small" onClick={copy}>{copied ? 'Copied' : 'Copy kit list'}</button>
           <span className="spacer" />
           <button className="btn ghost small" onClick={onClose}>Close</button>
@@ -152,30 +198,18 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
           <p className="mono">{camera}</p>
           <p className="faint">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}{project.client ? ` · ${project.client}` : ''}</p>
         </header>
-        {plan && <img className="sheet-plan" src={plan.url} alt="Lighting plan" />}
+        {plan && <img className="sheet-plan" src={plan.url} alt={picture === 'diagram' ? 'Overhead lighting diagram' : 'Lighting plan'} />}
         {shots.length > 0 && <>
           <h3>Shots</h3>
           <table className="sheet-table">
             <thead><tr><th>Shot</th><th>Lens</th><th>Lens height</th><th>To subject</th><th>Lit with</th><th>In frame</th><th>Notes</th></tr></thead>
-            <tbody>{shots.map(x => {
-              // A shot lit with another saved look is checked against that look's units; the active look
-              // (or none) uses the live units so unsaved changes show.
-              const shotLook = x.lookID ? looks.find(l => l.id.toUpperCase() === x.lookID!.toUpperCase()) : undefined;
-              const units = shotLook && shotLook !== look ? shotLook.lights.filter(l => inScan(l.scanID)) : lights;
-              const seen = inFrameSentence(unitsInFrame(x.rig, units, floorPlan));
-              const lit = shotLook?.name ?? (look && !x.lookID ? look.name : '');
-              return <tr key={x.id}>
-                <td>{`Shot ${String(x.number).padStart(2, '0')}`}{x.title ? ` · ${x.title}` : ''}</td>
-                <td className="mono">{focalNumber(x.rig.focalLength)}mm · {Math.round(horizontalFOV(x.rig))}° · {sensorFor(x.rig).name}</td>
-                <td className="mono">{metres(x.rig.height)}{x.rig.tilt ? ` · tilt ${x.rig.tilt > 0 ? '+' : ''}${Math.round(x.rig.tilt)}°` : ''}</td>
-                <td className="mono">{x.subject ? metres(planDist(x.rig.position, x.subject)) : ''}</td>
-                <td>{lit}</td>
-                <td>{seen || 'Clear'}</td>
-                <td>{x.notes}</td>
-              </tr>;
-            })}</tbody>
+            <tbody>{shotRows.map(r => <tr key={r.shot.id}>
+              <td>{r.name}</td><td className="mono">{r.lens}</td><td className="mono">{r.height}</td><td className="mono">{r.toSubject}</td>
+              <td>{r.lit}</td><td>{r.seen || 'Clear'}</td><td>{r.shot.notes}</td>
+            </tr>)}</tbody>
           </table>
         </>}
+        {shots.length > 0 && !shotRows.some(r => frames.has(r.shot.id)) && <p className="faint sheet-print-hide">Look through a shot in 3D and press Save frame to add its picture here, one page per shot.</p>}
         <h3>Units</h3>
         <table className="sheet-table">
           <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th><th>On a {pack} Wh pack</th></tr></thead>
@@ -225,6 +259,21 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         </>}
         {kitLines.length > 0 && <RatesEditor lines={kitLines} rates={rates} onChange={setRates} />}
         <p className="note">≈ Readings, power, circuits and pack times are estimates from the plan (direct light, one bounce off boards and one off the room; packs at full output with 85 % of the rating usable). The venue's wiring decides what is really on each circuit. Check on the day. Day rates are yours, as typed.</p>
+        {shotRows.some(r => frames.has(r.shot.id)) && <section className="sheet-frames">
+          {shotRows.filter(r => frames.has(r.shot.id)).map(r => { const f = frames.get(r.shot.id)!; return (
+            <figure key={r.shot.id} className="sheet-frame">
+              <h3>{r.name}</h3>
+              <img src={f.url} alt={`Previs render of ${r.name}`} />
+              <figcaption>
+                <span className="mono">Previs render, not a photograph · {f.lens}</span>
+                <span className="mono">{r.lens} · lens at {r.height}{r.toSubject ? ` · ${r.toSubject} to subject` : ''}</span>
+                {r.lit && <span>Lit with {r.lit}</span>}
+                <span>{r.seen || 'No units or grip in frame (estimate).'}</span>
+                {r.shot.notes && <span>{r.shot.notes}</span>}
+              </figcaption>
+            </figure>
+          ); })}
+        </section>}
       </article>
     </div>
   );

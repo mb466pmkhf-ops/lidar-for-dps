@@ -40,6 +40,9 @@ interface Props {
   layers: Set<string>;
   placing: boolean;
   hint: string;
+  /** Draws the clean overhead diagram for the plan sheet: fitted to the room, no grid, exposure map,
+   *  selection or handles, camera views and unit names on. Only while the sheet takes its picture. */
+  diagram?: boolean;
   onSelect(s?: Selection): void;
   onPlace(p: PlanPoint): void;
   onDragStart(t: DragTarget): void;
@@ -64,10 +67,15 @@ function contentBounds(location: Location, plan: FloorPlan | undefined, lights: 
   return { minX: r.minX - 0.5, minZ: r.minZ - 0.5, maxX: r.maxX + 0.5, maxZ: r.maxZ + 0.5 };
 }
 
+const DIAGRAM_LAYERS = new Set(['views', 'names']);
+
 const sameSel = (a?: Selection, b?: Selection) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 
 export function PlanCanvas(props: Props) {
-  const { location, plan, lights, scene, readings, exposure, selection, showLuxMap, scanID, layers } = props;
+  const { location, plan, lights, scene, readings, exposure, scanID } = props;
+  const selection = props.diagram ? undefined : props.selection;
+  const showLuxMap = props.diagram ? false : props.showLuxMap;
+  const layers = props.diagram ? DIAGRAM_LAYERS : props.layers;
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View | null>(null);
@@ -85,16 +93,17 @@ export function PlanCanvas(props: Props) {
     return () => ro.disconnect();
   }, []);
 
-  const fit = () => {
+  const fitted = (): View => {
     const w = bounds.maxX - bounds.minX, d = bounds.maxZ - bounds.minZ;
-    setView({ cx: (bounds.minX + bounds.maxX) / 2, cz: (bounds.minZ + bounds.maxZ) / 2, scale: Math.max(20, Math.min((size.w - 80) / w, (size.h - 80) / d)) });
+    return { cx: (bounds.minX + bounds.maxX) / 2, cz: (bounds.minZ + bounds.maxZ) / 2, scale: Math.max(20, Math.min((size.w - 80) / w, (size.h - 80) / d)) };
   };
+  const fit = () => setView(fitted());
   // Fit the room on open and whenever the window resizes, until the user pans or zooms.
   const userMoved = useRef(false);
   useEffect(() => { userMoved.current = false; }, [location.id, plan]);
   useEffect(() => { if (size.w > 0 && !userMoved.current) fit(); }, [location.id, plan, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const v = view ?? { cx: 0, cz: 0, scale: 60 };
+  const v = props.diagram ? fitted() : view ?? { cx: 0, cz: 0, scale: 60 };
   const sx = (x: number) => (x - v.cx) * v.scale + size.w / 2;
   const sy = (z: number) => (z - v.cz) * v.scale + size.h / 2;
   const toPlan = (clientX: number, clientY: number): PlanPoint => {
@@ -423,7 +432,7 @@ export function PlanCanvas(props: Props) {
     <div className="plan-wrap" ref={wrap} onPointerDown={e => down(e)} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       style={{ cursor: props.placing ? 'crosshair' : 'default' }}>
       <svg width={size.w} height={size.h} role="img" aria-label="Lighting plan">
-        {gridLines}
+        {!props.diagram && gridLines}
         {luxMap && (
           <image href={luxMap.href} x={sx(luxMap.b.minX)} y={sy(luxMap.b.minZ)} width={(luxMap.b.maxX - luxMap.b.minX) * v.scale} height={(luxMap.b.maxZ - luxMap.b.minZ) * v.scale}
             opacity={0.55} preserveAspectRatio="none" style={{ imageRendering: 'auto' }} pointerEvents="none" />

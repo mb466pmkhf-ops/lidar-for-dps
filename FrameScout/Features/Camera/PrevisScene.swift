@@ -821,10 +821,12 @@ final class VirtualSceneModel: ObservableObject {
     // MARK: Placed items
 
     /// Cameras (with their field of view), and the subject marks of shots that have no person on them.
-    /// `hideSelected` leaves out the camera you're looking through (walkthrough).
+    /// `hideSelected` leaves out the camera you're looking through (walkthrough). Shots are set up one
+    /// at a time, so looking through a shot leaves out the other shots' cameras too.
     func setMarkers(viewpoints: [VirtualViewpoint], selected: UUID?, showLabels: Bool = true, hideSelected: Bool = false, hiddenSubjects: Bool = false) {
         var keep = Set<UUID>()
-        for vp in viewpoints where !(hideSelected && vp.id == selected) {
+        let lookingThroughShot = hideSelected && viewpoints.contains { $0.id == selected && $0.kind == .shot }
+        for vp in viewpoints where !(hideSelected && vp.id == selected) && !(lookingThroughShot && vp.kind == .shot) {
             let reach = vp.subject.map { max(1.5, vp.rig.position.distance(to: $0)) } ?? 2.5
             var h = Hasher()
             h.combine(vp)

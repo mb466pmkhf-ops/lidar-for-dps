@@ -191,6 +191,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .scene3d-frame .lines { position: relative; max-width: 100%; max-height: 100%; border: 1px solid rgba(255,255,255,.75); box-shadow: 0 0 0 100vmax rgba(0,0,0,.5); }
 .scene3d-frame .lines span { position: absolute; left: 8px; top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.85); }
 .scene3d-frame .lines .in-shot { top: auto; bottom: 6px; right: 8px; font-family: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: var(--radius); }
+.scene3d-frame .lines .saved { left: auto; right: 8px; top: 6px; font-family: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: var(--radius); }
 @media (max-width: 720px) { .scene3d-hint .how { display: none; } .scene3d-hint { right: 12px; font-size: 12px; } }
 
 /* Home: your rooms as a list, the ways to start a new one as buttons above it. */
@@ -364,3 +365,7 @@ details.what p { margin: 6px 0 0; }
 .sheet-rate-row input { font: inherit; padding: 3px 6px; border-radius: var(--radius); border: 1px solid #c9ced1; }
 .sheet-rate-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 @media print { .sheet-rates-edit, .sheet-print-hide { display: none; } }
+.sheet-frame { margin: 24px 0 0; }
+.sheet-frame img { display: block; width: 100%; height: auto; border: 1px solid #d6dadc; border-radius: var(--radius); background: #111; }
+.sheet-frame figcaption { display: grid; gap: 2px; margin-top: 6px; font-size: 13px; }
+@media print { .sheet-frame { break-before: page; break-inside: avoid; margin: 0; } .sheet-frame img { max-height: 70vh; object-fit: contain; } }
