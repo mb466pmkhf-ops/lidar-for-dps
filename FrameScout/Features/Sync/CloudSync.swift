@@ -410,6 +410,7 @@ final class CloudSync: ObservableObject {
                     guard let idString = head["id"] as? String, let id = UUID(uuidString: idString) else { continue }
                     let rev = (head["rev"] as? NSNumber)?.intValue ?? 0
                     if (head["deleted"] as? Bool) == true {
+                        reached.insert(id)   // a refusal for a project deleted since no longer applies
                         // Deleted here and on the server too: nothing left to send.
                         if meta[id]?.deleted == true { meta[id] = nil; continue }
                         if store.project(id) != nil && meta[id]?.dirty != true {

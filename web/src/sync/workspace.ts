@@ -395,6 +395,7 @@ export class Workspace {
         if (head.name) this.serverNames.set(id, head.name);
         const local = this.entries.get(id);
         if (head.deleted) {
+          reached.add(id);   // a refusal for a project deleted since no longer applies
           // Deleted here and on the server too: nothing left to send.
           if (local?.deleted) { this.entries.delete(id); await localStore.remove(id); continue; }
           if (local && !local.dirty) { this.entries.delete(id); await localStore.remove(id); }
