@@ -62,6 +62,7 @@ function contentBounds(location: Location, plan: FloorPlan | undefined, lights: 
   (location.characters ?? []).filter(c => inScan(c.scanID)).forEach(c => pts.push(c.position));
   location.shots.filter(s => inScan(s.scanID)).forEach(s => pts.push(s.rig.position));
   location.cameraPositions.filter(c => inScan(c.scanID)).forEach(c => pts.push(c.rig.position));
+  (location.meters ?? []).filter(m => inScan(m.scanID)).forEach(m => pts.push(m.position));
   if (!pts.length) return { minX: -3, minZ: -3, maxX: 3, maxZ: 3 };
   const r = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
   for (const p of pts) { r.minX = Math.min(r.minX, p.x); r.maxX = Math.max(r.maxX, p.x); r.minZ = Math.min(r.minZ, p.z); r.maxZ = Math.max(r.maxZ, p.z); }
