@@ -161,7 +161,7 @@ struct VirtualCameraView: View {
         // Looking through the camera: no beam volumes or labels in the frame, unless there is haze in the
         // air, when the beams show as they would on set.
         let key = viewExposure.keyLux
-        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit || display.hazeValue != .none, hideGrip: display.isHidden(group: .grip),
+        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit || display.hazeValue != HazeLevel.none, hideGrip: display.isHidden(group: .grip),
                         plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) },
                         referenceLux: look3D == "fit" ? nil : key, surfaces: display.roomSurfacesValue, haze: display.hazeValue)
     }
@@ -207,14 +207,14 @@ struct VirtualCameraView: View {
             }
             if !(location?.lightFixtures.isEmpty ?? true) {
                 Menu {
-                    Picker("Haze", selection: Binding(get: { location?.displaySettings.hazeValue ?? .none }, set: { h in
-                        store.updateLocation(ref) { $0.displaySettings.haze = h == .none ? nil : h.rawValue }
+                    Picker("Haze", selection: Binding(get: { location?.displaySettings.hazeValue ?? HazeLevel.none }, set: { h in
+                        store.updateLocation(ref) { $0.displaySettings.haze = h == HazeLevel.none ? nil : h.rawValue }
                     })) {
                         ForEach(HazeLevel.allCases) { Text($0.name).tag($0) }
                     }
                 } label: {
-                    TagChip(text: (location?.displaySettings.hazeValue ?? .none) == .none ? "Haze" : (location?.displaySettings.hazeValue ?? .none).name,
-                            selected: (location?.displaySettings.hazeValue ?? .none) != .none)
+                    TagChip(text: (location?.displaySettings.hazeValue ?? HazeLevel.none) == HazeLevel.none ? "Haze" : (location?.displaySettings.hazeValue ?? HazeLevel.none).name,
+                            selected: (location?.displaySettings.hazeValue ?? HazeLevel.none) != HazeLevel.none)
                 }
                 .accessibilityLabel("Haze")
                 .accessibilityHint("Haze in the air: beams show and a veil lifts the blacks. A look to judge the frame, not a measurement.")
