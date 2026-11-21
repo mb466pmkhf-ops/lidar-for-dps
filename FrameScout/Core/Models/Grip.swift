@@ -58,6 +58,7 @@ enum GripCatalog {
         GripSize(id: "frame-6x6", name: "6×6 frame", width: 1.83, height: 1.83, stands: 1, kinds: [.bounce, .negative, .flag, .diffusion]),
         GripSize(id: "frame-8x8", name: "8×8 frame", width: 2.44, height: 2.44, stands: 2, kinds: [.bounce, .negative, .flag, .diffusion]),
         GripSize(id: "frame-12x12", name: "12×12 frame", width: 3.66, height: 3.66, stands: 2, kinds: [.bounce, .negative, .flag, .diffusion]),
+        GripSize(id: "frame-20x20", name: "20×20 frame", width: 6.1, height: 6.1, stands: 2, kinds: [.bounce, .negative, .flag, .diffusion]),
     ]
 
     static let drapes: [Drape] = [

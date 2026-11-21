@@ -54,6 +54,7 @@ const colourTemperatureDriftsWith = q('Colour temperature drifts with lamp age, 
   'Wikipedia: HMI light', 'https://en.wikipedia.org/wiki/HMI_light');
 const theLampAloneDraws = q('The lamp alone draws 15 A at 120 V (8 A at 230 V), so use a 20 A circuit in 120 V countries. About the largest HMI that runs from a household outlet.',
   'Electrical: current = watts ÷ volts');
+const bigHmiSupply = q('A generator or a large distro: 9 kW draws about 39 A at 230 V and 18 kW about 78 A, before ballast losses.', 'Electrical: current = watts ÷ volts');
 const tooMuchForA = q('Too much for a household socket: about 17 A at 230 V and over 33 A at 120 V before ballast losses. Plan a generator or a heavy-duty distro circuit.',
   'Electrical: current = watts ÷ volts');
 const warmsAsItDims = q('Warms as it dims: at half output it is about 250 K warmer. FrameScan models this.',
@@ -100,6 +101,8 @@ export const fixtureQuirks: Record<string, UnitQuirk[]> = {
   'mat-4x4-bi': [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
   'hmi-1800-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theLampAloneDraws],
   'hmi-4000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, tooMuchForA],
+  'hmi-9000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
+  'hmi-18000-par': [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
   'tungsten-650': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd],
   'tungsten-1k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout8A],
   'tungsten-2k': [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout17A],
@@ -227,6 +230,10 @@ const imax1570 = q('15-perf 65 mm runs sideways through the camera: about 1.43:1
 const standard16 = q('Standard 16 camera aperture, about 1.37:1. Super 16 is wider on the same film.',
   'Wikipedia: 16 mm film', 'https://en.wikipedia.org/wiki/16_mm_film');
 
+const buranoAreas = q("Image sizes from Sony's recording-formats sheet. The 8.6K modes need a 40.6–41.2 mm image circle; the Super 35 modes need only Super 35 lenses.", 'Sony BURANO recording formats', 'https://77snszqv.media.zestyio.com/260407-Update-BURANO_RecordingFormats_R5-SB.pdf');
+const r5cAreas = q('Canon gives 36.0 × 19.0 mm for 8K/4K DCI and 33.8 × 19.0 mm for UHD. Its Super 35 and Super 16 crops frame tighter.', 'Canon EOS R5 C specifications', 'https://www.canon-europe.com/cameras/eos-r5c/specifications/');
+const dxl2Sensor = q('The 8K VV sensor is 40.96 × 21.6 mm (46.3 mm diagonal): use large-format lenses.', 'Panavision Millennium DXL2', 'https://www.panavision.com/product/panavision-millennium-dXL2-8K-camera/');
+
 export const sensorQuirks: Record<string, UnitQuirk[]> = {
   'arri-35-og': [upTo75Fps, needsA3396, openGateNeedsArri],
   'arri-35-169': [upTo120Fps, q2855MmImage],
@@ -257,6 +264,13 @@ export const sensorQuirks: Record<string, UnitQuirk[]> = {
   'bmd-pocket-4k': [windowedModes],
   'canon-c500-2': [windowedModes],
   'canon-c300-3': [c70SharesSensor, windowedModes],
+  'canon-r5c-8k': [r5cAreas],
+  'canon-r5c-uhd': [r5cAreas],
+  'panavision-dxl2-8k': [dxl2Sensor],
+  'sony-burano-86k-169': [buranoAreas],
+  'sony-burano-86k-179': [buranoAreas],
+  'sony-burano-58k-s35': [buranoAreas],
+  'sony-burano-43k-43': [buranoAreas],
   'red-vraptor-8k-s35': [redS35Spec],
   'sony-venice2-86k-179': [venice86k179],
   'sony-venice2-82k-239': [venice82k239],

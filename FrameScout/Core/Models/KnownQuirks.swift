@@ -93,6 +93,15 @@ enum KnownQuirks {
     private static let q100WHouseholdTungsten = UnitQuirk(text: "100 W household tungsten bulbs are no longer sold in the EU and UK. Source them from film suppliers or use a dimmed photoflood.",
         source: "EU Regulation 244/2009", url: "https://eur-lex.europa.eu/eli/reg/2009/244/oj")
 
+    private static let bigHmiSupply = UnitQuirk(text: "A generator or a large distro: 9 kW draws about 39 A at 230 V and 18 kW about 78 A, before ballast losses.",
+        source: "Electrical: current = watts ÷ volts")
+    private static let buranoAreas = UnitQuirk(text: "Image sizes from Sony's recording-formats sheet. The 8.6K modes need a 40.6–41.2 mm image circle; the Super 35 modes need only Super 35 lenses.",
+        source: "Sony BURANO recording formats", url: "https://77snszqv.media.zestyio.com/260407-Update-BURANO_RecordingFormats_R5-SB.pdf")
+    private static let r5cAreas = UnitQuirk(text: "Canon gives 36.0 × 19.0 mm for 8K/4K DCI and 33.8 × 19.0 mm for UHD. Its Super 35 and Super 16 crops frame tighter.",
+        source: "Canon EOS R5 C specifications", url: "https://www.canon-europe.com/cameras/eos-r5c/specifications/")
+    private static let dxl2Sensor = UnitQuirk(text: "The 8K VV sensor is 40.96 × 21.6 mm (46.3 mm diagonal): use large-format lenses.",
+        source: "Panavision Millennium DXL2", url: "https://www.panavision.com/product/panavision-millennium-dXL2-8K-camera/")
+
     static let fixtures: [String: [UnitQuirk]] = [
         "cob-100-bi": [dimmedLedsCanFlicker, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
         "cob-300-bi": [dimmedLedsCanFlicker, fanCooledQuietOr, theOutputFigureIs, allTheLightComes, biColourUnitsMix, mixedWhitesCanDrift],
@@ -112,6 +121,8 @@ enum KnownQuirks {
         "mat-4x4-bi": [dimmedLedsCanFlicker, biColourUnitsMix, mixedWhitesCanDrift, aFlexibleMatNeeds, theDriverIsUsually],
         "hmi-1800-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, theLampAloneDraws],
         "hmi-4000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, tooMuchForA],
+        "hmi-9000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
+        "hmi-18000-par": [takesAFewMinutes, mostHeadsCanT, dimsOnlyToAbout, useAnElectronicBallast, emitsUvNeverRun, colourTemperatureDriftsWith, bigHmiSupply],
         "tungsten-650": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd],
         "tungsten-1k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout8A],
         "tungsten-2k": [warmsAsItDims, fullCtbToMatch, runsVeryHotClip, silentNoFanAnd, drawsAbout17A],
@@ -269,6 +280,13 @@ enum KnownQuirks {
         "bmd-pocket-4k": [windowedModes],
         "canon-c500-2": [windowedModes],
         "canon-c300-3": [c70SharesSensor, windowedModes],
+        "canon-r5c-8k": [r5cAreas],
+        "canon-r5c-uhd": [r5cAreas],
+        "panavision-dxl2-8k": [dxl2Sensor],
+        "sony-burano-86k-169": [buranoAreas],
+        "sony-burano-86k-179": [buranoAreas],
+        "sony-burano-58k-s35": [buranoAreas],
+        "sony-burano-43k-43": [buranoAreas],
         "red-vraptor-8k-s35": [redS35Spec],
         "sony-venice2-86k-179": [venice86k179],
         "sony-venice2-82k-239": [venice82k239],
