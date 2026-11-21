@@ -250,4 +250,68 @@ describe('workspace saving and sync', () => {
     expect(inserted).toEqual([unsent.id]);
     expect(JSON.parse(kept.get('framescan.sync.owner')!)).toBe('u2');
   });
+
+  it('a sync still waiting on the server when sign-out discards cannot bring the projects back', async () => {
+    const w = offline();
+    await w.load();
+    const p = newProject('Old account');
+    let answer!: (row: unknown) => void;
+    const client = {
+      session: session() as ReturnType<typeof session> | undefined,
+      heads: async () => [{ id: p.id, rev: 5, deleted: false, name: 'Old account' }],
+      fetch: () => new Promise(r => { answer = r; }),
+      insert: async () => true, update: async () => true,
+      signOut() { client.session = undefined; },
+    };
+    w.client = client as unknown as SupabaseClient;
+    const running = w.sync();
+    await vi.advanceTimersByTimeAsync(0);   // its fetch now waits
+    await w.signOut({ discardUnsynced: true });
+    answer({ id: p.id, name: 'Old account', doc: p, plans: {}, rev: 5, deleted: false, updated_at: '', updated_by: 'web' });
+    await running;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.getProjects()).toEqual([]);
+    expect(stored.size).toBe(0);
+  });
+
+  it('stays signed in when the projects cannot be removed from this computer', async () => {
+    const w = offline();
+    await w.load();
+    const p = newProject('Stuck');
+    const client = {
+      session: session() as ReturnType<typeof session> | undefined,
+      heads: async () => [], fetch: async () => undefined, insert: async () => true, update: async () => true,
+      signOut() { client.session = undefined; },
+    };
+    w.client = client as unknown as SupabaseClient;
+    w.add({ project: p, plans: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    const { localStore } = await import('../src/sync/localStore');
+    const remove = vi.spyOn(localStore, 'remove').mockRejectedValueOnce(new Error('blocked'));
+    await expect(w.signOut()).rejects.toThrow(/still signed in/);
+    expect(client.session).toBeDefined();
+    expect(w.bundle(p.id)).toBeDefined();
+    remove.mockRestore();
+  });
+
+  it('a refusal stays on show when the next run goes offline before reaching that project', async () => {
+    const w = offline();
+    await w.load();
+    const big = newProject('Big');
+    let online = true;
+    w.client = {
+      session: session(),
+      heads: async () => { if (!online) throw new TypeError('Failed to fetch'); return []; },
+      fetch: async () => undefined,
+      insert: async () => { throw new Error('Sync server: 400 23514'); }, update: async () => true,
+    } as unknown as SupabaseClient;
+    w.add({ project: big, plans: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    await w.sync();
+    expect(w.syncProblems.has(big.id)).toBe(true);
+    online = false;
+    await w.sync();
+    expect(w.state.kind).toBe('offline');
+    expect(w.syncProblems.has(big.id)).toBe(true);
+  });
 });

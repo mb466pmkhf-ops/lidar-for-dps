@@ -46,6 +46,8 @@ final class CloudSync: ObservableObject {
     @Published private(set) var email: String?
     /// Projects the server refused on the last sync, with the reason. The others sync anyway.
     @Published private(set) var problems: [UUID: String] = [:]
+    /// Names the server gave each project, for a refused one this phone doesn't have yet.
+    private var serverNames: [UUID: String] = [:]
 
     private weak var store: ProjectStore?
     private var session: Session?
@@ -389,6 +391,10 @@ final class CloudSync: ObservableObject {
         // the others: its error is kept against it and the loop moves on. Losing the connection or
         // the sign-in still stops the whole run, since every other request would fail the same way.
         var found: [UUID: String] = [:]
+        var reached: Set<UUID> = []
+        // Settles `problems` on any way out: projects this run reached take its result (a refusal or
+        // nothing), projects it never got to keep what the last run said.
+        func settle() { problems = problems.filter { !reached.contains($0.key) }.merging(found) { _, new in new } }
         func keepGoing(_ error: Error, _ id: UUID) throws {
             if case SyncError.signedOut = error { throw error }
             if error is URLError || error is CancellationError { throw error }
@@ -398,7 +404,8 @@ final class CloudSync: ObservableObject {
             repeat {
                 again = false
                 found = [:]
-                let heads = try await rest("GET", "select=id,rev,deleted") as? [[String: Any]] ?? []
+                reached = []
+                let heads = try await rest("GET", "select=id,rev,deleted,name") as? [[String: Any]] ?? []
                 for head in heads {
                     guard let idString = head["id"] as? String, let id = UUID(uuidString: idString) else { continue }
                     let rev = (head["rev"] as? NSNumber)?.intValue ?? 0
@@ -414,20 +421,24 @@ final class CloudSync: ObservableObject {
                         continue
                     }
                     if meta[id]?.rev == rev && store.project(id) != nil { continue }
+                    reached.insert(id)
+                    if let name = head["name"] as? String { serverNames[id] = name }
                     do {
                         if let row = try await fetchRow(id) { try absorb(row, id: id, store: store) }
                     } catch { try keepGoing(error, id) }
                 }
                 for (id, m) in meta where m.dirty {
+                    reached.insert(id)
                     do { try await push(id, store: store) } catch { try keepGoing(error, id) }
                 }
                 saveMeta()
             } while again
-            problems = found
-            status = found.isEmpty ? .synced(Date()) : .error(problemSummary(store))
+            settle()
+            status = problems.isEmpty ? .synced(Date()) : .error(problemSummary(store))
         } catch SyncError.signedOut {
             status = .signedOut
         } catch let error as URLError {
+            settle()
             status = error.code == .notConnectedToInternet || error.code == .networkConnectionLost || error.code == .timedOut ? .offline : .error(error.localizedDescription)
         } catch {
             status = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
@@ -437,7 +448,7 @@ final class CloudSync: ObservableObject {
 
     /// "“Big shoot” couldn't sync: too large for the sync server. Everything else is up to date."
     private func problemSummary(_ store: ProjectStore) -> String {
-        let named = problems.map { id, why in "“\(store.project(id)?.name ?? "Untitled")” couldn't sync: \(why)" }.sorted()
+        let named = problems.map { id, why in "“\(store.project(id)?.name ?? serverNames[id] ?? "Untitled")” couldn't sync: \(why)" }.sorted()
         let more = named.count > 3 ? " (and \(named.count - 3) more)" : ""
         return named.prefix(3).joined(separator: " ") + more + " Everything else is up to date."
     }
@@ -479,7 +490,7 @@ final class CloudSync: ObservableObject {
         let basePlans = m.planBase.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
         let ownPlans = localPlans(store.project(id) ?? project, store: store)
         let plans = SyncMerge.merge(base: basePlans, local: ownPlans, remote: remotePlans) as? [String: Any] ?? remotePlans
-        store.applyRemote(project)
+        try store.applyRemote(project)
         writePlans(plans, local: ownPlans, for: project, store: store)
         m.rev = rev
         m.base = try JSONSerialization.data(withJSONObject: doc)

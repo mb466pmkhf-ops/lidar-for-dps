@@ -54,6 +54,10 @@ export class Workspace {
   private saveTimers = new Map<UUID, ReturnType<typeof setTimeout>>();
   private syncTimer?: ReturnType<typeof setInterval>;
   private syncing?: Promise<void>;
+  /// Bumped when this computer lets go of an account's projects (sign-out). A sync run that started
+  /// before then drops whatever it gets back, so it can't put those projects back afterwards.
+  private epoch = 0;
+  private signingOut = false;
   private listening = false;
   private snapshot: Project[] = [];
   client?: SupabaseClient;
@@ -64,6 +68,8 @@ export class Workspace {
   private failedSaves = new Set<UUID>();
   /// Projects the server refused on the last sync, with the reason. The other projects sync anyway.
   syncProblems = new Map<UUID, string>();
+  /// Names the server gave each project, for a refused one this computer doesn't have yet.
+  private serverNames = new Map<UUID, string>();
 
   constructor() {
     const config = readJSON<SyncConfig>(CONFIG_KEY) ?? defaultConfig();
@@ -270,12 +276,17 @@ export class Workspace {
   }
 
   /// Drops a project from this computer only (memory, storage and any save still waiting).
-  private forget(id: UUID) {
-    clearTimeout(this.saveTimers.get(id)); this.saveTimers.delete(id); this.pendingWrites.delete(id);
+  /// `removeStored: false` when the caller has already removed it from storage.
+  private forget(id: UUID, removeStored = true) {
+    this.cancelSave(id);
     this.entries.delete(id);
     this.syncProblems.delete(id);
     this.clearFailedSave(id);
-    void localStore.remove(id);
+    if (removeStored) void localStore.remove(id);
+  }
+
+  private cancelSave(id: UUID) {
+    clearTimeout(this.saveTimers.get(id)); this.saveTimers.delete(id); this.pendingWrites.delete(id);
   }
 
   /// Projects with changes the server doesn't have yet (a pending delete doesn't count: nothing is lost).
@@ -291,18 +302,37 @@ export class Workspace {
    */
   async signOut(opts: { discardUnsynced?: boolean } = {}): Promise<{ unsynced: string[] } | undefined> {
     const client = this.client;
-    if (!client?.session) { client?.signOut(); return undefined; }
+    const account = client?.session?.userID;
+    if (!client || account === undefined) { client?.signOut(); return undefined; }
+    // Someone else signed in (or the server changed) while this waited: leave their session alone.
+    const stillOurs = () => this.client === client && client.session?.userID === account;
     if (!opts.discardUnsynced) {
       this.flushSaves();
       await this.syncing;        // one already running may have started before the last edit
       await this.sync();
+      if (!stillOurs()) return undefined;
       const unsynced = this.unsyncedProjects();
       if (unsynced.length) return { unsynced };
     }
-    for (const id of [...this.entries.keys()]) this.forget(id);
-    writeJSON(OWNER_KEY, undefined);
-    client.signOut();
-    this.emit();
+    if (!stillOurs()) return undefined;
+    this.signingOut = true;      // no new sync run starts while the projects are removed
+    this.epoch++;                // and one already running drops what it gets back
+    try {
+      const ids = [...this.entries.keys()];
+      ids.forEach(id => this.cancelSave(id));
+      try {
+        await Promise.all(ids.map(id => localStore.remove(id)));
+      } catch (err) {
+        // Still signed in, and the account stays marked as this computer's, so nothing is half done.
+        throw new Error(`Couldn't remove the projects from this computer, so you're still signed in. ${err instanceof Error ? err.message : String(err)}`);
+      }
+      ids.forEach(id => this.forget(id, false));
+      writeJSON(OWNER_KEY, undefined);
+      client.signOut();
+    } finally {
+      this.signingOut = false;
+      this.emit();
+    }
     return undefined;
   }
 
@@ -329,7 +359,7 @@ export class Workspace {
   sync(): Promise<void> {
     if (this.syncing) return this.syncing;
     const client = this.client;
-    if (!client?.session || !this.loaded) return Promise.resolve();
+    if (!client?.session || !this.loaded || this.signingOut) return Promise.resolve();
     this.syncing = this.runSync(client).finally(() => { this.syncing = undefined; this.emit(); });
     return this.syncing;
   }
@@ -341,8 +371,17 @@ export class Workspace {
     // One project the server refuses (too large, a row it can't take) must not hold up the others:
     // its error is kept against it and the loop moves on. Losing the connection or the sign-in
     // still stops the whole run, since every other request would fail the same way.
+    const gen = this.epoch;
+    const live = () => gen === this.epoch;
     const problems = new Map<UUID, string>();
+    const reached = new Set<UUID>();
+    // Projects this run reached take its result; ones it never got to keep what the last run said.
+    const settle = () => {
+      for (const id of reached) if (!problems.has(id)) this.syncProblems.delete(id);
+      for (const [id, why] of problems) this.syncProblems.set(id, why);
+    };
     const each = async (id: UUID, step: () => Promise<void>) => {
+      reached.add(id);
       try { await step(); } catch (err) {
         if (stopsEverything(err, client)) throw err;
         problems.set(id, plainReason(err));
@@ -350,8 +389,10 @@ export class Workspace {
     };
     try {
       const heads = await client.heads();
+      if (!live()) return;
       for (const head of heads) {
         const id = head.id;
+        if (head.name) this.serverNames.set(id, head.name);
         const local = this.entries.get(id);
         if (head.deleted) {
           // Deleted here and on the server too: nothing left to send.
@@ -360,13 +401,20 @@ export class Workspace {
           continue;
         }
         if (local && local.rev === head.rev) continue;
-        await each(id, async () => { const row = await client.fetch(id); if (row) this.absorb(row); });
+        await each(id, async () => { const row = await client.fetch(id); if (row && live()) this.absorb(row); });
+        if (!live()) return;
       }
-      for (const e of [...this.entries.values()]) if (e.dirty) await each(e.id, () => this.push(client, e));
-      this.syncProblems = problems;
-      if (problems.size) this.setState({ kind: 'error', message: this.problemSummary() });
+      for (const e of [...this.entries.values()]) {
+        if (!live()) return;
+        if (e.dirty) await each(e.id, () => this.push(client, e, live));
+      }
+      if (!live()) return;
+      settle();
+      if (this.syncProblems.size) this.setState({ kind: 'error', message: this.problemSummary() });
       else this.setState({ kind: 'synced', at: Date.now() });
     } catch (err) {
+      if (!live()) return;
+      settle();
       const message = err instanceof Error ? err.message : String(err);
       if (isOffline(message)) this.setState({ kind: 'offline', message: 'Offline — changes are saved here and will sync later' });
       else if (!client.session) this.setState({ kind: 'signedOut' });
@@ -376,7 +424,7 @@ export class Workspace {
 
   /// "“Big shoot” couldn't sync: too large for the sync server. Everything else is up to date."
   private problemSummary(): string {
-    const named = [...this.syncProblems].map(([id, why]) => `“${this.entries.get(id)?.bundle.project.name || 'Untitled'}” couldn't sync: ${why}`);
+    const named = [...this.syncProblems].map(([id, why]) => `“${this.entries.get(id)?.bundle.project.name || this.serverNames.get(id) || 'Untitled'}” couldn't sync: ${why}`);
     const shown = named.slice(0, 3).join(' ');
     const more = named.length > 3 ? ` (and ${named.length - 3} more)` : '';
     return `${shown}${more} Everything else is up to date.`;
@@ -408,10 +456,11 @@ export class Workspace {
     this.persist(local, true);
   }
 
-  private async push(client: SupabaseClient, e: Entry) {
+  private async push(client: SupabaseClient, e: Entry, live: () => boolean = () => true) {
     const version = e.version;
     const bundle = e.bundle;
     const done = (rev: number) => {
+      if (!live()) return;
       if (this.entries.get(e.id) !== e) {
         // A new copy with the same id took its place (imported again): leave it alone. It uploads,
         // meets this row and merges with it like any other conflict.
@@ -428,6 +477,7 @@ export class Workspace {
     };
     if (e.deleted) {
       if (e.rev === undefined || await client.update(e.id, e.rev, { deleted: true })) {
+        if (!live()) return;
         // A copy re-added under the same id while the delete was on the way stays: it uploads and
         // meets the deleted row like any other conflict.
         if (this.entries.get(e.id) !== e) return;
@@ -443,14 +493,14 @@ export class Workspace {
       if (ok) done(1);
       else {
         const row = await client.fetch(e.id);
-        if (row) { if (!this.entries.has(e.id)) done(row.rev); else this.absorb(row); }
+        if (row && live()) { if (!this.entries.has(e.id)) done(row.rev); else this.absorb(row); }
       }
       return;
     }
     const patch: Partial<RemoteRow> = { name: doc.name, doc, deleted: false, updated_by: DEVICE };
     if (!deepEqual(bundle.plans, e.base?.plans)) patch.plans = bundle.plans;
     if (await client.update(e.id, e.rev, patch)) done(e.rev + 1);
-    else { const row = await client.fetch(e.id); if (row) this.absorb(row); }
+    else { const row = await client.fetch(e.id); if (row && live()) this.absorb(row); }
   }
 }
 

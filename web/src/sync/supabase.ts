@@ -9,7 +9,7 @@ export interface RemoteRow {
   id: UUID; name: string; doc: Project; plans: Record<UUID, FloorPlan>; rev: number;
   deleted: boolean; updated_at: string; updated_by: string | null;
 }
-export type RemoteHead = Pick<RemoteRow, 'id' | 'rev' | 'deleted'>;
+export type RemoteHead = Pick<RemoteRow, 'id' | 'rev' | 'deleted'> & { name?: string };
 
 export const TABLE = 'framescan_projects';
 export type OAuthProvider = 'apple' | 'google';
@@ -148,7 +148,7 @@ export class SupabaseClient {
     return res.status === 204 ? (undefined as T) : res.json();
   }
 
-  heads() { return this.rest<RemoteHead[]>('GET', 'select=id,rev,deleted'); }
+  heads() { return this.rest<RemoteHead[]>('GET', 'select=id,rev,deleted,name'); }
 
   async fetch(id: UUID): Promise<RemoteRow | undefined> {
     const rows = await this.rest<RemoteRow[]>('GET', `select=*&id=eq.${encodeURIComponent(id)}`);
