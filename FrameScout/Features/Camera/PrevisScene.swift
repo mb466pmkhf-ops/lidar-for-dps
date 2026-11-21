@@ -697,6 +697,15 @@ final class VirtualSceneModel: ObservableObject {
 
     func attach(_ view: SCNView) { orbitView = view }
 
+    /// The view looking through a camera or shot, for saving its frame.
+    private(set) weak var lookView: SCNView?
+    func attachLook(_ view: SCNView) { lookView = view }
+    /// What the look-through shows right now, at the view's size. Nil before it is on screen.
+    func lookSnapshot() -> UIImage? {
+        guard let v = lookView, v.bounds.width > 0 else { return nil }
+        return v.snapshot()
+    }
+
     /// Three-quarter view over the whole room.
     func resetView() {
         setOrbit(target: worldPoint(roomCentre), yaw: 0.6, pitch: 0.75, distance: roomSpan * 1.35, animated: true)
@@ -812,10 +821,12 @@ final class VirtualSceneModel: ObservableObject {
     // MARK: Placed items
 
     /// Cameras (with their field of view), and the subject marks of shots that have no person on them.
-    /// `hideSelected` leaves out the camera you're looking through (walkthrough).
+    /// `hideSelected` leaves out the camera you're looking through (walkthrough). Shots are set up one
+    /// at a time, so looking through a shot leaves out the other shots' cameras too.
     func setMarkers(viewpoints: [VirtualViewpoint], selected: UUID?, showLabels: Bool = true, hideSelected: Bool = false, hiddenSubjects: Bool = false) {
         var keep = Set<UUID>()
-        for vp in viewpoints where !(hideSelected && vp.id == selected) {
+        let lookingThroughShot = hideSelected && viewpoints.contains { $0.id == selected && $0.kind == .shot }
+        for vp in viewpoints where !(hideSelected && vp.id == selected) && !(lookingThroughShot && vp.kind == .shot) {
             let reach = vp.subject.map { max(1.5, vp.rig.position.distance(to: $0)) } ?? 2.5
             var h = Hasher()
             h.combine(vp)
@@ -1412,7 +1423,7 @@ struct SceneKitContainer: UIViewRepresentable {
         view.autoenablesDefaultLighting = false
         view.pointOfView = orbit ? model.orbitCameraNode : model.cameraNode
         view.allowsCameraControl = false
-        if orbit { model.attach(view) }
+        if orbit { model.attach(view) } else { model.attachLook(view) }
         let c = context.coordinator
         c.view = view
         if !orbit { model.wallFader.restore() }

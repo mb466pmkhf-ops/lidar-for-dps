@@ -33,6 +33,7 @@ import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
 import { readingShort } from './format';
 import { Icon } from './icons';
+import { frameRect, shotFrames } from '../sync/shotFrames';
 import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
 import { buildRoom, ground, type WallRecord } from './scene3d/room';
 import { board, cameraModel, glowLevel, head, meterModel, person, relight, stand, yoke } from './scene3d/models';
@@ -178,6 +179,7 @@ export function Scene3D(p: Props) {
   eyeRef.current = eye;
   const [noLight, setNoLight] = useState(false);
   const [warming, setWarming] = useState(false);
+  const [savedNote, setSavedNote] = useState('');
   // What is already built, by item: a change to one light leaves the others (and their shadow maps) alone.
   const built = useRef(new Map<string, { key: string; obj: THREE.Object3D }>());
   const roomGen = useRef(0);
@@ -285,6 +287,8 @@ export function Scene3D(p: Props) {
       renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%';
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
+      // Looking through a camera: fit its lens and frame lines to the new shape of the view.
+      if (eyeRef.current) lookRef.current(eyeRef.current.key);
     };
     api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], roomLights, invalidate };
     applyQuality();
@@ -373,6 +377,8 @@ export function Scene3D(p: Props) {
     };
     frame = requestAnimationFrame(tick);
 
+    // Three's raycaster also hits hidden objects (a camera model hidden while looking through it), so skip them.
+    const shown = (obj: THREE.Object3D) => { for (let o: THREE.Object3D | null = obj; o; o = o.parent) if (!o.visible) return false; return true; };
     // Click (not drag) selects.
     let down: { x: number; y: number } | undefined;
     const pd = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
@@ -382,6 +388,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         if (o) { onSelect.current(o.userData.sel); return; }
@@ -396,6 +403,7 @@ export function Scene3D(p: Props) {
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       for (const h of ray.intersectObjects(items.children, true)) {
+        if (!shown(h.object)) continue;
         let o: THREE.Object3D | null = h.object;
         while (o && !o.userData.sel) o = o.parent;
         const sel = o?.userData.sel as Selection | undefined;
@@ -808,8 +816,9 @@ export function Scene3D(p: Props) {
       const add = (kind: 'camera' | 'shot', id: string, rig: CameraRig) => {
         const g = keep(`${kind}:${id}`, JSON.stringify(rig), () => { const g = cameraModel(rig); g.userData.sel = { kind, id } satisfies Selection; return g; });
         // You don't see the camera you are looking through (nor a shot set up on the very same spot).
+        // Shots are set up one at a time, so looking through a shot hides the other shots' cameras too.
         const e = eyeRef.current;
-        g.visible = !e || Math.hypot(rig.position.x - e.x, rig.position.z - e.z) > 0.08;
+        g.visible = !e || (Math.hypot(rig.position.x - e.x, rig.position.z - e.z) > 0.08 && !(kind === 'shot' && e.key.startsWith('shot:')));
         if (isSel(kind, id)) ring(rig.position.x, rig.position.z, 0.48);
       };
       for (const cam of loc.cameraPositions) if (inScan(cam.scanID)) add('camera', cam.id, cam.rig);
@@ -874,7 +883,7 @@ export function Scene3D(p: Props) {
       a.tags.push({ el, at: v(m.point.x, m.point.y + ('meter' in m.source ? 0.1 : 0.2), m.point.z) });
     }
     a.invalidate(3);
-  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key, eye?.x, eye?.z]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Night mode changes the accent colour; redraw so the selection ring follows.
   useEffect(() => {
@@ -915,8 +924,42 @@ export function Scene3D(p: Props) {
     const t = v(a.centre.x, 1.4, a.centre.z); moveTo(t.clone().add(v(0, 0.2, a.span * 0.45)), t);
   };
   lookRef.current = eyeLevel;
+  /** Counts frame saves, so a slower encode of an older save never overwrites a newer one. */
+  const saveSeq = useRef(0);
   // Asked from the camera's details ("Look through it"): once the view is ready.
   useEffect(() => { if (p.lookThrough) eyeLevel(p.lookThrough.key); }, [p.lookThrough?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  // If the camera being looked through is edited (lens, sensor, position), follow it so the view, the
+  // frame lines and the rig saved with a frame stay current.
+  useEffect(() => {
+    if (!eye?.rig || !api.current) return;
+    const [kind, id] = eye.key.split(':');
+    const now = kind === 'shot' ? p.location.shots.find(s => s.id === id)?.rig : kind === 'camera' ? p.location.cameraPositions.find(c => c.id === id)?.rig : undefined;
+    if (now && JSON.stringify(now) !== JSON.stringify(eye.rig)) eyeLevel(eye.key);
+  }, [p.location, eye?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Saves what the frame lines show as this shot's previs frame. The picture is read straight after a
+  // fresh render, so the WebGL buffer doesn't need preserveDrawingBuffer. The DOM overlays (tags, frame
+  // lines) are not in it. It is a render of the plan, labelled as such wherever it's shown.
+  const saveFrame = () => {
+    const seq = ++saveSeq.current;
+    const a = api.current;
+    if (!a || !eye?.key.startsWith('shot:')) return;
+    const shotID = eye.key.slice(5);
+    a.composer.render();
+    const src = a.renderer.domElement;
+    const r = frameRect(src.width, src.height, eye.ratio);
+    const scale = Math.min(1, 1920 / r.w);
+    const out = document.createElement('canvas');
+    out.width = Math.round(r.w * scale); out.height = Math.round(r.h * scale);
+    out.getContext('2d')?.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, out.width, out.height);
+    const lens = `${Math.round(eye.rig.focalLength)} mm · ${stopLabel(p.exposure.tStop)} · ISO ${p.exposure.iso}`;
+    const done = (text: string) => { setSavedNote(text); window.setTimeout(() => setSavedNote(''), 2500); };
+    out.toBlob(b => {
+      if (!b) { done('Could not save the frame'); return; }
+      if (seq !== saveSeq.current) return; // a later save is on its way; keep that one, not this older picture
+      shotFrames.put(shotID, b, lens, eye.rig).then(() => done(`Saved to ${eye.label.split(' · ')[0]}. It prints on the plan sheet.`), () => done('Could not save the frame'));
+    }, 'image/jpeg', 0.88);
+  };
+
   const cameraCount = p.location.cameraPositions.length + p.location.shots.length;
   const inShot = eye ? inFrameSentence(unitsInFrame(eye.rig, p.lights, p.plan)) : '';
   const toggleLook = () => setAtStop(on => { try { localStorage.setItem('framescan.3d.look', on ? 'fit' : 'stop'); } catch { /* private mode */ } return !on; });
@@ -934,9 +977,11 @@ export function Scene3D(p: Props) {
           <div className="lines" style={{ aspectRatio: String(eye.ratio), ...(eye.ratio >= (api.current?.camera.aspect ?? 1.6) ? { width: '92%' } : { height: '92%' }) }}>
             <span>{eye.label}</span>
             {inShot && <span className="in-shot">{inShot}</span>}
+            {savedNote && <span className="saved">{savedNote}</span>}
           </div>
         </div>
       )}
+      <span className="sr-only" role="status">{savedNote}</span>
       <div className="scene3d-hint">
         <span className="what">{note}</span>
         {!tipSeen
@@ -945,6 +990,7 @@ export function Scene3D(p: Props) {
       </div>
       <div className="scene3d-buttons">
         <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title={atStop ? 'Brightness as the camera exposes it at the settings above. Click to fit it to the screen instead.' : 'Brightness fitted to the screen. Click to show it as the camera exposes it.'}>{atStop ? `As shot · ${stopLabel(p.exposure.tStop)}` : 'Fitted'}</button>
+        {eye?.key.startsWith('shot:') && <button className="tool" onClick={saveFrame} title="Save what the frame lines show onto this shot. A previs render, not a photograph."><Icon name="camera" /> Save frame</button>}
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>
         <button className="tool" onClick={topView} title="View from above">Top</button>
         <button className={'tool' + (eye ? ' on' : '')} aria-pressed={!!eye} onClick={() => (eye ? resetView() : eyeLevel())}

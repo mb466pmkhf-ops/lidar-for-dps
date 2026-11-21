@@ -346,19 +346,24 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
   });
   const [showMenu, setShowMenu] = useState(false);
   // The hand-off sheet takes a picture of the plan as framed on screen (from the 2D view).
-  const [sheet, setSheet] = useState<{ plan?: ReturnType<typeof planSnapshot> }>();
-  // The sheet's picture always shows what each camera sees, so the gaffer has the shots with the plan:
-  // the Camera views layer is switched on for the picture only, then back as it was.
+  const [sheet, setSheet] = useState<{ plan?: ReturnType<typeof planSnapshot>; diagram?: ReturnType<typeof planSnapshot> }>();
+  // Two pictures: the plan as framed on screen, with the Camera views layer switched on for the
+  // picture so the gaffer has the shots, and the clean overhead diagram (fitted, no grid, map or
+  // selection). Layers go back as they were.
+  const [diagram, setDiagram] = useState(false);
   const openSheet = () => {
     const hadViews = layers.has('views');
+    const grab = () => { const svg = document.querySelector<SVGSVGElement>('.plan-wrap svg'); return svg ? planSnapshot(svg) : undefined; };
+    const after2 = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
     const snap = () => {
-      const svg = document.querySelector<SVGSVGElement>('.plan-wrap svg');
-      setSheet({ plan: svg ? planSnapshot(svg) : undefined });
+      const planPic = grab();
       if (!hadViews) setLayers(prev => { const next = new Set(prev); next.delete('views'); return next; });
+      setDiagram(true);
+      after2(() => { const diagramPic = grab(); setDiagram(false); setSheet({ plan: planPic, diagram: diagramPic }); });
     };
     if (!hadViews) setLayers(prev => new Set([...prev, 'views']));
     if (view3D) setView(false);
-    if (view3D || !hadViews) requestAnimationFrame(() => requestAnimationFrame(snap)); else snap();
+    if (view3D || !hadViews) after2(snap); else snap();
   };
   const [view3D, setView3D] = useState(() => { try { return localStorage.getItem('framescan.plan.view') === '3d'; } catch { return false; } });
   const [lookThrough, setLookThrough] = useState<{ key: string; n: number }>();
@@ -457,7 +462,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
         ) : (
           <PlanCanvas
             location={location} plan={plan} scanID={scanID} lights={lights} scene={scene} readings={readings} exposure={exposure}
-            selection={selection} showLuxMap={showLuxMap} layers={layers} placing={tool.kind !== 'select'} hint={hint}
+            selection={selection} showLuxMap={showLuxMap} layers={layers} diagram={diagram} placing={tool.kind !== 'select'} hint={hint}
             onSelect={s => setSelection(s)} onPlace={place}
             onDragStart={() => { dragPending.current = true; }} onDrag={drag} onDragEnd={() => { dragPending.current = false; }}
           />
@@ -470,7 +475,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })}
           lookThrough={s => { setView(true); setLookThrough(l => ({ key: `${s.kind}:${s.id}`, n: (l?.n ?? 0) + 1 })); }} />
       </aside>
-      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} plan={sheet.plan} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
+      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} plan={sheet.plan} diagram={sheet.diagram} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
     </>
   );
 }

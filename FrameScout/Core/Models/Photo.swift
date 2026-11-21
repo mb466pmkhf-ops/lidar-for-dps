@@ -1,7 +1,8 @@
 import Foundation
 
 enum PhotoSource: String, Codable {
-    case camera, library, scan, viewfinder
+    /// `previs`: a frame saved from the 3D look-through. A render of the plan, not a photograph.
+    case camera, library, scan, viewfinder, previs
 }
 
 /// Where a photo was taken inside a scan, when known (photos snapped during a LiDAR scan).

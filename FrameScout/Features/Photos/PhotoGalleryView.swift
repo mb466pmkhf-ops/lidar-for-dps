@@ -41,8 +41,8 @@ struct PhotoGalleryView: View {
                         .frame(maxWidth: .infinity)
                         .clipped()
                         .overlay(alignment: .bottomLeading) {
-                            if photo.source == .viewfinder || photo.source == .scan {
-                                Image(systemName: photo.source == .scan ? "cube.transparent" : "camera.viewfinder")
+                            if photo.source == .viewfinder || photo.source == .scan || photo.source == .previs {
+                                Image(systemName: photo.source == .scan ? "cube.transparent" : photo.source == .previs ? "cube" : "camera.viewfinder")
                                     .font(.fsMicro)
                                     .padding(4)
                                     .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
