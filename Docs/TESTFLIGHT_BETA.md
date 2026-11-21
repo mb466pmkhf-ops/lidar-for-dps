@@ -30,16 +30,18 @@ Connect team, which would also show them your sales and app settings.
 1. App Store Connect → the app → TestFlight → **Test Information**: paste the beta description and
    feedback email below. Fill **Beta App Review Information** (your name, phone, email; "Sign-in
    required" off).
-2. TestFlight → **External Testing → +** → group `DP beta` → add the build.
-3. Add testers by email (Testers → +), or turn on a **public link** limited to 10 testers and send it
+2. **Test it yourself first.** TestFlight → **Internal Testing → +** → group `Team` → add yourself
+   (you are already a team member) and the build. No review is needed: install it from the
+   TestFlight app and run through "What to test" on your iPhone before inviting anyone.
+3. TestFlight → **External Testing → +** → group `DP beta` → add the build, then press
+   **Submit for Review**. (For later builds of an already-approved version Apple may not require a
+   review; then press **Start Testing** instead.)
+4. Add testers by email (Testers → +), or turn on a **public link** limited to 10 testers and send it
    yourself.
-4. The first build of each version goes through **Beta App Review** (usually under a day). Later
-   builds of the same version are often approved straight away.
-5. Testers install the free **TestFlight** app, accept the invite and install FrameScout. Builds
+5. After you submit, **Beta App Review** usually takes under a day. Invites go out once it is
+   approved.
+6. Testers install the free **TestFlight** app, accept the invite and install FrameScout. Builds
    expire after 90 days; upload a new one to keep the beta going.
-
-Test it yourself first: add yourself as an internal tester (you are already a team member), install
-from TestFlight and run through "What to test" on your iPhone before inviting anyone.
 
 ## 3. Text to paste
 
@@ -72,7 +74,9 @@ Use a project address on your domain, for example `beta@novaluma.dev` (forward i
 > Hi [name], I'm building FrameScout, an iPhone app for location recces: scan a room with LiDAR, then
 > plan lights and shots on it. I'd value 30 minutes of your eyes on it before it goes public. Install
 > TestFlight from the App Store, then open this link: [link]. It needs iOS 17; scanning needs a Pro
-> iPhone or iPad with LiDAR, the rest works on any recent iPhone. Your scans stay on your phone.
+> iPhone or iPad with LiDAR, the rest works on any recent iPhone. Scan meshes, textures and photos
+> stay on your phone. Sign-in is optional: if you sign in to sync, your projects (including each
+> scan's 2D floor plan, the location address and GPS position) are stored on our sync server.
 
 ## 4. Reading feedback
 
