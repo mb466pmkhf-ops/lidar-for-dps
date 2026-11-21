@@ -7,7 +7,7 @@ import { KIND_INFO, filters, fixtureModifier, fixtureProfile, photometrics } fro
 import { exposureTime, speedLabel, stopLabel, stopsDelta, stopsForLux, trim } from '../model/exposure';
 import { gripLabel, isGrip } from '../model/grip';
 import { lightSupport, lightSupportInfo } from '../model/rigging';
-import { amps, kitList, kitText, type KitLine } from '../model/kit';
+import { BATTERY_SIZES, SUPPLIES, amps, circuitPlan, emptyRates, kitCost, kitList, kitText, money, parseRate, parseRates, ratesJSON, runTimeLabel, supplyByID, type KitLine, type Rates } from '../model/kit';
 import { metres, pct, reading as fmtReading, watts } from './format';
 import { Icon } from './icons';
 import { activeLook, looksOf } from '../model/looks';
@@ -54,9 +54,56 @@ function unitRow(l: LightFixture) {
   };
 }
 
+/** Run time at full output on one pack, for units small enough to run on one. Estimated. */
+function packTime(l: LightFixture, wh: number): string {
+  if (isGrip(l.kind) || !KIND_INFO[l.kind].emits) return '';
+  return runTimeLabel(fixtureProfile(l).ratedPower, wh);
+}
+
 const Lines = ({ title, lines }: { title: string; lines: KitLine[] }) => lines.length ? (
   <div className="sheet-kit"><h4>{title}</h4><ul>{lines.map(l => <li key={l.item}><span className="mono">{l.qty} ×</span> {l.item}</li>)}</ul></div>
 ) : null;
+
+const SUPPLY_KEY = 'framescan.power.supply', PACK_KEY = 'framescan.power.pack', RATES_KEY = 'framescan.rates';
+function stored(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
+function store(key: string, v: string) { try { localStorage.setItem(key, v); } catch { /* private window: kept for this visit only */ } }
+
+/** Day rates the user types in for each kit line. FrameScan has no prices of its own; lines left blank
+ *  are listed as having no rate rather than guessed. */
+function RatesEditor({ lines, rates, onChange }: { lines: KitLine[]; rates: Rates; onChange(update: (r: Rates) => Rates): void }) {
+  const [note, setNote] = useState('');
+  // Bumped on paste so the typed-in fields show the pasted rates.
+  const [ver, setVer] = useState(0);
+  const set = (item: string, text: string) => onChange(cur => {
+    const items = { ...cur.items };
+    const v = parseRate(text);
+    if (v === undefined) delete items[item]; else items[item] = v;
+    return { ...cur, items };
+  });
+  const copy = () => { void navigator.clipboard?.writeText(ratesJSON(rates)).then(() => setNote('Rates copied')).catch(() => setNote("Couldn't copy")); };
+  const paste = () => {
+    void navigator.clipboard?.readText().then(t => {
+      const r = parseRates(t);
+      if (r) { onChange(cur => ({ currency: r.currency, items: { ...cur.items, ...r.items } })); setVer(v => v + 1); setNote('Rates pasted'); } else setNote('Nothing to paste: copy rates from FrameScan first');
+    }).catch(() => setNote("Couldn't read the clipboard"));
+  };
+  return (
+    <details className="sheet-rates-edit">
+      <summary>Type your day rates</summary>
+      <p className="faint">Type what you pay a day for each item, from your rental house or your own kit. They stay on this computer and are only used on this sheet and the copied kit list.</p>
+      <label className="sheet-rate-row"><span>Currency</span><input value={rates.currency} maxLength={4} onChange={ev => { const currency = ev.target.value; onChange(cur => ({ ...cur, currency })); }} aria-label="Currency symbol" /></label>
+      {lines.map(l => (
+        <label key={`${l.item}-${ver}`} className="sheet-rate-row"><span>{l.item}</span>
+          <input inputMode="decimal" defaultValue={rates.items[l.item] ?? ''} placeholder="Day rate" onChange={ev => set(l.item, ev.target.value)} aria-label={`Day rate for ${l.item}`} /></label>
+      ))}
+      <div className="sheet-rate-actions">
+        <button className="btn small" onClick={copy}>Copy rates</button>
+        <button className="btn small" onClick={paste}>Paste rates</button>
+        <span className="faint" role="status">{note}</span>
+      </div>
+    </details>
+  );
+}
 
 export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan, floorPlan, scanID, onClose }: {
   project: Project; location: Location; lights: LightFixture[]; meters: MeterPoint[]; readings: Map<string, number>;
@@ -81,7 +128,15 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
     };
     img.src = plan.url;
   };
-  const copy = () => { void navigator.clipboard?.writeText(kitText(kit, title)).then(() => setCopied(true)).catch(() => setCopied(false)); };
+  const [supplyID, setSupplyID] = useState(() => supplyByID(stored(SUPPLY_KEY) ?? undefined).id);
+  const [pack, setPack] = useState(() => { const v = Number(stored(PACK_KEY)); return BATTERY_SIZES.includes(v) ? v : BATTERY_SIZES[0]; });
+  const [rates, setRatesState] = useState<Rates>(() => parseRates(stored(RATES_KEY)) ?? emptyRates());
+  // Updates go through the latest rates, so a paste that lands after an edit keeps the edit.
+  const setRates = (update: (r: Rates) => Rates) => setRatesState(cur => { const next = update(cur); store(RATES_KEY, ratesJSON(next)); return next; });
+  const circuits = useMemo(() => circuitPlan(lights, supplyByID(supplyID)), [lights, supplyID]);
+  const cost = kitCost(kit, rates);
+  const kitLines = [...kit.units, ...kit.modifiers, ...kit.gels, ...kit.grip, ...kit.stands];
+  const copy = () => { void navigator.clipboard?.writeText(kitText(kit, title, lights, rates)).then(() => setCopied(true)).catch(() => setCopied(false)); };
   const dialogRef = useModal<HTMLElement>(onClose);
   return (
     <div className="scrim sheet-scrim" onClick={onClose}>
@@ -124,8 +179,8 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         </>}
         <h3>Units</h3>
         <table className="sheet-table">
-          <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th></tr></thead>
-          <tbody>{lights.map(l => { const r = unitRow(l); return <tr key={l.id}><td>{r.name}</td><td>{r.unit}</td><td>{r.shaping}</td><td className="mono">{r.output}</td><td className="mono">{r.colour}</td><td className="mono">{r.height}</td><td>{r.stand}</td></tr>; })}</tbody>
+          <thead><tr><th>Name</th><th>Unit</th><th>Modifier and gels</th><th>Output</th><th>Colour</th><th>Height</th><th>Stand</th><th>On a {pack} Wh pack</th></tr></thead>
+          <tbody>{lights.map(l => { const r = unitRow(l); return <tr key={l.id}><td>{r.name}</td><td>{r.unit}</td><td>{r.shaping}</td><td className="mono">{r.output}</td><td className="mono">{r.colour}</td><td className="mono">{r.height}</td><td>{r.stand}</td><td className="mono">{packTime(l, pack)}</td></tr>; })}</tbody>
         </table>
         {meters.length > 0 && <>
           <h3>Readings at {stopLabel(e.tStop)}</h3>
@@ -144,7 +199,33 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         {kit.drawRated > 0 && (
           <p className="sheet-power"><strong>Power</strong> · rated, all units {watts(kit.drawRated)} ({amps(kit.drawRated, 230).toFixed(1)} A at 230 V, {amps(kit.drawRated, 120).toFixed(1)} A at 120 V) · as set, units on ≈ {watts(kit.drawNow)}</p>
         )}
-        <p className="note">≈ Readings and power are estimates from the plan (direct light, one bounce off boards and one off the room). Check on the day.</p>
+        {kit.drawRated > 0 && (
+          <p className="sheet-power">
+            <strong>Circuits</strong> · on{' '}
+            <select className="sheet-inline-select" value={supplyID} onChange={ev => { setSupplyID(ev.target.value); store(SUPPLY_KEY, ev.target.value); }} aria-label="Wall supply">
+              {SUPPLIES.map(x => <option key={x.id} value={x.id}>{x.label}s</option>)}
+            </select>{' '}
+            ≈ {circuits.circuits} separate circuit{circuits.circuits === 1 ? '' : 's'}, every unit at full, each circuit loaded to 80 %
+            {circuits.tooBig.length > 0 && <> · too big for one: {circuits.tooBig.join(', ')} (needs a bigger supply or a generator)</>}
+            <span className="sheet-print-hide"> · packs{' '}
+              <select className="sheet-inline-select" value={pack} onChange={ev => { const v = Number(ev.target.value); setPack(v); store(PACK_KEY, String(v)); }} aria-label="Battery pack size">
+                {BATTERY_SIZES.map(w => <option key={w} value={w}>{w} Wh</option>)}
+              </select>
+            </span>
+          </p>
+        )}
+        {cost.lines.length > 0 && <>
+          <h3>Your day rates</h3>
+          <table className="sheet-table narrow">
+            <tbody>
+              {cost.lines.map(l => <tr key={l.item}><td>{l.qty} × {l.item}</td><td className="mono">{money(l.rate, rates.currency)}</td><td className="mono">{money(l.total, rates.currency)}</td></tr>)}
+              <tr><td><strong>Per day</strong></td><td /><td className="mono"><strong>{money(cost.perDay, rates.currency)}</strong></td></tr>
+            </tbody>
+          </table>
+          {cost.missing.length > 0 && <p className="faint">No rate yet for {cost.missing.join(', ')}.</p>}
+        </>}
+        {kitLines.length > 0 && <RatesEditor lines={kitLines} rates={rates} onChange={setRates} />}
+        <p className="note">≈ Readings, power, circuits and pack times are estimates from the plan (direct light, one bounce off boards and one off the room; packs at full output with 85 % of the rating usable). The venue's wiring decides what is really on each circuit. Check on the day. Day rates are yours, as typed.</p>
       </article>
     </div>
   );

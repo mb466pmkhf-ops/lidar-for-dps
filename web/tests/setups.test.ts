@@ -1,6 +1,6 @@
 // Same cases as "Lighting setups" in Tests/CoreLogicTests/main.swift.
 import { describe, expect, it } from 'vitest';
-import { LIGHTING_SETUPS, buildSetup } from '../src/model/setups';
+import { LIGHTING_SETUPS, buildSetup, keyStopsUnder, ratioLabel } from '../src/model/setups';
 import { at, buildScene, direction, reading } from '../src/model/calculator';
 import { defaultExposure, keyLux } from '../src/model/exposure';
 import { eyeHeight } from '../src/model/characters';
@@ -25,13 +25,26 @@ describe('lighting setups', () => {
     expect(Math.abs(Math.log2(key / keyLux(exposure)))).toBeLessThan(0.2);
     expect(Math.abs(Math.log2(key / fill) - 2)).toBeLessThan(0.4);
   });
+  it('names key to fill as a ratio', () => {
+    expect([0, 1, 2, 3].map(ratioLabel)).toEqual(['1:1', '2:1', '4:1', '8:1']);
+    expect(ratioLabel(1.5)).toBe('2.8:1');
+  });
+  it('moonlight is a blue hard source a stop under; interview adds a neg and a hair light', () => {
+    const m = buildSetup('moonlight', person, camera, exposure, plan).lights[0];
+    expect(m.filterIDs).toEqual(['ctb-full']);
+    expect(keyStopsUnder('moonlight')).toBe(1);
+    const i = buildSetup('interview', person, camera, exposure, plan).lights;
+    expect(i.map(l => l.role)).toEqual(['key', 'fill', 'back']);
+    expect(i[1].kind).toBe('negative');
+  });
   it('soft side light adds a neg fill', () => {
     expect(buildSetup('softSide', person, camera, exposure, plan).lights.some(l => l.kind === 'negative')).toBe(true);
   });
   it('every setup keys the face at the set stop and works without a camera or a plan', () => {
     for (const { id } of LIGHTING_SETUPS) {
       const s = buildSetup(id, person, camera, exposure, plan);
-      expect(Math.abs(Math.log2(lux(s.lights, s.lights[0].id) / keyLux(exposure)))).toBeLessThan(0.2);
+      expect(Math.abs(Math.log2(lux(s.lights, s.lights[0].id) / keyLux(exposure)) + keyStopsUnder(id)), id).toBeLessThan(0.2);
+      expect(s.notes.every(n => !/couldn't|even at full/.test(n)), `${id}: ${s.notes.join(' / ')}`).toBe(true);
       expect(buildSetup(id, person, undefined, exposure).lights.length).toBe(s.lights.length);
     }
   });

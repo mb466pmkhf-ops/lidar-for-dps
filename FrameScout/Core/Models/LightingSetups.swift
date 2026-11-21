@@ -14,6 +14,44 @@ enum LightingSetup: String, CaseIterable, Identifiable {
     case hardSingle
     /// Soft key from the front side, a hard edge from behind on the other side, one stop over.
     case keyAndEdge
+    /// Classic patterns: key 35° off and a little high, fill two stops under.
+    case loop
+    /// Hard key 50° off and high, no fill: the triangle under the far eye.
+    case rembrandt
+    /// Key above the lens, fill from below one stop under.
+    case butterfly
+    /// Sit-down interview: soft key, neg on the far side, hair light one stop under.
+    case interview
+    /// Night: hard key through full CTB from high to the side, one stop under the set stop.
+    case moonlight
+
+    /// How the setups are grouped in the menus (same groups as web/src/model/setups.ts).
+    enum Group: String, CaseIterable {
+        case start, classic, job
+        var label: String {
+            switch self {
+            case .start: return "Starting points"
+            case .classic: return "Classic patterns"
+            case .job: return "For the job"
+            }
+        }
+    }
+    var group: Group {
+        switch self {
+        case .threePoint, .softSide, .beauty, .hardSingle, .keyAndEdge: return .start
+        case .loop, .rembrandt, .butterfly: return .classic
+        case .interview, .moonlight: return .job
+        }
+    }
+
+    /// Key to fill as people say it on set: one stop under is 2:1, two stops 4:1.
+    static func ratioLabel(stopsUnder: Double) -> String {
+        let r = pow(2, stopsUnder)
+        return r == r.rounded() ? "\(Int(r)):1" : String(format: "%.1f:1", r)
+    }
+
+    /// How far under the set stop the key sits (0 for all but night looks).
+    var keyStopsUnder: Double { self == .moonlight ? 1 : 0 }
 
     var id: String { rawValue }
     var label: String {
@@ -23,15 +61,40 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         case .beauty: return "Soft front (beauty)"
         case .hardSingle: return "Hard single source"
         case .keyAndEdge: return "Key and edge"
+        case .loop: return "Loop"
+        case .rembrandt: return "Rembrandt"
+        case .butterfly: return "Butterfly"
+        case .interview: return "Interview"
+        case .moonlight: return "Moonlight"
         }
     }
     var summary: String {
         switch self {
-        case .threePoint: return "Key, fill 2 stops under, back light"
+        case .threePoint: return "Key, fill 2 stops under (4:1), back light"
         case .softSide: return "Big soft key from the side, neg fill"
-        case .beauty: return "Soft key near the lens, gentle fill"
+        case .beauty: return "Soft key near the lens, fill 1 stop under (2:1)"
         case .hardSingle: return "One fresnel high from the side, no fill"
         case .keyAndEdge: return "Soft key, hard edge 1 stop over"
+        case .loop: return "Key 35° off and a little high, fill 2 stops under (4:1)"
+        case .rembrandt: return "Hard key 50° off and high, no fill"
+        case .butterfly: return "Key above the lens, fill from below 1 stop under (2:1)"
+        case .interview: return "Soft key, neg on the far side, hair light 1 stop under"
+        case .moonlight: return "Hard blue side light from high, 1 stop under"
+        }
+    }
+    /// Why it looks the way it does, for people learning the craft.
+    var why: String {
+        switch self {
+        case .threePoint: return "The textbook start: the key shapes the face, the fill keeps the shadow side readable at 4:1, the back light lifts them off the background."
+        case .softSide: return "Reads like a big window beside them: soft wrap on the lit side, and the neg keeps the far side dark for contrast."
+        case .beauty: return "Light close to the lens fills every line and the fill from below takes out shadows under the eyes: flat and flattering."
+        case .hardSingle: return "One hard source and nothing else: crisp shadows and a low-key, dramatic face."
+        case .keyAndEdge: return "A soft key for the face and a hard edge from behind on the other side, a stop hot, to cut them out of a dark background."
+        case .loop: return "The most-used portrait pattern: the key 30–45° off the nose and a little above casts a small loop of shadow from the nose towards the cheek."
+        case .rembrandt: return "Key high and well to the side, so the nose shadow meets the cheek shadow and leaves a small triangle of light under the far eye."
+        case .butterfly: return "Also called Paramount: the key straight in front and high puts a small butterfly shadow under the nose and shapes the cheekbones; the fill under the lens opens the eyes."
+        case .interview: return "The usual sit-down: a soft key on the side they look towards, a neg to keep shape on the other side, and a hair light to separate them. Add a second camera beside the first for the profile."
+        case .moonlight: return "Night interior: one hard source through full CTB from high to the side, a stop under the set stop so it reads as night, nothing filling the dark side."
         }
     }
 
@@ -64,6 +127,7 @@ enum LightingSetup: String, CaseIterable, Identifiable {
             var rim = false
             var kind: LightKind? = nil
             var width: Double? = nil
+            var filters: [String]? = nil
         }
         var specs: [Spec]
         switch self {
@@ -82,6 +146,20 @@ enum LightingSetup: String, CaseIterable, Identifiable {
         case .keyAndEdge:
             specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d", "cob-1200-d"], modifier: "softbox-90", offset: 50, distance: 2.0, rise: 0.5, stopsUnderKey: 0),
                      Spec(name: "Edge", role: .edge, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d"], modifier: nil, offset: -135, distance: 2.4, rise: 0.9, stopsUnderKey: -1, rim: true)]
+        case .loop:
+            specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d", "cob-1200-d"], modifier: "softbox-90-grid", offset: 35, distance: 2.0, rise: 0.5, stopsUnderKey: 0),
+                     Spec(name: "Fill", role: .fill, profiles: ["panel-1x1-bi", "panel-2x1-bi"], modifier: nil, offset: -30, distance: 2.4, rise: 0.2, stopsUnderKey: 2)]
+        case .rembrandt:
+            specs = [Spec(name: "Key", role: .key, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d"], modifier: nil, offset: 50, distance: 2.4, rise: 0.9, stopsUnderKey: 0)]
+        case .butterfly:
+            specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d"], modifier: "softbox-90", offset: 0, distance: 1.8, rise: 0.8, stopsUnderKey: 0),
+                     Spec(name: "Fill", role: .fill, profiles: ["mat-2x2-bi", "mat-4x4-bi"], modifier: nil, offset: 15, distance: 1.3, rise: -0.6, stopsUnderKey: 1)]
+        case .interview:
+            specs = [Spec(name: "Key", role: .key, profiles: ["cob-100-bi", "cob-300-d", "cob-600-d"], modifier: "softbox-90", offset: 40, distance: 1.8, rise: 0.5, stopsUnderKey: 0),
+                     Spec(name: "Neg", role: .fill, profiles: [], modifier: nil, offset: -70, distance: 1.0, rise: 0, stopsUnderKey: 0, kind: .negative, width: 1.2),
+                     Spec(name: "Hair", role: .back, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d"], modifier: nil, offset: 160, distance: 2.0, rise: 1.1, stopsUnderKey: 1, rim: true)]
+        case .moonlight:
+            specs = [Spec(name: "Moon", role: .key, profiles: ["fresnel-led-200-bi", "fresnel-led-600-d", "hmi-1800-par"], modifier: nil, offset: 75, distance: 3.0, rise: 1.2, stopsUnderKey: 1, filters: ["ctb-full"])]
         }
 
         // Key goes on whichever side of the camera axis has more room.
@@ -111,12 +189,15 @@ enum LightingSetup: String, CaseIterable, Identifiable {
                 light.apply(profile: profile)
                 light.role = spec.role
                 if let m = spec.modifier, FixtureLibrary.modifiers(for: profile).contains(where: { $0.id == m }) { light.modifierID = m }
+                if let f = spec.filters, !f.isEmpty { light.filterIDs = f }
                 light.height = max(0.4, face.y + spec.rise)
                 light.tilt = -atan2(light.height - face.y, d) * 180 / .pi
                 // Back light: metered facing the unit (rim), the others towards camera.
                 let normal = spec.rim ? (LightingCalculator.Point(at, height: light.height) - face).normalized : faceNormal
                 let solution = LightingCalculator.solveOutput(for: light, target: target, at: face, normal: normal, allLights: [light],
                                                               plan: plan, windowTransmission: windowTransmission)
+                // A bigger unit that is too bright even at its minimum never replaces one that reaches the level.
+                if case .atMinimum = solution, let c = chosen, case .output = c.1 { break }
                 chosen = (light, solution)
                 if case .output(let o) = solution, o <= 0.8 { break }
             }

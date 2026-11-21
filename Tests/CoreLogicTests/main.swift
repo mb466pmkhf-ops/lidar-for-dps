@@ -595,8 +595,14 @@ do {
         let built = kind.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
         let lit = LightingCalculator.reading(at: face, normal: toCam, scene: LightingCalculator.Scene(lights: built.lights, plan: demoPlan))
         let k = lit.contributions.filter { $0.lightID == built.lights[0].id }.reduce(0) { $0 + $1.lux }
-        check(abs(log2(k / exp.keyLux)) < 0.2, "\(kind.label): key solved to the camera's key level (\(k))")
+        check(abs(log2(k / exp.keyLux) + kind.keyStopsUnder) < 0.2, "\(kind.label): key solved to its level (\(k))")
+        check(!built.notes.contains { $0.contains("couldn't") || $0.contains("even at full") }, "\(kind.label) reaches its levels (\(built.notes))")
     }
+    check([0.0, 1, 2, 3].map { LightingSetup.ratioLabel(stopsUnder: $0) } == ["1:1", "2:1", "4:1", "8:1"] && LightingSetup.ratioLabel(stopsUnder: 1.5) == "2.8:1", "key to fill ratios")
+    let moon = LightingSetup.moonlight.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(moon.lights.first?.filterIDs == ["ctb-full"], "moonlight carries full CTB")
+    let interview = LightingSetup.interview.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
+    check(interview.lights.map(\.role) == [.key, .fill, .back] && interview.lights[1].kind == .negative, "interview: key, neg and hair light")
     let edge = LightingSetup.keyAndEdge.build(for: person, camera: P(0, -1.5), exposure: exp, plan: demoPlan)
     check(edge.lights.count == 2 && edge.lights[1].role == .edge, "key and edge places a soft key and an edge light")
 }
@@ -1261,6 +1267,45 @@ do {
           "rated power counts every unit; draw as set counts only units that are on")
     let text = kit.text(title: "Test")
     check(text.hasPrefix("Test\n") && text.contains("A at 230 V") && text.contains("2 × ½ CTO"), "kit list writes plain text")
+
+    // Power planning and your day rates (same cases as web/tests/kit.test.ts).
+    func unit(_ id: String) -> LightFixture {
+        var l = LightFixture(name: id, kind: .fresnel, position: P(0, 0), pan: 0)
+        l.apply(profile: FixtureLibrary.profile(id: id)!)
+        return l
+    }
+    check(abs(KitList.circuitWatts(KitList.supply(id: "uk13")) - 2392) < 1 && abs(KitList.circuitWatts(KitList.supply(id: "us15")) - 1440) < 1,
+          "a UK 13 A socket carries about 2.4 kW for hours, a US 15 A circuit about 1.4 kW")
+    check(KitList.supplies.map(\.id) == ["uk13", "eu16", "us15", "us20"], "supplies in the same order as the web")
+    let big = [unit("cob-1200-d"), unit("cob-1200-d"), unit("cob-600-d"), unit("hmi-4000-par")]
+    let uk = KitList.circuitPlan(big, supply: KitList.supply(id: "uk13"))
+    check(uk.tooBig == ["4K HMI PAR"] && uk.circuits == 2, "packs units onto UK circuits without splitting one, flags the 4K")
+    check(KitList.circuitPlan(big, supply: KitList.supply(id: "us15")).circuits == 3, "three US 15 A circuits for the same units")
+    check(KitList.circuitPlan([], supply: KitList.supply(id: "uk13")).circuits == 0, "no units, no circuits")
+    check(abs(KitList.batteryMinutes(watts: 100, wh: 98) - 49.98) < 0.05, "battery run time uses 85 % of the pack")
+    check(KitList.runTimeLabel(watts: 50, wh: 98) == "1 h 40 min" && KitList.runTimeLabel(watts: 100, wh: 98) == "50 min"
+          && KitList.runTimeLabel(watts: 1200, wh: 98) == "mains" && KitList.runTimeLabel(watts: 0, wh: 98) == "", "run-time labels")
+    let sampleLights = SampleProject.project().locations.first?.lightFixtures ?? []
+    let sk = KitList(lights: sampleLights)
+    let c = sk.cost(KitRates(currency: "£", items: ["Combo stand": 10, "C-stand": 8, "Bounce": 0]))
+    check(c.perDay == 2 * 10 + 8 && c.missing.contains("1200 W COB LED · daylight") && c.lines.first { $0.item == "Bounce" }?.total == 0,
+          "prices only the lines with a rate and lists the rest as missing")
+    let r = KitRates(currency: "$", items: ["C-stand": 12.5])
+    check(KitRates(json: r.json) == r, "day rates round-trip through JSON")
+    check(KitRates(json: #"{"items":{}}"#) == nil && KitRates(json: "not json") == nil, "rates reject anything that isn't a FrameScan rates file")
+    check(KitRates(json: #"{"framescanRates":1,"items":{"a":-1,"b":"x","c":3}}"#) == KitRates(currency: "£", items: ["c": 3]), "rates drop bad entries only")
+    check(KitRates(json: #"{"framescanRates":1,"currency":"€","items":{"C-stand":8}}"#)?.items["C-stand"] == 8, "rates from the web paste in")
+    check(KitRates.parse("12.5") == 12.5 && KitRates.parse("12,50") == 12.5 && KitRates.parse("1,250") == 1250
+          && KitRates.parse("1,250.50") == 1250.5 && KitRates.parse("1.250,50") == 1250.5 && KitRates.parse("1.250.000") == 1_250_000
+          && KitRates.parse(" 0 ") == 0 && KitRates.parse("12.") == 12
+          && KitRates.parse("0.125") == 0.125 && KitRates.parse("0,125") == 0.125 && KitRates.parse("1.250") == 1.25, "typed rates read with either decimal mark, as on the web")
+    check(KitRates.parse("") == nil && KitRates.parse("-3") == nil && KitRates.parse("abc") == nil && KitRates.parse("1e20") == nil
+          && KitRates.parse("99999999999") == nil, "typed rates refuse anything that isn't a rate")
+    check(KitRates(json: #"{"framescanRates":1,"items":{"a":1e20,"c":3}}"#) == KitRates(currency: "£", items: ["c": 3]), "rates drop absurd amounts")
+    check(KitRates.money(1250, "£") == "£1,250" && KitRates.money(12.5, "$") == "$12.50", "money is grouped, pence only when needed")
+    let st = sk.text(title: "Sample", lights: sampleLights, rates: KitRates(currency: "£", items: ["C-stand": 8]))
+    check(st.contains("UK 13 A sockets: 1 separate circuit") && st.contains("Your day rates\n  1 × C-stand at £8 = £8\n  Per day: £8 (no rate for "),
+          "kit text adds circuits and rates when given")
 }
 
 // Named looks (Looks.swift; same rules as web/src/model/looks.ts).
