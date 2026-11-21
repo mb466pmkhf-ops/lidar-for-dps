@@ -113,7 +113,8 @@ function rigChanged(a: CameraRig, b: CameraRig): boolean {
   const near = (x: number, y: number, tol: number) => Math.abs(x - y) <= tol;
   return !(near(a.position.x, b.position.x, 0.02) && near(a.position.z, b.position.z, 0.02) && near(a.height, b.height, 0.02)
     && near(a.pan, b.pan, 0.5) && near(a.tilt, b.tilt, 0.5) && near(a.focalLength, b.focalLength, 0.5)
-    && a.sensorID === b.sensorID && a.aspect === b.aspect);
+    && a.sensorID === b.sensorID && a.aspect === b.aspect
+    && (a.sensorID !== 'custom' || JSON.stringify(a.customSensor) === JSON.stringify(b.customSensor)));
 }
 const PICTURE_KEY = 'framescan.sheet.picture';
 

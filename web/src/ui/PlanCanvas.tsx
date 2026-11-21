@@ -52,15 +52,16 @@ interface Props {
 
 interface View { cx: number; cz: number; scale: number }
 
-function contentBounds(location: Location, plan: FloorPlan | undefined, lights: LightFixture[]): PlanRect {
+function contentBounds(location: Location, plan: FloorPlan | undefined, lights: LightFixture[], scanID?: string): PlanRect {
   const pts: PlanPoint[] = [];
+  const inScan = (id?: string) => !id || !scanID || id === scanID;
   if (plan && (plan.walls.length || plan.floorPolygons.length)) {
     pts.push({ x: plan.bounds.minX, z: plan.bounds.minZ }, { x: plan.bounds.maxX, z: plan.bounds.maxZ });
   }
-  lights.forEach(l => pts.push(l.position));
-  (location.characters ?? []).forEach(c => pts.push(c.position));
-  location.shots.forEach(s => pts.push(s.rig.position));
-  location.cameraPositions.forEach(c => pts.push(c.rig.position));
+  lights.filter(l => inScan(l.scanID)).forEach(l => pts.push(l.position));
+  (location.characters ?? []).filter(c => inScan(c.scanID)).forEach(c => pts.push(c.position));
+  location.shots.filter(s => inScan(s.scanID)).forEach(s => pts.push(s.rig.position));
+  location.cameraPositions.filter(c => inScan(c.scanID)).forEach(c => pts.push(c.rig.position));
   if (!pts.length) return { minX: -3, minZ: -3, maxX: 3, maxZ: 3 };
   const r = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
   for (const p of pts) { r.minX = Math.min(r.minX, p.x); r.maxX = Math.max(r.maxX, p.x); r.minZ = Math.min(r.minZ, p.z); r.maxZ = Math.max(r.maxZ, p.z); }
@@ -105,7 +106,7 @@ export function PlanCanvas(props: Props) {
   useEffect(() => { userMoved.current = false; }, [location.id, plan]);
   useEffect(() => { if (size.w > 0 && !userMoved.current) fit(); }, [location.id, plan, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const v = props.diagram ? fitted(contentBounds(location, plan, lights), 1) : view ?? { cx: 0, cz: 0, scale: 60 };
+  const v = props.diagram ? fitted(contentBounds(location, plan, lights, scanID), 0.01) : view ?? { cx: 0, cz: 0, scale: 60 };
   const sx = (x: number) => (x - v.cx) * v.scale + size.w / 2;
   const sy = (z: number) => (z - v.cz) * v.scale + size.h / 2;
   const toPlan = (clientX: number, clientY: number): PlanPoint => {
