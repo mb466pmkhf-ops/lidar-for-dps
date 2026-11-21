@@ -190,11 +190,34 @@ struct KitRates: Equatable {
         var items: [String: Rate]
     }
 
+    /// The largest day rate kept: anything bigger is a slip of the finger, not a rate.
+    static let maxRate = 1e9
+
+    /// A typed day rate, with either decimal mark. The last mark is the decimal one ("12,50",
+    /// "1,250.50", "1.250,50"), except a lone mark followed by exactly three digits, or the same mark
+    /// used more than once, which groups thousands ("1,250", "1.250.000"). Same rule as the web.
+    static func parse(_ text: String) -> Double? {
+        let digit: (Character) -> Bool = { ("0"..."9").contains($0) }
+        let t = text.filter { !$0.isWhitespace }
+        guard t.contains(where: digit), t.allSatisfy({ digit($0) || $0 == "." || $0 == "," }) else { return nil }
+        let marks = t.filter { $0 == "." || $0 == "," }
+        var n = t
+        if let lastIndex = t.lastIndex(where: { $0 == "." || $0 == "," }) {
+            let mark = t[lastIndex]
+            let after = t.distance(from: lastIndex, to: t.endIndex) - 1
+            let grouping = marks.allSatisfy { $0 == mark } && (marks.count > 1 || after == 3)
+            if grouping { n = t.filter(digit) }
+            else { n = String(t[..<lastIndex].filter(digit)) + "." + String(t[t.index(after: lastIndex)...]) }
+        }
+        guard let v = Double(n), v.isFinite, v >= 0, v <= maxRate else { return nil }
+        return v
+    }
+
     init?(json text: String?) {
         guard let text, let d = text.data(using: .utf8),
               let o = try? JSONDecoder().decode(Stored.self, from: d), o.framescanRates == 1 else { return nil }
         var items: [String: Double] = [:]
-        for (k, r) in o.items { if let x = r.value, x >= 0, x.isFinite { items[k] = x } }
+        for (k, r) in o.items { if let x = r.value, x >= 0, x <= Self.maxRate { items[k] = x } }
         self.init(currency: o.currency.map { $0.count <= 4 ? $0 : "£" } ?? "£", items: items)
     }
 

@@ -160,6 +160,27 @@ export function kitCost(k: Kit, rates: Rates): Cost {
 
 export const money = (v: number, currency: string) => `${currency}${v.toLocaleString('en-GB', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 })}`;
 
+/** The largest day rate kept: anything bigger is a slip of the finger, not a rate. */
+export const MAX_RATE = 1e9;
+
+/** A typed day rate, with either decimal mark. The last mark is the decimal one ("12,50", "1,250.50",
+ *  "1.250,50"), except a lone mark followed by exactly three digits, or the same mark used more than
+ *  once, which groups thousands ("1,250", "1.250.000"). Undefined for anything that isn't a rate. */
+export function parseRate(text: string): number | undefined {
+  const t = text.replace(/\s/g, '');
+  if (!/^\d*[.,\d]*$/.test(t) || !/\d/.test(t)) return undefined;
+  const last = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','));
+  let n: string;
+  if (last < 0) n = t;
+  else {
+    const mark = t[last], marks = [...t].filter(c => c === '.' || c === ',');
+    const grouping = marks.every(c => c === mark) && (marks.length > 1 || t.length - last - 1 === 3);
+    n = grouping ? t.replace(/[.,]/g, '') : t.slice(0, last).replace(/[.,]/g, '') + '.' + t.slice(last + 1);
+  }
+  const v = Number(n);
+  return Number.isFinite(v) && v >= 0 && v <= MAX_RATE ? v : undefined;
+}
+
 /** JSON as stored and as Copy / Paste moves it between devices: {"framescanRates":1,"currency":"£","items":{…}}. */
 export function ratesJSON(r: Rates): string { return JSON.stringify({ framescanRates: 1, currency: r.currency, items: r.items }); }
 export function parseRates(text: string | null | undefined): Rates | undefined {
@@ -168,7 +189,7 @@ export function parseRates(text: string | null | undefined): Rates | undefined {
     const o = JSON.parse(text) as { framescanRates?: number; currency?: unknown; items?: unknown };
     if (o.framescanRates !== 1 || typeof o.items !== 'object' || !o.items) return undefined;
     const items: Record<string, number> = {};
-    for (const [k, v] of Object.entries(o.items as Record<string, unknown>)) if (typeof v === 'number' && v >= 0 && Number.isFinite(v)) items[k] = v;
+    for (const [k, v] of Object.entries(o.items as Record<string, unknown>)) if (typeof v === 'number' && v >= 0 && v <= MAX_RATE) items[k] = v;
     return { currency: typeof o.currency === 'string' && o.currency.length <= 4 ? o.currency : '£', items };
   } catch { return undefined; }
 }

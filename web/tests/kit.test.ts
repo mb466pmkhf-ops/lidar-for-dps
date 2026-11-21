@@ -27,7 +27,7 @@ describe('kit list', () => {
   });
 });
 
-import { BATTERY_USABLE, SUPPLIES, batteryMinutes, circuitPlan, circuitWatts, kitCost, parseRates, ratesJSON, runTimeLabel, supplyByID } from '../src/model/kit';
+import { BATTERY_USABLE, SUPPLIES, batteryMinutes, circuitPlan, circuitWatts, kitCost, parseRate, parseRates, ratesJSON, runTimeLabel, supplyByID } from '../src/model/kit';
 import { applyProfile, profileByID } from '../src/model/photometrics';
 import { newLight } from '../src/model/factory';
 
@@ -71,6 +71,22 @@ describe('your day rates', () => {
     expect(parseRates('{"items":{}}')).toBeUndefined();
     expect(parseRates('not json')).toBeUndefined();
     expect(parseRates('{"framescanRates":1,"items":{"a":-1,"b":"x","c":3}}')).toEqual({ currency: '£', items: { c: 3 } });
+  });
+  it('reads a typed rate with either decimal mark', () => {
+    expect(parseRate('12.5')).toBe(12.5);
+    expect(parseRate('12,50')).toBe(12.5);
+    expect(parseRate('1,250')).toBe(1250);
+    expect(parseRate('1,250.50')).toBe(1250.5);
+    expect(parseRate('1.250,50')).toBe(1250.5);
+    expect(parseRate('1.250.000')).toBe(1250000);
+    expect(parseRate(' 0 ')).toBe(0);
+    expect(parseRate('12.')).toBe(12);
+    expect(parseRate('')).toBeUndefined();
+    expect(parseRate('-3')).toBeUndefined();
+    expect(parseRate('abc')).toBeUndefined();
+    expect(parseRate('1e20')).toBeUndefined();
+    expect(parseRate('99999999999')).toBeUndefined();
+    expect(parseRates('{"framescanRates":1,"items":{"a":1e20,"c":3}}')).toEqual({ currency: '£', items: { c: 3 } });
   });
   it('kit text adds circuits and rates when given', () => {
     const t = kitText(k, 'Sample', loc.lights, { currency: '£', items: { 'C-stand': 8 } });

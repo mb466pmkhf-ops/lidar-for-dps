@@ -1295,6 +1295,12 @@ do {
     check(KitRates(json: #"{"items":{}}"#) == nil && KitRates(json: "not json") == nil, "rates reject anything that isn't a FrameScan rates file")
     check(KitRates(json: #"{"framescanRates":1,"items":{"a":-1,"b":"x","c":3}}"#) == KitRates(currency: "£", items: ["c": 3]), "rates drop bad entries only")
     check(KitRates(json: #"{"framescanRates":1,"currency":"€","items":{"C-stand":8}}"#)?.items["C-stand"] == 8, "rates from the web paste in")
+    check(KitRates.parse("12.5") == 12.5 && KitRates.parse("12,50") == 12.5 && KitRates.parse("1,250") == 1250
+          && KitRates.parse("1,250.50") == 1250.5 && KitRates.parse("1.250,50") == 1250.5 && KitRates.parse("1.250.000") == 1_250_000
+          && KitRates.parse(" 0 ") == 0 && KitRates.parse("12.") == 12, "typed rates read with either decimal mark, as on the web")
+    check(KitRates.parse("") == nil && KitRates.parse("-3") == nil && KitRates.parse("abc") == nil && KitRates.parse("1e20") == nil
+          && KitRates.parse("99999999999") == nil, "typed rates refuse anything that isn't a rate")
+    check(KitRates(json: #"{"framescanRates":1,"items":{"a":1e20,"c":3}}"#) == KitRates(currency: "£", items: ["c": 3]), "rates drop absurd amounts")
     check(KitRates.money(1250, "£") == "£1,250" && KitRates.money(12.5, "$") == "$12.50", "money is grouped, pence only when needed")
     let st = sk.text(title: "Sample", lights: sampleLights, rates: KitRates(currency: "£", items: ["C-stand": 8]))
     check(st.contains("UK 13 A sockets: 1 separate circuit") && st.contains("Your day rates\n  1 × C-stand at £8 = £8\n  Per day: £8 (no rate for "),

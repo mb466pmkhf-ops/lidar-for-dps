@@ -196,6 +196,8 @@ enum LightingSetup: String, CaseIterable, Identifiable {
                 let normal = spec.rim ? (LightingCalculator.Point(at, height: light.height) - face).normalized : faceNormal
                 let solution = LightingCalculator.solveOutput(for: light, target: target, at: face, normal: normal, allLights: [light],
                                                               plan: plan, windowTransmission: windowTransmission)
+                // A bigger unit that is too bright even at its minimum never replaces one that reaches the level.
+                if case .atMinimum = solution, let c = chosen, case .output = c.1 { break }
                 chosen = (light, solution)
                 if case .output(let o) = solution, o <= 0.8 { break }
             }

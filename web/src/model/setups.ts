@@ -147,6 +147,8 @@ export function buildSetup(id: LightingSetup, person: PrevisCharacter, camera: P
       // Back light: metered facing the unit (rim), the others towards camera.
       const normal = spec.rim ? unit({ x: pos.x - face.x, y: light.height - face.y, z: pos.z - face.z }) : faceNormal;
       const solution = solveOutput(light, target, face, normal, [light], plan, windowTransmission);
+      // A bigger unit that is too bright even at its minimum never replaces one that reaches the level.
+      if (solution.kind === 'atMinimum' && chosen?.solution.kind === 'output') break;
       chosen = { light, solution };
       if (solution.kind === 'output' && solution.output <= 0.8) break;
     }
