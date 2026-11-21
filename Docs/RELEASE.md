@@ -2,6 +2,7 @@
 
 The pipeline builds, signs and uploads to TestFlight from GitHub Actions. You only do the account
 steps once, then each release is: push a tag, test the TestFlight build, press Submit.
+For the private DP beta, follow `Docs/TESTFLIGHT_BETA.md`.
 
 ## One-time setup (owner only)
 
