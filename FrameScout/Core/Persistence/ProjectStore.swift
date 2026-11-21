@@ -49,15 +49,18 @@ final class ProjectStore: ObservableObject {
         projects = loaded.sorted { $0.modifiedAt > $1.modifiedAt }
     }
 
-    private func writeNow(_ project: Project, notify: Bool = true) {
+    @discardableResult
+    private func writeNow(_ project: Project, notify: Bool = true) -> Bool {
         let dir = StoragePaths.projectDir(project.id)
         StoragePaths.ensureDirectory(dir)
         do {
             let data = try JSONCoding.encoder.encode(project)
             try data.write(to: StoragePaths.projectFile(project.id), options: .atomic)
             if notify { onProjectWritten?(project) }
+            return true
         } catch {
             lastError = "Could not save \(project.name): \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -75,15 +78,60 @@ final class ProjectStore: ObservableObject {
     /// Puts a project that changed on another device in place (or adds it) and saves it, without
     /// reporting it back through `onProjectWritten`. Pending local saves for it are dropped: the
     /// caller has already merged them into `project`.
-    func applyRemote(_ project: Project) {
+    ///
+    /// Locations, scans, photos and captured objects deleted on the other device take their files on
+    /// this one with them (scan meshes and photos never sync, so nothing else would remove them).
+    /// Throws when the copy couldn't be saved: the previous copy stays (in memory and on disk) and
+    /// no files are removed, so sync tries again on its next round.
+    func applyRemote(_ project: Project) throws {
+        let old = self.project(project.id)
+        let index = projects.firstIndex(where: { $0.id == project.id })
+        if let index { projects[index] = project } else { projects.insert(project, at: 0) }
+        guard writeNow(project, notify: false) else {
+            if let index, let old { projects[index] = old } else { projects.removeAll { $0.id == project.id } }
+            throw StoreError.couldNotSave(project.name)
+        }
         pendingSaves[project.id]?.cancel()
         pendingSaves[project.id] = nil
-        if let i = projects.firstIndex(where: { $0.id == project.id }) {
-            projects[i] = project
-        } else {
-            projects.insert(project, at: 0)
+        // Only once the new copy is safely on disk: it no longer refers to these files.
+        if let old { removeFiles(of: old, gone: ProjectRemovals(from: old, to: project)) }
+    }
+
+    enum StoreError: LocalizedError {
+        case couldNotSave(String)
+        var errorDescription: String? {
+            switch self { case .couldNotSave(let name): return "this iPhone couldn't save “\(name)” (is storage full?)" }
         }
-        writeNow(project, notify: false)
+    }
+
+    private func removeFiles(of old: Project, gone: ProjectRemovals) {
+        guard !gone.isEmpty else { return }
+        let projectID = old.id
+        for locationID in gone.locations {
+            for scan in old.locations.first(where: { $0.id == locationID })?.scans ?? [] { dropPendingPlan(scan.id, projectID: projectID) }
+            try? fm.removeItem(at: StoragePaths.locationDir(LocationRef(projectID: projectID, locationID: locationID)))
+        }
+        for scan in gone.scans {
+            dropPendingPlan(scan.scanID, projectID: projectID)
+            try? fm.removeItem(at: StoragePaths.scanDir(LocationRef(projectID: projectID, locationID: scan.locationID), scanID: scan.scanID))
+        }
+        for photo in gone.photos {
+            try? fm.removeItem(at: StoragePaths.photoURL(LocationRef(projectID: projectID, locationID: photo.locationID), photo.photo))
+        }
+        for objectID in gone.objects {
+            try? fm.removeItem(at: StoragePaths.objectDir(projectID, objectID: objectID))
+        }
+    }
+
+    /// Forgets a plan edit waiting to be written for a scan of this project that has gone. A copy made
+    /// with Duplicate keeps its scans' ids, so an edit waiting for that copy is left alone.
+    private func dropPendingPlan(_ scanID: UUID, projectID: UUID) {
+        if let pending = pendingPlanSaves[scanID] {
+            guard pending.ref.projectID == projectID else { return }
+            pending.task.cancel()
+            pendingPlanSaves[scanID] = nil
+        }
+        planCache[scanID] = nil   // read again from the file of whichever copy asks next
     }
 
     /// Flush any pending writes (called when the app goes to the background).

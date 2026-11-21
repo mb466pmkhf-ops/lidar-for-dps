@@ -278,6 +278,8 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
   const [notice, setNotice] = useState<string>();
   const [editServer, setEditServer] = useState(!client);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /// Names of projects whose changes haven't reached the server, shown before signing out drops them.
+  const [unsynced, setUnsynced] = useState<string[]>();
   // Sign-in buttons for providers the server has switched off stay hidden (shown while unknown).
   const [offered, setOffered] = useState<{ apple: boolean; google: boolean }>();
   useEffect(() => {
@@ -321,9 +323,19 @@ function SyncDialog({ onClose, initialError }: { onClose(): void; initialError?:
             <p>Signed in as <strong>{session.email}</strong>. {workspace.state.kind === 'synced' ? 'Everything is up to date.' : workspace.state.kind === 'error' ? workspace.state.message : ''}</p>
             <div className="actions">
               <button className="btn primary" disabled={busy} onClick={() => run(() => workspace.sync())}>Sync now</button>
-              <button className="btn" onClick={() => workspace.signOut()}>Sign out</button>
+              <button className="btn" disabled={busy} onClick={() => run(async () => { setUnsynced((await workspace.signOut())?.unsynced); })}>Sign out</button>
               <button className="btn ghost" onClick={() => setEditServer(true)}>Server…</button>
             </div>
+            <p className="muted" style={{ fontSize: 12 }}>Signing out removes this account's projects from this computer. They stay in your account and come back when you sign in again.</p>
+            {unsynced && (
+              <div className="stack">
+                <p><strong>Not uploaded yet:</strong> {unsynced.map(n => `“${n}”`).join(', ')}. {unsynced.length === 1 ? 'Its' : 'Their'} latest changes haven't reached the server, so signing out now would lose them. Try Sync now first, or use Save copy on each one to keep a file.</p>
+                <div className="actions">
+                  <button className="btn danger" disabled={busy} onClick={() => run(async () => { await workspace.signOut({ discardUnsynced: true }); setUnsynced(undefined); })}>Sign out and lose these changes</button>
+                  <button className="btn ghost" onClick={() => setUnsynced(undefined)}>Stay signed in</button>
+                </div>
+              </div>
+            )}
             {confirmDelete ? (
               <div className="stack">
                 <p><strong>Delete your account?</strong> This removes the account and every project synced to it from the server, on all your devices. Projects already on this computer stay here. It can't be undone.</p>
