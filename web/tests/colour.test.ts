@@ -22,6 +22,8 @@ describe('colour at the camera white balance', () => {
   });
   it('names big shifts in whole gels', () => {
     expect(colourShift(2000, 6500).label).toBe('reads warm, about 2× full CTO');
+    // Just past a full gel but under the whole-number step still reads "full", never "undefined".
+    expect(colourShift(2800, 5600).label).toBe('reads warm, about full CTO');
   });
   it('sums up only the lights that are on and give light', () => {
     const a = { ...newLight('fresnel', { x: 0, z: 0 }), name: 'Key' };

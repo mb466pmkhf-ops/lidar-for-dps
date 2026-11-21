@@ -20,7 +20,7 @@ const mired = (kelvin: number) => 1_000_000 / Math.max(kelvin, 1000);
 /** "½", "¼"… for a fraction of a full gel, to the nearest eighth; whole numbers past one. */
 function gelAmount(f: number): string {
   if (f > 1.125) return `${Math.round(f * 2) / 2}× full`.replace('.5×', '½×');
-  const eighths = Math.max(1, Math.round(f * 8));
+  const eighths = Math.min(8, Math.max(1, Math.round(f * 8)));
   return ({ 1: '⅛', 2: '¼', 3: '⅜', 4: '½', 5: '⅝', 6: '¾', 7: '⅞', 8: 'full' } as Record<number, string>)[eighths];
 }
 

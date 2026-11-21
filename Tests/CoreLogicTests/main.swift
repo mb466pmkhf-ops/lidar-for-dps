@@ -1505,6 +1505,7 @@ do {
     check(ColourBalance.shift(kelvin: 5300, whiteBalance: 5600).tone == .match && ColourBalance.shift(kelvin: 5600, whiteBalance: 5600).label == "reads white", "a near match reads white")
     check(ColourBalance.shift(kelvin: 5000, whiteBalance: 5600).label == "reads warm, about ⅛ CTO", "5000 K on 5600 K is about ⅛ CTO")
     check(ColourBalance.shift(kelvin: 2000, whiteBalance: 6500).label == "reads warm, about 2× full CTO", "big shifts in whole gels")
+    check(ColourBalance.shift(kelvin: 2800, whiteBalance: 5600).label == "reads warm, about full CTO", "just past a full gel reads full")
     var off = LightFixture(name: "Off", kind: .fresnel, position: P(2, 0)); off.isOn = false
     let sum = ColourBalance.summary([LightFixture(name: "Key", kind: .fresnel, position: P(0, 0)), LightFixture(name: "Bounce", kind: .bounce, position: P(1, 0)), off], whiteBalance: 5600)
     check(sum.rows.map(\.name) == ["Key"] && sum.line.hasPrefix("At 5600 K: 1 "), "colour summary lists only lights that are on and give light")

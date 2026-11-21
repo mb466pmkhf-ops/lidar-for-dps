@@ -123,9 +123,11 @@ const cameraLine = (e: ExposureSettings) => [stopLabel(e.tStop), `ISO ${e.iso}`,
   e.shutterSeconds !== undefined ? speedLabel(e.shutterSeconds) : `${trim(e.shutterAngle)}° (${speedLabel(exposureTime(e))})`,
   e.ndStops ? `ND ${(e.ndStops * 0.3).toFixed(1)}` : '', e.whiteBalance ? `${Math.round(e.whiteBalance)} K` : ''].filter(Boolean).join(' · ');
 
-export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan: framed, diagram, floorPlan, scanID, onClose }: {
+export function PlanSheet({ project, location, lights, meters, readings, exposure: e, plan: framed, diagram, floorPlan, scanID, settingsFor, onClose }: {
   project: Project; location: Location; lights: LightFixture[]; meters: MeterPoint[]; readings: Map<string, number>;
-  exposure: ExposureSettings; plan?: Picture; diagram?: Picture; floorPlan?: FloorPlan; scanID?: string; onClose(): void;
+  exposure: ExposureSettings; plan?: Picture; diagram?: Picture; floorPlan?: FloorPlan; scanID?: string;
+  /** Whose settings `exposure` is, when a camera's own (the plan picture's readings use the same). */
+  settingsFor?: string; onClose(): void;
 }) {
   const kit = useMemo(() => kitList(lights), [lights]);
   const scan = scanID ?? location.primaryScanID ?? location.scans[location.scans.length - 1]?.id;
@@ -214,7 +216,7 @@ export function PlanSheet({ project, location, lights, meters, readings, exposur
         </div>
         <header className="sheet-head">
           <h2>{title}</h2>
-          <p className="mono">{shots.some(x => x.rig.exposure) ? 'Location settings: ' : ''}{camera}</p>
+          <p className="mono">{settingsFor ? `${settingsFor}: ` : shots.some(x => x.rig.exposure) ? 'Location settings: ' : ''}{camera}</p>
           <p className="faint">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}{project.client ? ` · ${project.client}` : ''}</p>
         </header>
         {plan && <img className="sheet-plan" src={plan.url} alt={picture === 'diagram' ? 'Overhead lighting diagram' : 'Lighting plan'} />}

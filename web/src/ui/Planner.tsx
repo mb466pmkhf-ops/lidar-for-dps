@@ -505,7 +505,7 @@ export function Planner({ project, location, plans, commit, commitPlan }: {
           aimMode={on => setTool(on ? { kind: 'aim' } : { kind: 'select' })}
           lookThrough={s => { setView(true); setCamKey(`${s.kind}:${s.id}`); setLookThrough(l => ({ key: `${s.kind}:${s.id}`, n: (l?.n ?? 0) + 1 })); }} />
       </aside>
-      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={withDefaults(location.exposure)} plan={sheet.plan} diagram={sheet.diagram} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
+      {sheet && <PlanSheet project={project} location={location} lights={lights} meters={meters} readings={readings} exposure={exposure} settingsFor={activeCam?.rig.exposure ? `${activeCam.name}'s own settings` : undefined} plan={sheet.plan} diagram={sheet.diagram} floorPlan={calcPlan} scanID={scanID} onClose={() => setSheet(undefined)} />}
     </>
   );
 }

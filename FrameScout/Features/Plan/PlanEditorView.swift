@@ -660,7 +660,7 @@ struct PlanEditorView: View {
             readings[m.source] = LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene)
         }
         let context = LightingContext(
-            exposure: location.exposureSettings,
+            exposure: exposure,
             meters: meters,
             reading: { m in readings[m.source] ?? LightingCalculator.reading(at: m.point, normal: m.normal, scene: scene) },
             solve: { light, m, lux in

@@ -26,7 +26,7 @@ import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLigh
 import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
 import { KIND_INFO, barnDoorTransmission, fixtureProfile, gridCutoffTan, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
 import { gripStandCount, lightSupport } from '../model/rigging';
-import { keyLux, stopLabel } from '../model/exposure';
+import { cameraExposure, keyLux, stopLabel } from '../model/exposure';
 import { fieldOfView, imageArea } from '../model/camera';
 import { at, boardOptics, buildScene, direction, distanceToSegment, throughGlass, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
@@ -163,8 +163,13 @@ export function Scene3D(p: Props) {
   // "Set stop" (the default) shows the brightness as the camera would expose it, so changing the
   // T-stop, ISO, shutter or ND visibly changes the picture; "balanced" fits it to the screen instead.
   const [atStop, setAtStop] = useState(() => { try { return localStorage.getItem('framescan.3d.look') !== 'fit'; } catch { return true; } });
+  // Looking through a camera: its key, spot, frame ratio and rig.
+  const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string; rig: CameraRig }>();
   // Changing the camera settings goes back to the camera's exposure, so the change shows.
-  const exposureKey = JSON.stringify(p.exposure);
+  // The picture is exposed at the settings of the camera being looked through (its own, else the
+  // location's); the orbit view and the readings use the settings picked in the bar.
+  const viewEx = eye?.rig ? cameraExposure(p.location, eye.rig) : p.exposure;
+  const exposureKey = JSON.stringify(viewEx);
   const lastExposure = useRef(exposureKey);
   useEffect(() => {
     if (lastExposure.current === exposureKey) return;
@@ -174,7 +179,6 @@ export function Scene3D(p: Props) {
   }, [exposureKey]);
   // Looking through a camera: its frame lines are drawn over the view.
   const [tipSeen, hideTip] = useTip('3d-gestures');
-  const [eye, setEye] = useState<{ key: string; x: number; z: number; ratio: number; label: string; rig: CameraRig }>();
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
   const [noLight, setNoLight] = useState(false);
@@ -510,7 +514,7 @@ export function Scene3D(p: Props) {
     const rigged = hidden.has('lights') ? [] : p.lights.filter(l => KIND_INFO[l.kind].emits);
     const brightest = Math.max(0, ...rigged.map(l => illuminanceOnAxis(photometrics({ ...l, dimmer: 1, isOn: true }), 3)),
       (daylight?.levels.skyHorizontal ?? 0) * 0.1, (env?.ledWalls[0]?.luminance ?? 0) * 1.5);
-    const reference = atStop ? keyLux(p.exposure) : brightest / 1.25;
+    const reference = atStop ? keyLux(viewEx) : brightest / 1.25;
     const scale = reference > 0 ? Math.PI / reference : 0;
     const dark = lit.length === 0 && !(daylight && daylight.levels.skyHorizontal > 0) && !env?.ledWalls.length;
     setNoLight(dark);
@@ -877,7 +881,7 @@ export function Scene3D(p: Props) {
       a.tags.push({ el, at: v(m.point.x, m.point.y + ('meter' in m.source ? 0.1 : 0.2), m.point.z) });
     }
     a.invalidate(3);
-  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, atStop, eye?.key, eye?.x, eye?.z]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.location, p.lights, p.selection, p.plan, p.scanID, p.beams, p.readings, p.meters, p.showReadings, p.exposure, exposureKey, atStop, eye?.key, eye?.x, eye?.z]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Night mode changes the accent colour; redraw so the selection ring follows.
   useEffect(() => {
@@ -942,7 +946,7 @@ export function Scene3D(p: Props) {
     const out = document.createElement('canvas');
     out.width = Math.round(r.w * scale); out.height = Math.round(r.h * scale);
     out.getContext('2d')?.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, out.width, out.height);
-    const lens = `${Math.round(eye.rig.focalLength)} mm · ${stopLabel(p.exposure.tStop)} · ISO ${p.exposure.iso}`;
+    const lens = `${Math.round(eye.rig.focalLength)} mm · ${stopLabel(viewEx.tStop)} · ISO ${viewEx.iso}`;
     const done = (text: string) => { setSavedNote(text); window.setTimeout(() => setSavedNote(''), 2500); };
     out.toBlob(b => {
       if (!b) { done('Could not save the frame'); return; }
@@ -956,7 +960,7 @@ export function Scene3D(p: Props) {
 
   const what = p.location.daylight?.isOn ? 'Units, grip, sun and sky through the windows, and a rough bounce off the room.' : 'Units, grip and a rough bounce off the room; no daylight.';
   const note = warming ? 'Preparing the 3D view…' : noLight ? 'No lights on: the room is shown under a plain work light.'
-    : atStop ? `Preview at ${stopLabel(p.exposure.tStop)}, ISO ${p.exposure.iso}. ${what} Estimate.`
+    : atStop ? `Preview at ${stopLabel(viewEx.tStop)}, ISO ${viewEx.iso}. ${what} Estimate.`
     : `Preview: brightness fitted to the strongest source. ${what} Use the readings for exposure.`;
 
   return (
@@ -979,7 +983,7 @@ export function Scene3D(p: Props) {
           : <span className="how keys" aria-hidden="true">W A S D move · Q E down, up · drag to turn</span>}
       </div>
       <div className="scene3d-buttons">
-        <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title={atStop ? 'Brightness as the camera exposes it at the settings above. Click to fit it to the screen instead.' : 'Brightness fitted to the screen. Click to show it as the camera exposes it.'}>{atStop ? `As shot · ${stopLabel(p.exposure.tStop)}` : 'Fitted'}</button>
+        <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title={atStop ? 'Brightness as the camera exposes it at the settings above. Click to fit it to the screen instead.' : 'Brightness fitted to the screen. Click to show it as the camera exposes it.'}>{atStop ? `As shot · ${stopLabel(viewEx.tStop)}` : 'Fitted'}</button>
         {eye?.key.startsWith('shot:') && <button className="tool" onClick={saveFrame} title="Save what the frame lines show onto this shot. A previs render, not a photograph."><Icon name="camera" /> Save frame</button>}
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>
         <button className="tool" onClick={topView} title="View from above">Top</button>

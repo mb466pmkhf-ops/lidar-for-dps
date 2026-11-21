@@ -145,14 +145,18 @@ struct VirtualCameraView: View {
         return FrameCheck.sentence(FrameCheck.unitsInFrame(vp.rig, lights: lights, plan: sid.flatMap { store.floorPlan(ref, scanID: $0) }))
     }
 
+    /// Looking through a camera with its own settings: its exposure; the orbit view uses the location's.
+    private var viewExposure: ExposureSettings {
+        location?.exposure(for: orbit ? nil : selected?.rig) ?? ExposureSettings()
+    }
+
     private func updateRigLights() {
         let sid = location?.primaryScan?.id
         let display = location?.displaySettings ?? SceneDisplay()
         let lights = rigLightsOn && !display.isHidden(group: .lights)
             ? (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid } : []
         // Looking through the camera: no beam volumes or labels in the frame.
-        // Looking through a camera with its own settings: its exposure; the orbit view uses the location's.
-        let key = (location?.exposure(for: orbit ? nil : selected?.rig) ?? ExposureSettings()).keyLux
+        let key = viewExposure.keyLux
         model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit, hideGrip: display.isHidden(group: .grip),
                         plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) },
                         referenceLux: look3D == "fit" ? nil : key, surfaces: display.roomSurfacesValue)
@@ -189,7 +193,7 @@ struct VirtualCameraView: View {
                 }
             }
             if !(location?.lightFixtures.isEmpty ?? true) {
-                TagChip(text: look3D == "fit" ? "Fitted" : "As shot · \(ExposureSettings.stopLabel((location?.exposureSettings ?? ExposureSettings()).tStop))",
+                TagChip(text: look3D == "fit" ? "Fitted" : "As shot · \(ExposureSettings.stopLabel(viewExposure.tStop))",
                         selected: look3D != "fit") { look3D = look3D == "fit" ? "stop" : "fit" }
                     .accessibilityHint("Switches between the picture as the camera exposes it and one fitted to the screen. A preview, not a reading.")
                 OverlayButton(systemImage: rigLightsOn ? "lightbulb.fill" : "lightbulb", tint: rigLightsOn ? Theme.sun : .white, size: 44) {
