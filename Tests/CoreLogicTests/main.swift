@@ -1550,5 +1550,27 @@ do {
     check(display.hazeValue == .none, "an unknown haze level is no haze")
 }
 
+// MARK: Files left behind by a delete on another device
+do {
+    let keepScan = ScanRecord(name: "Keep", kind: .room, stats: ScanStats())
+    let dropScan = ScanRecord(name: "Drop", kind: .room, stats: ScanStats())
+    let keepPhoto = ReferencePhoto(fileName: "a.jpg", source: .camera)
+    let dropPhoto = ReferencePhoto(fileName: "b.jpg", source: .camera)
+    var kept = Location(name: "Kitchen"); kept.scans = [keepScan, dropScan]; kept.photos = [keepPhoto, dropPhoto]
+    let gone = Location(name: "Hall")
+    var old = Project(name: "Shoot"); old.locations = [kept, gone]
+    old.objects = [CapturedObject(name: "Lamp"), CapturedObject(name: "Chair")]
+    var new = old
+    new.locations = [kept]; new.locations[0].scans = [keepScan]; new.locations[0].photos = [keepPhoto]
+    new.objects = [old.objects[0]]
+    let r = ProjectRemovals(from: old, to: new)
+    check(r.locations == [gone.id], "a location deleted elsewhere is listed for removal")
+    check(r.scans == [.init(locationID: kept.id, scanID: dropScan.id)], "a scan deleted elsewhere is listed, the kept one isn't")
+    check(r.photos == [.init(locationID: kept.id, photo: dropPhoto)], "a photo deleted elsewhere is listed")
+    check(r.objects == [old.objects[1].id], "a captured object deleted elsewhere is listed")
+    var added = old; added.locations.append(Location(name: "New room"))
+    check(ProjectRemovals(from: old, to: added).isEmpty && ProjectRemovals(from: old, to: old).isEmpty, "nothing removed when nothing was deleted")
+}
+
 print(failures == 0 ? "ALL PASSED" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

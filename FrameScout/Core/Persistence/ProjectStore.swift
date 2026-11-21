@@ -75,15 +75,46 @@ final class ProjectStore: ObservableObject {
     /// Puts a project that changed on another device in place (or adds it) and saves it, without
     /// reporting it back through `onProjectWritten`. Pending local saves for it are dropped: the
     /// caller has already merged them into `project`.
+    ///
+    /// Locations, scans, photos and captured objects deleted on the other device take their files on
+    /// this one with them (scan meshes and photos never sync, so nothing else would remove them).
     func applyRemote(_ project: Project) {
         pendingSaves[project.id]?.cancel()
         pendingSaves[project.id] = nil
+        let old = self.project(project.id)
         if let i = projects.firstIndex(where: { $0.id == project.id }) {
             projects[i] = project
         } else {
             projects.insert(project, at: 0)
         }
         writeNow(project, notify: false)
+        if let old { removeFiles(of: old, gone: ProjectRemovals(from: old, to: project)) }
+    }
+
+    private func removeFiles(of old: Project, gone: ProjectRemovals) {
+        guard !gone.isEmpty else { return }
+        let projectID = old.id
+        for locationID in gone.locations {
+            for scan in old.locations.first(where: { $0.id == locationID })?.scans ?? [] { dropPendingPlan(scan.id) }
+            try? fm.removeItem(at: StoragePaths.locationDir(LocationRef(projectID: projectID, locationID: locationID)))
+        }
+        for scan in gone.scans {
+            dropPendingPlan(scan.scanID)
+            try? fm.removeItem(at: StoragePaths.scanDir(LocationRef(projectID: projectID, locationID: scan.locationID), scanID: scan.scanID))
+        }
+        for photo in gone.photos {
+            try? fm.removeItem(at: StoragePaths.photoURL(LocationRef(projectID: projectID, locationID: photo.locationID), photo.photo))
+        }
+        for objectID in gone.objects {
+            try? fm.removeItem(at: StoragePaths.objectDir(projectID, objectID: objectID))
+        }
+    }
+
+    /// Forgets a plan edit waiting to be written for a scan that has gone.
+    private func dropPendingPlan(_ scanID: UUID) {
+        pendingPlanSaves[scanID]?.task.cancel()
+        pendingPlanSaves[scanID] = nil
+        planCache[scanID] = nil
     }
 
     /// Flush any pending writes (called when the app goes to the background).

@@ -44,6 +44,8 @@ final class CloudSync: ObservableObject {
     @Published private(set) var status: Status = .off
     @Published private(set) var config: Config?
     @Published private(set) var email: String?
+    /// Projects the server refused on the last sync, with the reason. The others sync anyway.
+    @Published private(set) var problems: [UUID: String] = [:]
 
     private weak var store: ProjectStore?
     private var session: Session?
@@ -275,6 +277,7 @@ final class CloudSync: ObservableObject {
         email = nil
         Keychain.delete("sync.session")
         meta = [:]
+        problems = [:]
         saveMeta()
         if config != nil { status = .signedOut }
     }
@@ -380,10 +383,21 @@ final class CloudSync: ObservableObject {
         if running { again = true; return }
         running = true
         defer { running = false }
-        if case .synced = status {} else { status = .syncing }
+        // A known problem with one project stays on show while the next round runs (no flicker).
+        if case .synced = status {} else if case .error = status, !problems.isEmpty {} else { status = .syncing }
+        // One project the server refuses (too large, a copy this build can't read) must not hold up
+        // the others: its error is kept against it and the loop moves on. Losing the connection or
+        // the sign-in still stops the whole run, since every other request would fail the same way.
+        var found: [UUID: String] = [:]
+        func keepGoing(_ error: Error, _ id: UUID) throws {
+            if case SyncError.signedOut = error { throw error }
+            if error is URLError || error is CancellationError { throw error }
+            found[id] = Self.plainReason(error)
+        }
         do {
             repeat {
                 again = false
+                found = [:]
                 let heads = try await rest("GET", "select=id,rev,deleted") as? [[String: Any]] ?? []
                 for head in heads {
                     guard let idString = head["id"] as? String, let id = UUID(uuidString: idString) else { continue }
@@ -400,12 +414,17 @@ final class CloudSync: ObservableObject {
                         continue
                     }
                     if meta[id]?.rev == rev && store.project(id) != nil { continue }
-                    if let row = try await fetchRow(id) { try absorb(row, id: id, store: store) }
+                    do {
+                        if let row = try await fetchRow(id) { try absorb(row, id: id, store: store) }
+                    } catch { try keepGoing(error, id) }
                 }
-                for (id, m) in meta where m.dirty { try await push(id, store: store) }
+                for (id, m) in meta where m.dirty {
+                    do { try await push(id, store: store) } catch { try keepGoing(error, id) }
+                }
                 saveMeta()
             } while again
-            status = .synced(Date())
+            problems = found
+            status = found.isEmpty ? .synced(Date()) : .error(problemSummary(store))
         } catch SyncError.signedOut {
             status = .signedOut
         } catch let error as URLError {
@@ -414,6 +433,24 @@ final class CloudSync: ObservableObject {
             status = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
         saveMeta()
+    }
+
+    /// "“Big shoot” couldn't sync: too large for the sync server. Everything else is up to date."
+    private func problemSummary(_ store: ProjectStore) -> String {
+        let named = problems.map { id, why in "“\(store.project(id)?.name ?? "Untitled")” couldn't sync: \(why)" }.sorted()
+        let more = named.count > 3 ? " (and \(named.count - 3) more)" : ""
+        return named.prefix(3).joined(separator: " ") + more + " Everything else is up to date."
+    }
+
+    /// The server's answer for one project, in plain words where we know it.
+    static func plainReason(_ error: Error) -> String {
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        // 23514: the size limits in web/supabase/schema.sql. 413: the request itself was too big.
+        if message.range(of: #"\b(23514|413)\b|too large|payload"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            return "too large for the sync server. It stays saved on this iPhone."
+        }
+        if error is DecodingError { return "this version of the app can't read the server's copy. Update the app." }
+        return message.hasSuffix(".") ? message : message + "."
     }
 
     /// Takes the server's copy: replaces an unchanged local project, or merges with local edits.
