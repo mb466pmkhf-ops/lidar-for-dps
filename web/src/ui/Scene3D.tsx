@@ -21,9 +21,11 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { DepthOfFieldPass } from './scene3d/dof';
+import { HAZE_LEVELS, depthOfFieldFor, focusFor, focusLabel, hazeLevel } from '../model/focus';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
-import type { CameraRig, ExposureSettings, FloorPlan, LightFixture, Location } from '../model/types';
+import type { CameraRig, ExposureSettings, FloorPlan, HazeLevel, LightFixture, Location } from '../model/types';
 import { KIND_INFO, barnDoorTransmission, fixtureProfile, gridCutoffTan, illuminanceOnAxis, photometrics, relativeIntensity, type ResolvedPhotometrics } from '../model/photometrics';
 import { gripStandCount, lightSupport } from '../model/rigging';
 import { cameraExposure, keyLux, stopLabel } from '../model/exposure';
@@ -31,7 +33,7 @@ import { fieldOfView, imageArea } from '../model/camera';
 import { at, boardOptics, buildScene, direction, distanceToSegment, throughGlass, type MeterPoint } from '../model/calculator';
 import { drapeOptics } from '../model/grip';
 import type { Selection } from './PlanCanvas';
-import { readingShort } from './format';
+import { metres, readingShort } from './format';
 import { Icon } from './icons';
 import { frameRect, shotFrames } from '../sync/shotFrames';
 import { DARK, backdropTexture, bar, rad, v } from './scene3d/kit';
@@ -61,6 +63,8 @@ interface Props {
   onSelect(s?: Selection): void;
   /** Look through this camera or shot ("camera:<id>" or "shot:<id>"); `n` changes on every request. */
   lookThrough?: { key: string; n: number };
+  /** Change the haze in the air (kept with the location's display settings). */
+  onHaze?(level: HazeLevel): void;
 }
 
 type Quality = 0 | 1 | 2; // 2 = everything on, 1 = no ambient occlusion, 0 = plain
@@ -125,7 +129,7 @@ function dispose(root: THREE.Object3D) {
 }
 
 interface Api {
-  renderer: THREE.WebGLRenderer; composer: EffectComposer; gtao: GTAOPass; bloom: UnrealBloomPass;
+  renderer: THREE.WebGLRenderer; composer: EffectComposer; gtao: GTAOPass; bloom: UnrealBloomPass; dof: DepthOfFieldPass;
   scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
   room: THREE.Group; items: THREE.Group; marks: THREE.Group; walls: WallRecord[]; wallGroups: THREE.Object3D[];
   ambient: THREE.HemisphereLight; grid: THREE.Mesh;
@@ -181,6 +185,16 @@ export function Scene3D(p: Props) {
   const [tipSeen, hideTip] = useTip('3d-gestures');
   const eyeRef = useRef(eye);
   eyeRef.current = eye;
+  // Depth of field through the camera: on by default, from its focus distance (or the shot's subject).
+  const [dofOn, setDofOn] = useState(() => { try { return localStorage.getItem('framescan.3d.dof') !== 'off'; } catch { return true; } });
+  const eyeShot = eye?.key.startsWith('shot:') ? p.location.shots.find(s => s.id === eye.key.slice(5)) : undefined;
+  const focus = eye ? focusFor(eye.rig, eyeShot?.subject, eyeShot?.subjectHeight) : undefined;
+  const dofFigures = eye && focus ? depthOfFieldFor(eye.rig, viewEx.tStop, focus.metres) : undefined;
+  const dofRef = useRef<{ focus: number; focal: number; stop: number; width: number; lensH: number }>(undefined);
+  dofRef.current = eye && focus && dofOn ? { focus: focus.metres, focal: eye.rig.focalLength, stop: viewEx.tStop, width: imageArea(eye.rig).width, lensH: fieldOfView(imageArea(eye.rig).width, eye.rig.focalLength) } : undefined;
+  const dofKey = JSON.stringify(dofRef.current ?? null);
+  useEffect(() => { api.current?.invalidate(); }, [dofKey]);
+  const toggleDof = () => setDofOn(on => { try { localStorage.setItem('framescan.3d.dof', on ? 'off' : 'on'); } catch { /* private mode */ } return !on; });
   const [noLight, setNoLight] = useState(false);
   const [warming, setWarming] = useState(false);
   const [savedNote, setSavedNote] = useState('');
@@ -268,6 +282,9 @@ export function Scene3D(p: Props) {
       try { baseOverrideRender(...args); } finally { scene.background = backdrop; }
     };
     composer.addPass(gtao);
+    // Depth of field, only while looking through a camera that has a focus distance (see dofRef).
+    const dof = new DepthOfFieldPass(scene, camera, o => !!(o.userData.noAO || o.userData.cut));
+    composer.addPass(dof);
     const bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.32, 0.55, 1.15);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
@@ -292,7 +309,7 @@ export function Scene3D(p: Props) {
       camera.aspect = w / h; camera.updateProjectionMatrix();
       invalidate();
     };
-    api.current = { renderer, composer, gtao, bloom, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], roomLights, invalidate };
+    api.current = { renderer, composer, gtao, bloom, dof, scene, camera, controls, room, items, marks, walls: [], wallGroups: [], ambient, grid, sun, sheers: [], night: scene.background as THREE.Texture, centre: v(0, 1, 0), span: 6, tags: [], trash: [], backdropFades: [], roomLights, invalidate };
     applyQuality();
     if (import.meta.env.DEV) (window as unknown as { __scene3d?: Api }).__scene3d = api.current; // for screenshots while developing
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -305,7 +322,7 @@ export function Scene3D(p: Props) {
     });
 
     let frame = 0, last = 0, slow = 0, streak = 0, lastMove = 0;
-    const tmp = new THREE.Vector3(), fwd = new THREE.Vector3(), side = new THREE.Vector3();
+    const tmp = new THREE.Vector3(), fwd = new THREE.Vector3(), side = new THREE.Vector3(), tmp2 = new THREE.Vector2();
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
       // Walking: W A S D (or the arrows) move the view and what it looks at together along the floor,
@@ -359,6 +376,15 @@ export function Scene3D(p: Props) {
       if (fading) invalidate();
       if (a.warming || pending <= 0) { streak = 0; return; }
       pending--;
+      const d = dofRef.current;
+      a.dof.enabled = !!d;
+      if (d) {
+        // Pixels across the frame lines over the image area's width in mm: how big a millimetre of sensor is on screen.
+        const buf = renderer.getDrawingBufferSize(tmp2);
+        const viewH = 2 * Math.atan(Math.tan(rad(camera.fov) / 2) * camera.aspect);
+        const framePx = buf.x * Math.tan(rad(d.lensH) / 2) / Math.tan(viewH / 2);
+        a.dof.set(d.focus, d.focal, d.stop, framePx / d.width);
+      }
       composer.render();
       for (const o of a.trash) dispose(o);
       a.trash.length = 0;
@@ -507,6 +533,7 @@ export function Scene3D(p: Props) {
     // One scale for every unit turns the calculator's candela into screen brightness: an incident
     // reading of `reference` lux puts a mid-grey card at mid-grey.
     const pms = new Map(p.lights.filter(l => KIND_INFO[l.kind].emits).map(l => [l.id, photometrics(l)]));
+    const haziness = hazeLevel(loc.display?.haze);
     const lit = p.lights.filter(l => l.isOn && !hidden.has('lights') && (pms.get(l.id)?.peakIntensity ?? 0) > 0).map(l => ({ l, pm: pms.get(l.id)! }));
     const scan = loc.scans.find(s => s.id === scanID);
     const env = environment(loc, p.plan, scan);
@@ -632,7 +659,8 @@ export function Scene3D(p: Props) {
       if (selected) ring(l.position.x, l.position.z, 0.5);
       const pm = pms.get(l.id);
       // Like the plan: only the selected unit's beam unless the Beams layer is on. The lit room shows the rest.
-      const showBeam = !!p.beams || selected;
+      // With haze in the air every unit that's on shows its beam, as on set.
+      const showBeam = !!p.beams || selected || haziness.beams > 0;
       const hasMap = shadowed.has(l.id);
       // Switching and dimming don't rebuild the unit (nor re-trace its beam): see `relight` below.
       const shape = JSON.stringify({ ...l, isOn: undefined, dimmer: undefined });
@@ -841,7 +869,8 @@ export function Scene3D(p: Props) {
     const inTheWay = `${roomGen.current}|${JSON.stringify(p.lights.filter(l => !KIND_INFO[l.kind].emits))}|${JSON.stringify((loc.characters ?? []).map(c => [c.position, c.height, c.posture, c.facing]))}`;
     // Haze on the same scale as the light: a unit dimmed to 10 % shows a tenth of the haze, where it
     // used to show nearly all of it (a room of units at their lowest came out white with haze).
-    const haze = (pm: ResolvedPhotometrics) => beamStrength(pm) * Math.min(1.5, illuminanceOnAxis(pm, 3) * scale / (1.25 * Math.PI));
+    // No haze set: beams at the Beams layer's planning strength. Haze set: thinner or thicker than that.
+    const haze = (pm: ResolvedPhotometrics) => beamStrength(pm) * Math.min(1.5, illuminanceOnAxis(pm, 3) * scale / (1.25 * Math.PI)) * (haziness.beams || 1);
     for (const { l, pm, pan } of beams) {
       const key = `${pan.userData.shape}|${inTheWay}`;
       if (pan.userData.beamKey === key) {
@@ -858,6 +887,21 @@ export function Scene3D(p: Props) {
       if (b) { b.position.set(0, 0, pan.userData.front); tilt.add(b); b.userData.uniforms.strength.value = haze(pm); }
       pan.userData.beam = b; pan.userData.beamKey = key;
     }
+    // The veil: haze lit by the room's units glows evenly through the air and lifts the blacks. Its
+    // brightness follows the units that are on (a dark room's haze stays dark), coloured like them. Even
+    // across the room, which real haze is not: it glows most in the beams, which show that part.
+    if (haziness.veil > 0 && lit.length) {
+      const glow = new THREE.Color(), c = new THREE.Color();
+      let sum = 0;
+      for (const { pm } of lit) {
+        const e = Math.min(1.5, illuminanceOnAxis(pm, 3) * scale / Math.PI);
+        sum += e;
+        glow.add(c.setRGB(pm.color.r, pm.color.g, pm.color.b).multiplyScalar(e));
+      }
+      const level = Math.min(0.5, 0.12 * sum);
+      if (sum > 0) glow.multiplyScalar(level / Math.max(1e-6, (glow.r + glow.g + glow.b) / 3));
+      a.scene.fog = new THREE.FogExp2(glow, haziness.veil);
+    } else a.scene.fog = null;
     a.renderer.shadowMap.needsUpdate = true;
     // The first time round, prepare every surface's shader before drawing. Where the browser can
     // compile in the background (KHR_parallel_shader_compile) the window stays responsive meanwhile
@@ -953,7 +997,7 @@ export function Scene3D(p: Props) {
     const out = document.createElement('canvas');
     out.width = Math.round(r.w * scale); out.height = Math.round(r.h * scale);
     out.getContext('2d')?.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, out.width, out.height);
-    const lens = `${Math.round(eye.rig.focalLength)} mm · ${stopLabel(viewEx.tStop)} · ISO ${viewEx.iso}`;
+    const lens = `${Math.round(eye.rig.focalLength)} mm · ${stopLabel(viewEx.tStop)} · ISO ${viewEx.iso}${dofFigures && dofOn ? ` · focus ${dofFigures.focus.toFixed(1)} m` : ''}`;
     const done = (text: string) => { setSavedNote(text); window.setTimeout(() => setSavedNote(''), 2500); };
     out.toBlob(b => {
       if (!b) { done('Could not save the frame'); return; }
@@ -977,6 +1021,7 @@ export function Scene3D(p: Props) {
         <div className="scene3d-frame" aria-hidden="true">
           <div className="lines" style={{ aspectRatio: String(eye.ratio), ...(eye.ratio >= (api.current?.camera.aspect ?? 1.6) ? { width: '92%' } : { height: '92%' }) }}>
             <span>{eye.label}</span>
+            <span className="focus">{dofFigures ? `${focusLabel(dofFigures, metres)}${focus?.from === 'subject' ? ' (on the subject)' : ''}${dofOn ? '' : ' · blur off'} · estimate` : 'No focus set: give this camera a focus distance to see depth of field'}</span>
             {inShot && <span className="in-shot">{inShot}</span>}
             {savedNote && <span className="saved">{savedNote}</span>}
           </div>
@@ -991,7 +1036,14 @@ export function Scene3D(p: Props) {
       </div>
       <div className="scene3d-buttons">
         <button className={'tool' + (atStop ? ' on' : '')} aria-pressed={atStop} onClick={toggleLook} title={atStop ? 'Brightness as the camera exposes it at the settings above. Click to fit it to the screen instead.' : 'Brightness fitted to the screen. Click to show it as the camera exposes it.'}>{atStop ? `As shot · ${stopLabel(viewEx.tStop)}` : 'Fitted'}</button>
+        {eye && focus && <button className={'tool' + (dofOn ? ' on' : '')} aria-pressed={dofOn} onClick={toggleDof} title={dofOn ? 'Depth of field from the lens, stop and focus distance (an estimate). Click for everything sharp.' : 'Everything sharp. Click to show depth of field.'}>Focus blur</button>}
         {eye?.key.startsWith('shot:') && <button className="tool" onClick={saveFrame} title="Save what the frame lines show onto this shot. A previs render, not a photograph."><Icon name="camera" /> Save frame</button>}
+        {p.onHaze && (
+          <select className="tool" value={hazeLevel(p.location.display?.haze).id} aria-label="Haze" onChange={e => p.onHaze!(e.target.value as HazeLevel)}
+            title="Haze in the air: every beam that's on shows, and a veil lifts the blacks. A look to judge the frame, not a measurement.">
+            {HAZE_LEVELS.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+        )}
         <button className="tool" onClick={resetView} title="Reset view" aria-label="Reset view"><Icon name="undo" /></button>
         <button className="tool" onClick={topView} title="View from above">Top</button>
         <button className={'tool' + (eye ? ' on' : '')} aria-pressed={!!eye} onClick={() => (eye ? resetView() : eyeLevel())}

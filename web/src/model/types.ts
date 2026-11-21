@@ -97,6 +97,8 @@ export interface CameraRig {
   support?: string;
   /** This camera's own settings; absent = it shoots at the location's (Location.exposure). */
   exposure?: ExposureSettings;
+  /** Where the lens is focused (m from the sensor); absent = on the shot's subject, if it has one (focus.ts). */
+  focusDistance?: number;
   [key: string]: unknown;
 }
 export interface CameraPosition {
@@ -111,11 +113,14 @@ export interface Shot {
   [key: string]: unknown;
 }
 
+export type HazeLevel = 'none' | 'light' | 'medium' | 'heavy';
 export interface SceneDisplay {
   hiddenItems?: string[]; hiddenGroups?: string[]; hiddenLabels?: string[];
   windowOpacity?: number; windowTransmission?: number; wallOpacity?: number; showLuxMap?: boolean;
   /** How much light the room's own surfaces throw back (calculator.ts ROOM_SURFACES). Absent = typical. */
   roomSurfaces?: RoomSurfaces;
+  /** Haze in the air for the 3D view (beams and a veil); absent = none. See HAZE_LEVELS in focus.ts. */
+  haze?: HazeLevel;
   [key: string]: unknown;
 }
 

@@ -192,6 +192,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .scene3d-frame .lines span { position: absolute; left: 8px; top: 6px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.85); }
 .scene3d-frame .lines .in-shot { top: auto; bottom: 6px; right: 8px; font-family: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: var(--radius); }
 .scene3d-frame .lines .saved { left: auto; right: 8px; top: 6px; font-family: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: var(--radius); }
+.scene3d-frame .lines .focus { top: 24px; font-size: 11px; color: rgba(255,255,255,.7); }
 @media (max-width: 720px) { .scene3d-hint .how { display: none; } .scene3d-hint { right: 12px; font-size: 12px; } }
 
 /* Home: your rooms as a list, the ways to start a new one as buttons above it. */

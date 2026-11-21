@@ -83,13 +83,16 @@ struct VirtualCameraView: View {
         .statusBarHidden()
         .onAppear(perform: setup)
         .onChange(of: selected) { _, vp in
-            if let vp { model.apply(vp) }
+            if let vp { model.apply(vp, tStop: location?.exposure(for: vp.rig).tStop) }
             updateMarkers()
         }
         .onChange(of: orbit) { _, _ in updateMarkers(); updateRigLights(); updatePeople() }
         .onChange(of: location?.characters) { _, _ in updatePeople() }
         .onChange(of: location?.display) { _, _ in applyDisplay(); updateRigLights() }
-        .onChange(of: location?.exposureSettings) { _, _ in look3D = "stop"; updateRigLights() }
+        .onChange(of: location?.exposureSettings) { _, _ in
+            look3D = "stop"; updateRigLights()
+            if let vp = selected { model.apply(vp, tStop: location?.exposure(for: vp.rig).tStop) } // the stop changes the depth of field
+        }
         .onChange(of: selected?.rig.exposure) { _, _ in look3D = "stop"; updateRigLights() }
         .onChange(of: look3D) { _, _ in updateRigLights() }
         .onChange(of: sunOn) { _, _ in updateSun() }
@@ -105,7 +108,7 @@ struct VirtualCameraView: View {
         model.load(scan: scan, ref: ref, floorY: plan?.floorY ?? 0, plan: plan)
         model.applyAlignment(scan.alignmentValue)
         selectedID = initialCameraID ?? viewpoints.first?.id
-        if let vp = selected { model.apply(vp) }
+        if let vp = selected { model.apply(vp, tStop: location?.exposure(for: vp.rig).tStop) }
         orbit = viewpoints.isEmpty
         updateMarkers()
         updateRigLights()
@@ -155,11 +158,12 @@ struct VirtualCameraView: View {
         let display = location?.displaySettings ?? SceneDisplay()
         let lights = rigLightsOn && !display.isHidden(group: .lights)
             ? (location?.lightFixtures ?? []).filter { $0.scanID == nil || $0.scanID == sid } : []
-        // Looking through the camera: no beam volumes or labels in the frame.
+        // Looking through the camera: no beam volumes or labels in the frame, unless there is haze in the
+        // air, when the beams show as they would on set.
         let key = viewExposure.keyLux
-        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit, hideGrip: display.isHidden(group: .grip),
+        model.setLights(lights, selected: nil, showLabels: false, showBeams: orbit || display.hazeValue != .none, hideGrip: display.isHidden(group: .grip),
                         plan: location?.primaryScan.flatMap { store.floorPlan(ref, scanID: $0.id) },
-                        referenceLux: look3D == "fit" ? nil : key, surfaces: display.roomSurfacesValue)
+                        referenceLux: look3D == "fit" ? nil : key, surfaces: display.roomSurfacesValue, haze: display.hazeValue)
     }
 
     private var sunAvailable: Bool {
@@ -201,6 +205,21 @@ struct VirtualCameraView: View {
                 }
                 .accessibilityLabel(rigLightsOn ? "Hide lighting units" : "Show lighting units")
             }
+            if !(location?.lightFixtures.isEmpty ?? true) {
+                Menu {
+                    Picker("Haze", selection: Binding(get: { location?.displaySettings.hazeValue ?? .none }, set: { h in
+                        store.updateLocation(ref) { $0.displaySettings.haze = h == .none ? nil : h.rawValue }
+                    })) {
+                        ForEach(HazeLevel.allCases) { Text($0.name).tag($0) }
+                    }
+                } label: {
+                    TagChip(text: (location?.displaySettings.hazeValue ?? .none) == .none ? "Haze" : (location?.displaySettings.hazeValue ?? .none).name,
+                            selected: (location?.displaySettings.hazeValue ?? .none) != .none) {}
+                        .allowsHitTesting(false)
+                }
+                .accessibilityLabel("Haze")
+                .accessibilityHint("Haze in the air: beams show and a veil lifts the blacks. A look to judge the frame, not a measurement.")
+            }
             if sunAvailable {
                 OverlayButton(systemImage: sunOn ? "sun.max.fill" : "sun.max", tint: sunOn ? Theme.sun : .white, size: 44) {
                     sunOn.toggle()
@@ -213,6 +232,15 @@ struct VirtualCameraView: View {
         VStack(spacing: 8) {
             if let vp = selected {
                 LensPicker(focalLength: Binding(get: { vp.rig.focalLength }, set: { v in update(vp) { $0.focalLength = v } }), sensor: vp.rig.sensor, aspect: vp.rig.aspect)
+                if let focus = DepthOfField.focus(vp.rig, subject: vp.subject, subjectHeight: vp.subjectHeight) {
+                    compactSlider(focus.from == .subject ? "Focus · on the subject" : "Focus", value: focus.metres, range: DepthOfField.minFocus...max(20, focus.metres),
+                                  format: { UnitsFormatter.distance($0) }) { v in update(vp) { $0.focusDistance = v } }
+                    Text("\(DepthOfField.label(DepthOfField.limits(vp.rig, tStop: viewExposure.tStop, focusM: focus.metres), length: { UnitsFormatter.distance($0) })) · estimate")
+                        .font(.fsCaption).foregroundStyle(Theme.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Button("Set a focus distance for depth of field") { update(vp) { $0.focusDistance = 3 } }
+                        .font(.fsCaptionStrong).frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if vp.kind == .shot {
                     HStack {
                         Button { saveFrame(vp) } label: { Label("Save frame to \(vp.label)", systemImage: "photo.badge.plus") }

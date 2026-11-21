@@ -2236,7 +2236,8 @@ struct PlanEditorView: View {
                         }
                         CameraRigForm(rig: Binding(get: { cam.rig }, set: { v in updateCamera(id) { $0.rig = v } }),
                                       clearances: PlanGeometry.clearances(for: cam.rig, plan: plan),
-                                      ceilingHeight: scan?.stats.ceilingHeight)
+                                      ceilingHeight: scan?.stats.ceilingHeight,
+                                      tStop: location?.exposure(for: cam.rig).tStop)
                     }
                 case .shot(let id):
                     if let shot = location?.shots.first(where: { $0.id == id }) {
@@ -2244,7 +2245,9 @@ struct PlanEditorView: View {
                         CameraRigForm(rig: Binding(get: { shot.rig }, set: { v in updateShot(id) { $0.rig = v } }),
                                       subjectDistance: shot.subjectDistance,
                                       clearances: PlanGeometry.clearances(for: shot.rig, plan: plan),
-                                      ceilingHeight: scan?.stats.ceilingHeight)
+                                      ceilingHeight: scan?.stats.ceilingHeight,
+                                      subject: shot.subject, subjectHeight: shot.subjectHeight,
+                                      tStop: location?.exposure(for: shot.rig).tStop)
                     }
                 case .light(let id):
                     if let light = location?.lightFixtures.first(where: { $0.id == id }) {

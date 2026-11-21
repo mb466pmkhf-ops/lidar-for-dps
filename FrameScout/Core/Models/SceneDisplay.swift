@@ -20,6 +20,8 @@ struct SceneDisplay: Codable, Hashable {
     /// How much light the room's own surfaces throw back in the calculation (`RoomSurfaces` raw
     /// value; kept as text so an unknown value from a newer app doesn't stop the location loading). nil = typical.
     var roomSurfaces: String? = nil
+    /// Haze in the air for the 3D view (`HazeLevel` raw value, kept as text like `roomSurfaces`). nil = none.
+    var haze: String? = nil
 
     static let defaultWindowOpacity = 0.25
     /// Typical visible-light transmission of clear double glazing.
@@ -30,6 +32,7 @@ struct SceneDisplay: Codable, Hashable {
     var wallOpacityValue: Double { wallOpacity ?? 1 }
     var luxMapOn: Bool { showLuxMap ?? false }
     var roomSurfacesValue: RoomSurfaces { roomSurfaces.flatMap(RoomSurfaces.init(rawValue:)) ?? .typical }
+    var hazeValue: HazeLevel { haze.flatMap(HazeLevel.init(rawValue:)) ?? .none }
 
     func isHidden(item key: String) -> Bool { hiddenItems?.contains(key) ?? false }
     func isHidden(group: SceneGroup) -> Bool { hiddenGroups?.contains(group.rawValue) ?? false }

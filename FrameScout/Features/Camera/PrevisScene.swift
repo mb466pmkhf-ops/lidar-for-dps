@@ -810,12 +810,26 @@ final class VirtualSceneModel: ObservableObject {
 
     // MARK: Walkthrough camera
 
-    func apply(_ vp: VirtualViewpoint) {
+    /// Looks through a camera. With a stop and a focus distance (set, or the shot's subject) the view
+    /// shows the lens's depth of field: SceneKit's physically based blur from focal length, sensor size,
+    /// stop and focus (an estimate, like `DepthOfField`; the T-stop stands in for the f-stop).
+    func apply(_ vp: VirtualViewpoint, tStop: Double? = nil) {
         let rig = vp.rig
         panNode.simdPosition = SIMD3(Float(rig.position.x), Float(floorY + rig.height), Float(rig.position.z))
         panNode.simdEulerAngles = SIMD3(0, Float(-rig.pan * .pi / 180), 0)
         tiltNode.simdEulerAngles = SIMD3(Float(rig.tilt * .pi / 180), 0, 0)
-        cameraNode.camera?.fieldOfView = CGFloat(rig.horizontalFOV)
+        guard let camera = cameraNode.camera else { return }
+        if let tStop, let focus = DepthOfField.focus(rig, subject: vp.subject, subjectHeight: vp.subjectHeight) {
+            // The camera projects horizontally, so its "sensor height" is the frame's width.
+            camera.sensorHeight = CGFloat(rig.imageArea.width)
+            camera.focalLength = CGFloat(rig.focalLength)
+            camera.fStop = CGFloat(max(tStop, 0.5))
+            camera.focusDistance = CGFloat(focus.metres)
+            camera.wantsDepthOfField = true
+        } else {
+            camera.wantsDepthOfField = false
+        }
+        camera.fieldOfView = CGFloat(rig.horizontalFOV)
     }
 
     // MARK: Placed items
@@ -912,7 +926,7 @@ final class VirtualSceneModel: ObservableObject {
     /// (`ExposureSettings.keyLux`) to see the scene as shot, or nil to fit the picture to the brightest
     /// unit (same two looks as the desktop 3D view). `surfaces` is how much light the room hands back.
     func setLights(_ lights: [LightFixture], selected: UUID?, showLabels: Bool = false, showBeams: Bool = true, hideGrip: Bool = false, plan: FloorPlan? = nil,
-                   referenceLux: Double? = nil, surfaces: RoomSurfaces = .typical) {
+                   referenceLux: Double? = nil, surfaces: RoomSurfaces = .typical, haze: HazeLevel = .none) {
         var anyOn = false
         var shadowCount = 0
         var keep = Set<UUID>()
@@ -969,12 +983,35 @@ final class VirtualSceneModel: ObservableObject {
             entry.light.intensity = entry.on ? SceneKitBuilder.viewportIntensity(share: (brightest > 0 ? entry.onAxis / brightest : 1) * (glass[id] ?? 1)) : 0
         }
         setGripGlow(lights.filter { hideGrip ? $0.kind.emits : true }, plan: plan, brightest: brightest, surfaces: surfaces)
+        setHaze(haze, brightest: brightest)
         // With units on, the room keeps only a trace of work light so their shadows read (about the
         // desktop's trace; the light off the walls now comes from `roomGlow`); the stand-in sun is for
         // an unlit room (or the viewfinder's sun study).
         ambientNode.light?.intensity = anyOn ? 25 : 450
         scene.lightingEnvironment.intensity = anyOn ? 0.1 : 0.6
         if !sunIsSet { sunNode.light?.intensity = anyOn ? 0 : 900 }
+    }
+
+    /// The haze veil: lit by the units that are on, it glows evenly through the air and lifts the blacks
+    /// (a dark room's haze stays dark), coloured like the units. Even across the room, which real haze
+    /// is not; the beams show where it glows most. Same rule as the desktop 3D view.
+    private func setHaze(_ haze: HazeLevel, brightest: Double) {
+        var r = 0.0, g = 0.0, b = 0.0, sum = 0.0
+        if haze.veil > 0 && brightest > 0 {
+            for e in viewportLights.values where e.on {
+                // The unit's level at 3 m against the reference, as on the desktop (1.25 × mid-grey when fitted).
+                let share = min(1.5, e.onAxis * 1.25 / brightest)
+                var cr: CGFloat = 1, cg: CGFloat = 1, cb: CGFloat = 1, ca: CGFloat = 1
+                (e.light.color as? UIColor)?.getRed(&cr, green: &cg, blue: &cb, alpha: &ca)
+                r += Double(cr) * share; g += Double(cg) * share; b += Double(cb) * share; sum += share
+            }
+        }
+        guard sum > 0 else { scene.fogEndDistance = 0; return }
+        let level = min(0.5, 0.12 * sum), mean = max(1e-6, (r + g + b) / 3)
+        scene.fogColor = UIColor(red: min(1, r / mean * level), green: min(1, g / mean * level), blue: min(1, b / mean * level), alpha: 1)
+        scene.fogStartDistance = 0
+        scene.fogEndDistance = CGFloat(1 / haze.veil)
+        scene.fogDensityExponent = 2
     }
 
     /// The bounce off the room, as the calculator has it (D-019): each wall, the floor and the ceiling

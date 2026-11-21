@@ -15,7 +15,7 @@ import {
   KIND_INFO, applyProfile, categoryLabel, filters, fixtureModifier, fixtureProfile, isAdjustable, modifiersFor, photometrics, profiles,
   illuminanceOnAxis, distanceForLux, type FixtureCategory,
 } from '../model/photometrics';
-import { exposureTime, fStop, keyLux, meterStop, speedLabel, stopLabel, stopsDelta, stopsForLux } from '../model/exposure';
+import { cameraExposure, exposureTime, fStop, keyLux, meterStop, speedLabel, stopLabel, stopsDelta, stopsForLux } from '../model/exposure';
 import { cameraSeeing, meterCameras, solveOutput, type MeterPoint, type Scene, reading as calcReading } from '../model/calculator';
 import { LIGHTING_SETUPS, SETUP_GROUP_LABEL, buildSetup, type LightingSetup, type SetupGroup } from '../model/setups';
 import { ANCHOR_LABEL, buildPreset, buildPresetAtWindow, presetSummary, type LightingPreset } from '../model/presets';
@@ -31,6 +31,8 @@ import { deg, extraText, lux as fmtLux, metres, pct, reading as fmtReading, read
 import { Icon } from './icons';
 import { activeLook, deleteLook, looksOf, renameLook, saveLook, setShotLook, switchLook } from '../model/looks';
 import { GripFields } from './GripPanel';
+import { LengthStepper } from './LengthStepper';
+import { MIN_FOCUS, circleOfConfusion, depthOfFieldFor, focusFor, focusLabel } from '../model/focus';
 import type { Selection } from './PlanCanvas';
 
 export function Slider({ label, value, min, max, step, format, onChange }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onChange(v: number): void }) {
@@ -640,6 +642,26 @@ function MeterInspector(p: InspectorProps & { meter: LightMeter }) {
 
 // MARK: Cameras
 
+/** Focus distance and the depth of field it gives. Unset on a shot = on the subject's eyes. */
+function FocusControl({ rig, shot, tStop, onChange }: { rig: CameraRig; shot?: Location['shots'][number]; tStop: number; onChange(v: number | undefined): void }) {
+  const focus = focusFor(rig, shot?.subject, shot?.subjectHeight);
+  if (!focus) {
+    return (
+      <div className="field"><span>Focus</span>
+        <button className="btn small" onClick={() => onChange(3)}>Set a focus distance</button><span />
+      </div>
+    );
+  }
+  const d = depthOfFieldFor(rig, tStop, focus.metres);
+  return (
+    <>
+      <LengthStepper label="Focus" note={focus.from === 'subject' ? "On the subject's eyes" : undefined} value={focus.metres} min={MIN_FOCUS} max={100} onChange={onChange} />
+      <p className="note">{focusLabel(d, metres)} at {stopLabel(tStop)}. Estimate: T-stop taken as f-stop, circle of confusion {circleOfConfusion(rig).toFixed(3)} mm (frame diagonal ÷ 1500). Shown as blur when you look through this camera in 3D.
+        {focus.from === 'set' && <> <button className="linkish" onClick={() => onChange(undefined)}>{shot?.subject ? 'Focus on the subject' : 'Clear focus'}</button></>}</p>
+    </>
+  );
+}
+
 function CameraInspector(p: InspectorProps) {
   const s = p.selection!;
   const shot = s.kind === 'shot' ? p.location.shots.find(x => x.id === s.id) : undefined;
@@ -688,6 +710,7 @@ function CameraInspector(p: InspectorProps) {
       })()}
       <Panel title="Camera">
         <FocalControl rig={rig} onChange={v => setRig({ focalLength: v }, false)} />
+        <FocusControl rig={rig} shot={shot} tStop={cameraExposure(p.location, rig).tStop} onChange={v => setRig({ focusDistance: v })} />
         <Slider label="Lens height" value={rig.height} min={0.1} max={4} step={0.05} format={metres} onChange={v => setRig({ height: v }, false)} />
         <Slider label="Pan" value={((rig.pan % 360) + 360) % 360} min={0} max={360} step={1} format={deg} onChange={v => setRig({ pan: v }, false)} />
         <Slider label="Tilt" value={rig.tilt} min={-60} max={60} step={1} format={signedDeg} onChange={v => setRig({ tilt: v }, false)} />
@@ -708,7 +731,7 @@ function CameraInspector(p: InspectorProps) {
           </select><span />
         </label>
         <Quirks items={quirksForSensor(rig.sensorID)} />
-        <p className="note">Stop, ISO, shutter and ND are in Camera settings above; every camera at this location shares them, and every reading follows them. Cameras sync with the phone.</p>
+        <p className="note">Stop, ISO, shutter, ND and white balance are in Camera settings above: the location's, or this camera's own if you give it some there. Cameras sync with the phone.</p>
         {cam && <label className="field"><span>Notes</span><input type="text" value={cam.notes} placeholder="e.g. A camera, wide" onChange={e => p.edit(loc => ({ ...loc, cameraPositions: loc.cameraPositions.map(x => (x.id === cam.id ? { ...x, notes: e.target.value } : x)) }), false)} /><span /></label>}
       </Panel>
     </div>
