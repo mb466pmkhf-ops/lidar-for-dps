@@ -108,7 +108,7 @@ struct VirtualCameraView: View {
         model.load(scan: scan, ref: ref, floorY: plan?.floorY ?? 0, plan: plan)
         model.applyAlignment(scan.alignmentValue)
         selectedID = initialCameraID ?? viewpoints.first?.id
-        if let vp = selected { model.apply(vp, tStop: location?.exposure(for: vp.rig).tStop) }
+        if let vp = selected { model.apply(vp, tStop: location.exposure(for: vp.rig).tStop) }
         orbit = viewpoints.isEmpty
         updateMarkers()
         updateRigLights()
@@ -214,8 +214,7 @@ struct VirtualCameraView: View {
                     }
                 } label: {
                     TagChip(text: (location?.displaySettings.hazeValue ?? .none) == .none ? "Haze" : (location?.displaySettings.hazeValue ?? .none).name,
-                            selected: (location?.displaySettings.hazeValue ?? .none) != .none) {}
-                        .allowsHitTesting(false)
+                            selected: (location?.displaySettings.hazeValue ?? .none) != .none)
                 }
                 .accessibilityLabel("Haze")
                 .accessibilityHint("Haze in the air: beams show and a veil lifts the blacks. A look to judge the frame, not a measurement.")
